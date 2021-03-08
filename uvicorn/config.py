@@ -7,7 +7,12 @@ import os
 import socket
 import ssl
 import sys
-from typing import List, Literal, Tuple
+from typing import List, Tuple
+
+if sys.version_info < (3, 8):
+    from typing_extensions import Literal
+else:
+    from typing import Literal
 
 import click
 
