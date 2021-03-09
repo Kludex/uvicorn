@@ -8,7 +8,7 @@ else:
 
 
 class ASGISpecInfo(TypedDict):
-    version: Literal["2.0", "3.0"]
+    version: str
     spec_version: Optional[Literal["2.0", "2.1"]]
 
 
