@@ -221,6 +221,13 @@ class WSProtocol(asyncio.Protocol):
             output += self.conn.send(msg)
             msg = h11.EndOfMessage()
             output += self.conn.send(msg)
+
+            if not self.close_sent:
+                self.close_sent = True
+                output += self.conn.send(
+                    wsproto.events.CloseConnection(code=1011, reason="Internal Error")
+                )
+
         self.transport.write(output)
 
     async def run_asgi(self):
