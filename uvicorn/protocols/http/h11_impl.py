@@ -16,7 +16,13 @@ from uvicorn.protocols.http.flow_control import (
     FlowControl,
     service_unavailable,
 )
-from uvicorn.protocols.utils import get_local_addr, get_remote_addr, is_ssl
+from uvicorn.protocols.utils import (
+    get_client_addr,
+    get_local_addr,
+    get_path_with_query_string,
+    get_remote_addr,
+    is_ssl,
+)
 
 
 def _get_status_phrase(status_code):
@@ -471,15 +477,25 @@ class RequestResponseCycle:
                 self.transport.write(output)
 
                 if self.access_log:
-                    try:
+                    if self.access_log_format is None:
                         self.access_logger.info(
-                            self.access_log_format,
-                            AccessLogFields(
-                                self.scope, self.response, time() - self.start_time
-                            ),
+                            '%s - "%s %s HTTP/%s" %d',
+                            get_client_addr(self.scope),
+                            self.scope["method"],
+                            get_path_with_query_string(self.scope),
+                            self.scope["http_version"],
+                            self.response["status"],
                         )
-                    except:  # noqa
-                        self.logger.error(traceback.format_exc())
+                    else:
+                        try:
+                            self.access_logger.info(
+                                self.access_log_format,
+                                AccessLogFields(
+                                    self.scope, self.response, time() - self.start_time
+                                ),
+                            )
+                        except:  # noqa
+                            self.logger.error(traceback.format_exc())
 
         else:
             # Response already sent

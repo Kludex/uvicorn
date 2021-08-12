@@ -17,7 +17,13 @@ from uvicorn.protocols.http.flow_control import (
     FlowControl,
     service_unavailable,
 )
-from uvicorn.protocols.utils import get_local_addr, get_remote_addr, is_ssl
+from uvicorn.protocols.utils import (
+    get_client_addr,
+    get_local_addr,
+    get_path_with_query_string,
+    get_remote_addr,
+    is_ssl,
+)
 
 HEADER_RE = re.compile(b'[\x00-\x1F\x7F()<>@,;:[]={} \t\\"]')
 HEADER_VALUE_RE = re.compile(b"[\x00-\x1F\x7F]")
@@ -510,15 +516,25 @@ class RequestResponseCycle:
                 self.message_event.set()
 
                 if self.access_log:
-                    try:
+                    if self.access_log_format is None:
                         self.access_logger.info(
-                            self.access_log_format,
-                            AccessLogFields(
-                                self.scope, self.response, time() - self.start_time
-                            ),
+                            '%s - "%s %s HTTP/%s" %d',
+                            get_client_addr(self.scope),
+                            self.scope["method"],
+                            get_path_with_query_string(self.scope),
+                            self.scope["http_version"],
+                            self.response["status"],
                         )
-                    except:  # noqa
-                        self.logger.error(traceback.format_exc())
+                    else:
+                        try:
+                            self.access_logger.info(
+                                self.access_log_format,
+                                AccessLogFields(
+                                    self.scope, self.response, time() - self.start_time
+                                ),
+                            )
+                        except:  # noqa
+                            self.logger.error(traceback.format_exc())
 
                 if not self.keep_alive:
                     self.transport.close()

@@ -160,8 +160,7 @@ async def test_unknown_status_code(caplog):
 @pytest.mark.parametrize(
     "access_log_format,expected_output",
     [
-        # TODO: add more tests
-        ("access: %(h)s", "access: 127.0.0.1"),
+        ("access: %(s)s", "access: 204"),
         ('access: "%({test-request-header}i)s"', 'access: "request-header-val"'),
         ('access: "%({test-response-header}o)s"', 'access: "response-header-val"'),
     ],

@@ -1,14 +1,8 @@
 import socket
-import time
 
 import pytest
 
-from uvicorn.protocols.utils import (
-    RequestResponseTiming,
-    get_client_addr,
-    get_local_addr,
-    get_remote_addr,
-)
+from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_remote_addr
 
 
 class MockSocket:
@@ -97,51 +91,3 @@ def test_get_remote_addr():
 )
 def test_get_client_addr(scope, expected_client):
     assert get_client_addr(scope) == expected_client
-
-
-def test_request_response_timing_request_duration_seconds():
-    timing = RequestResponseTiming()
-    with pytest.raises(ValueError):
-        timing.request_duration_seconds()
-
-    timing.request_started()
-    with pytest.raises(ValueError):
-        timing.request_duration_seconds()
-
-    # Make sure time.monotonic is updated before calls (caused problems in
-    # windows tests)
-    time.sleep(0.02)
-    timing.request_ended()
-    assert timing.request_duration_seconds() > 0
-
-
-def test_request_response_timing_response_duration_seconds():
-    timing = RequestResponseTiming()
-    with pytest.raises(ValueError):
-        timing.response_duration_seconds()
-
-    timing.response_started()
-    with pytest.raises(ValueError):
-        timing.response_duration_seconds()
-
-    # Make sure time.monotonic is updated before calls (caused problems in
-    # windows tests)
-    time.sleep(0.02)
-    timing.response_ended()
-    assert timing.response_duration_seconds() > 0
-
-
-def test_request_response_timing_total_duration_seconds():
-    timing = RequestResponseTiming()
-    with pytest.raises(ValueError):
-        timing.total_duration_seconds()
-
-    timing.request_started()
-    with pytest.raises(ValueError):
-        timing.total_duration_seconds()
-
-    # Make sure time.monotonic is updated before calls (caused problems in
-    # windows tests)
-    time.sleep(0.02)
-    timing.response_ended()
-    assert timing.total_duration_seconds() > 0

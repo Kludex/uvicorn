@@ -101,11 +101,17 @@ class AccessFormatter(ColourizedFormatter):
 
     def formatMessage(self, record: logging.LogRecord) -> str:
         recordcopy = copy(record)
-        client_addr = recordcopy.args.__dict__["client_addr"]
-        request_line = recordcopy.args.__dict__["request_line"]
-        status_code = recordcopy.args.__dict__["s"]
-
+        if len(record.args) != 5:
+            return super().formatMessage(record)
+        (
+            client_addr,
+            method,
+            full_path,
+            http_version,
+            status_code,
+        ) = recordcopy.args
         status_code = self.get_status_code(int(status_code))
+        request_line = "%s %s HTTP/%s" % (method, full_path, http_version)
         if self.use_colors:
             request_line = click.style(request_line, bold=True)
         recordcopy.__dict__.update(
