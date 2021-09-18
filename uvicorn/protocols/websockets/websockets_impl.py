@@ -166,7 +166,7 @@ class WebSocketProtocol(_LoggerMixin, websockets.WebSocketServerProtocol):
         """
         return self.accepted_subprotocol
 
-    def send_500_response(self):
+    async def send_500_response(self):
         msg = b"Internal Server Error"
         content = [
             b"HTTP/1.1 500 Internal Server Error\r\n"
@@ -177,6 +177,11 @@ class WebSocketProtocol(_LoggerMixin, websockets.WebSocketServerProtocol):
             msg,
         ]
         self.transport.write(b"".join(content))
+
+        if not self.closed_event.is_set():
+            await self.close(1011, "Internal Error")
+            self.closed_event.set()
+
         # Allow handler task to terminate cleanly, as websockets doesn't cancel it by
         # itself (see https://github.com/encode/uvicorn/issues/920)
         self.handshake_started_event.set()
@@ -202,7 +207,7 @@ class WebSocketProtocol(_LoggerMixin, websockets.WebSocketServerProtocol):
             msg = "Exception in ASGI application\n"
             self.logger.error(msg, exc_info=exc)
             if not self.handshake_started_event.is_set():
-                self.send_500_response()
+                await self.send_500_response()
             else:
                 await self.handshake_completed_event.wait()
             self.transport.close()
@@ -211,7 +216,7 @@ class WebSocketProtocol(_LoggerMixin, websockets.WebSocketServerProtocol):
             if not self.handshake_started_event.is_set():
                 msg = "ASGI callable returned without sending handshake."
                 self.logger.error(msg)
-                self.send_500_response()
+                await self.send_500_response()
                 self.transport.close()
             elif result is not None:
                 msg = "ASGI callable should return None, but returned '%s'."
