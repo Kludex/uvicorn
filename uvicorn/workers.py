@@ -40,6 +40,7 @@ class UvicornWorker(Worker):
             "callback_notify": self.callback_notify,
             "limit_max_requests": self.max_requests,
             "forwarded_allow_ips": self.cfg.forwarded_allow_ips,
+            "access_log_format": self.log.cfg.access_log_format,
         }
 
         if self.cfg.is_ssl:

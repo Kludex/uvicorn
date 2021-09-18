@@ -23,6 +23,7 @@ coverage
 httpx>=0.18.2
 pytest-asyncio==0.14.*
 async_generator; python_version < '3.7'
+gunicorn
 
 
 # Documentation

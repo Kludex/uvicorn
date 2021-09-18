@@ -1,5 +1,6 @@
 import contextlib
 import logging
+import re
 
 import httpx
 import pytest
@@ -7,6 +8,11 @@ import websockets
 
 from tests.utils import run_server
 from uvicorn import Config
+
+
+def escape_ansi(line: str):
+    ansi_escape = re.compile(r"(?:\x1B[@-_]|[\x80-\x9F])[0-?]*[ -/]*[@-~]")
+    return ansi_escape.sub("", line)
 
 
 @contextlib.contextmanager
@@ -110,7 +116,7 @@ async def test_access_logging(use_colors, caplog):
             for record in caplog.records
             if record.name == "uvicorn.access"
         ]
-        assert '"GET / HTTP/1.1" 204' in messages.pop()
+        assert '"GET / HTTP/1.1" 204' in escape_ansi(messages.pop())
 
 
 @pytest.mark.asyncio
@@ -130,7 +136,7 @@ async def test_default_logging(use_colors, caplog):
         assert "ASGI 'lifespan' protocol appears unsupported" in messages.pop(0)
         assert "Application startup complete" in messages.pop(0)
         assert "Uvicorn running on http://127.0.0.1:8000" in messages.pop(0)
-        assert '"GET / HTTP/1.1" 204' in messages.pop(0)
+        assert '"GET / HTTP/1.1" 204' in escape_ansi(messages.pop(0))
         assert "Shutting down" in messages.pop(0)
 
 

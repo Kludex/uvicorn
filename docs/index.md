@@ -143,6 +143,8 @@ Options:
   --log-level [critical|error|warning|info|debug|trace]
                                   Log level. [default: info]
   --access-log / --no-access-log  Enable/Disable access log.
+  --access-log-format TEXT        Log format for access logger, check
+                                  documentation for details.
   --use-colors / --no-use-colors  Enable/Disable colorized logging.
   --proxy-headers / --no-proxy-headers
                                   Enable/Disable X-Forwarded-Proto,

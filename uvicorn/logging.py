@@ -1,10 +1,15 @@
 import http
 import logging
+import os
 import sys
+import time
 from copy import copy
 from typing import Optional
 
 import click
+from asgiref.typing import HTTPResponseStartEvent, HTTPScope
+
+from uvicorn.protocols.utils import get_client_addr, get_path_with_query_string
 
 TRACE_LOG_LEVEL = 5
 
@@ -96,22 +101,76 @@ class AccessFormatter(ColourizedFormatter):
 
     def formatMessage(self, record: logging.LogRecord) -> str:
         recordcopy = copy(record)
-        (
-            client_addr,
-            method,
-            full_path,
-            http_version,
-            status_code,
-        ) = recordcopy.args
+        request_line = recordcopy.args["request_line"]  # type: ignore[call-overload]
+        status_code = recordcopy.args["s"]  # type: ignore[call-overload]
+
         status_code = self.get_status_code(int(status_code))
-        request_line = "%s %s HTTP/%s" % (method, full_path, http_version)
         if self.use_colors:
             request_line = click.style(request_line, bold=True)
-        recordcopy.__dict__.update(
+        recordcopy.args["request_line"] = request_line  # type: ignore[index]
+        recordcopy.args["status_code"] = status_code  # type: ignore[index]
+        return super().formatMessage(recordcopy)
+
+
+class AccessLogFields(dict):
+    def __init__(
+        self,
+        scope: HTTPScope,
+        response: HTTPResponseStartEvent,
+        request_time: float,
+    ) -> None:
+        for name, value in scope["headers"]:
+            self[f"{{{name.decode('latin1').lower()}}}i"] = value.decode("latin1")
+        for name, value in response.get("headers", []):
+            self[f"{{{name.decode('latin1').lower()}}}o"] = value.decode("latin1")
+        for name, value in os.environ.items():  # type: ignore[assignment]
+            self[f"{{{name.lower()!r}}}e"] = value
+        protocol = f"HTTP/{scope['http_version']}"
+        path = scope["root_path"] + scope["path"]
+        full_path = get_path_with_query_string(scope)
+        request_line = f"{scope['method']} {path} {protocol}"
+        full_request_line = f"{scope['method']} {full_path} {protocol}"
+        client_addr = get_client_addr(scope) or "-"
+
+        try:
+            status_phrase = http.HTTPStatus(response["status"]).phrase
+        except ValueError:
+            status_phrase = "-"
+
+        self.update(
             {
+                "h": client_addr,
                 "client_addr": client_addr,
-                "request_line": request_line,
-                "status_code": status_code,
+                "l": "-",
+                "u": "-",  # Not available on ASGI.
+                "t": time.strftime("[%d/%b/%Y:%H:%M:%S %z]"),
+                "r": request_line,
+                "request_line": full_request_line,
+                "R": full_request_line,
+                "m": scope["method"],
+                "U": scope["path"],
+                "q": scope["query_string"].decode(),
+                "H": protocol,
+                "s": response["status"],
+                "st": status_phrase,
+                "status_code": f"{response['status']} {status_phrase}",
+                "B": self["{Content-Length}o"],
+                "b": self.get("{Content-Length}o", "-"),
+                "f": self["{Referer}i"],
+                "a": self["{User-Agent}i"],
+                "T": int(request_time),
+                "M": int(request_time * 1_000),
+                "D": int(request_time * 1_000_000),
+                "L": f"{request_time:.6f}",
+                "p": f"<{os.getpid()}>",
             }
         )
-        return super().formatMessage(recordcopy)
+
+    def __getitem__(self, key: str) -> str:
+        try:
+            if key.startswith("{"):
+                return super().__getitem__(key.lower())
+            else:
+                return super().__getitem__(key)
+        except KeyError:
+            return "-"
