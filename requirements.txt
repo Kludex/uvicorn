@@ -17,7 +17,7 @@ flake8==3.9.2
 importlib-metadata==4.13.0; python_version>='3.7'
 isort==5.10.1
 pytest==7.1.3
-pytest-mock==3.9.0
+pytest-mock==3.10.0
 mypy==0.981
 types-click==7.1.8
 types-pyyaml==6.0.12
