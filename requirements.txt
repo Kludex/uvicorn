@@ -29,5 +29,5 @@ httpx==0.23.0
 watchgod==0.8.2
 
 # Documentation
-mkdocs==1.4.0
+mkdocs==1.4.1
 mkdocs-material==8.5.4
