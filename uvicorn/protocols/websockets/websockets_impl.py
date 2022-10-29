@@ -23,9 +23,9 @@ from uvicorn.protocols.utils import (
 )
 from uvicorn.server import ServerState
 
-if sys.version_info < (3, 8):
+if sys.version_info < (3, 8):  # pragma: py-gte-38
     from typing_extensions import Literal
-else:
+else:  # pragma: py-lt-38
     from typing import Literal
 
 if TYPE_CHECKING:

@@ -27,6 +27,7 @@ coverage==6.5.0
 coverage-conditional-plugin==0.7.0
 httpx==0.23.0
 watchgod==0.8.2
+gunicorn==20.1.0
 
 # Documentation
 mkdocs==1.4.0
