@@ -11,7 +11,7 @@ build==0.9.0
 twine==4.0.1
 
 # Testing
-autoflake==1.7.7
+autoflake==2.0.1
 black==22.10.0
 flake8==3.9.2
 importlib-metadata==4.13.0; python_version>='3.7'
