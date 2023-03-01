@@ -22,7 +22,7 @@ mypy==0.991
 types-click==7.1.8
 types-pyyaml==6.0.12.2
 trustme==0.9.0
-cryptography==38.0.3
+cryptography==39.0.1
 coverage==6.5.0
 coverage-conditional-plugin==0.7.0
 httpx==0.23.0
