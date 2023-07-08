@@ -44,7 +44,7 @@ body:
     id: example
     attributes:
       label: Example Code
-      description: >
+      description: |
         If applicable, please add a self-contained,
         [minimal, reproducible, example](https://stackoverflow.com/help/minimal-reproducible-example)
         demonstrating the bug.
