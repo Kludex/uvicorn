@@ -4,6 +4,7 @@ site_description: The lightning-fast ASGI server.
 theme:
   name: "material"
   custom_dir: docs/overrides
+  favicon: uvicorn.png
   palette:
     - scheme: "default"
       media: "(prefers-color-scheme: light)"
@@ -16,13 +17,23 @@ theme:
       toggle:
         icon: "material/lightbulb-outline"
         name: "Switch to light mode"
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.top
+    - content.code.copy
+
 
 repo_name: encode/uvicorn
 repo_url: https://github.com/encode/uvicorn
 edit_uri: ""
 
 nav:
-  - Introduction: "index.md"
+  - Home:
+    - About: index.md
+    - ASGI Interface: "home/asgi.md"
+    - Alternative ASGI Servers: "home/alternative_servers.md"
+    - ASGI Frameworks: "home/frameworks.md"
   - Settings: "settings.md"
   - Deployment: "deployment.md"
   - Server Behavior: "server-behavior.md"
