@@ -1,0 +1,10 @@
+- Add the unicorn favicon.ico.
+- Add a FAQ.
+  - What is the difference between h11 and httptools?
+  - Should I use wsproto or websockets?
+  - Do I need HTTP/2?
+  - Dualstack IP support
+- Add Sponsor section, and button.
+- Advanced section
+  - How do I run uvicorn in another thread?
+  - How do I run uvicorn as a separate task?
