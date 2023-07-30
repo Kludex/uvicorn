@@ -8,32 +8,61 @@ theme:
     - scheme: "default"
       media: "(prefers-color-scheme: light)"
       toggle:
-        icon: "material/lightbulb"
+        icon: "material/brightness-7"
         name: "Switch to dark mode"
     - scheme: "slate"
       media: "(prefers-color-scheme: dark)"
       primary: "blue"
       toggle:
-        icon: "material/lightbulb-outline"
+        icon: "material/brightness-4"
         name: "Switch to light mode"
+  features:
+    - search.suggest
+    - search.highlight
+    - navigation.path
+    - navigation.indexes
+    - content.code.annotate
+    - content.code.copy
+    - content.code.select
+    - content.tooltips
+    - content.tabs.link
+  favicon: "uvicorn.png"
+  logo: "uvicorn.png"
+  icon:
+    repo: fontawesome/brands/github
 
 repo_name: encode/uvicorn
 repo_url: https://github.com/encode/uvicorn
 edit_uri: ""
 
 nav:
-  - Introduction: "index.md"
-  - Settings: "settings.md"
-  - Deployment: "deployment.md"
-  - Server Behavior: "server-behavior.md"
-  - Contributing: "contributing.md"
+  - Uvicorn: index.md
+  - Usage:
+      - Running: usage/running.md
+      - Settings: usage/settings.md
+      - Deployment: usage/deployment.md
+      - Logging: usage/logging.md
+  - Design:
+      - Server Behavior: server-behavior.md
+  - Contributing: contributing.md
+  - Sponsoring: sponsoring.md
 
 markdown_extensions:
-  - admonition
+  - tables
   - codehilite:
       css_class: highlight
   - toc:
       permalink: true
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - pymdownx.extra
+  - pymdownx.emoji:
+      emoji_index: !!python/name:materialx.emoji.twemoji
+      emoji_generator: !!python/name:materialx.emoji.to_svg
+  - pymdownx.tabbed:
+      alternate_style: true
 
 extra_javascript:
   - "js/chat.js"
