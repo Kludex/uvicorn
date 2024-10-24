@@ -193,6 +193,26 @@ http {
 }
 ```
 
+### Subpath deployments
+
+If your proxy serves the application from a subpath and forwards requests without stripping that prefix, use `--asgi-root-path` so ASGI `root_path` is set without duplicating the request path.
+
+For example:
+
+```nginx
+location /proxy/ {
+  proxy_pass http://127.0.0.1:8000;
+  proxy_set_header Host $host;
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+```bash
+uvicorn main:app --proxy-headers --asgi-root-path=/proxy
+```
+
 Uvicorn's `--proxy-headers` behavior may not be sufficient for more complex proxy configurations that use different combinations of headers, or where the application is running behind more than one intermediary proxying service.
 
 In those cases, you might want to use an ASGI middleware to set the `client` and `scheme` dependant on the request headers.
