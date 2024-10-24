@@ -209,6 +209,7 @@ class Config:
         date_header: bool = True,
         forwarded_allow_ips: list[str] | str | None = None,
         root_path: str = "",
+        asgi_root_path: str = "",
         limit_concurrency: int | None = None,
         limit_max_requests: int | None = None,
         limit_max_requests_jitter: int = 0,
@@ -255,6 +256,7 @@ class Config:
         self.server_header = server_header
         self.date_header = date_header
         self.root_path = root_path
+        self.asgi_root_path = asgi_root_path or root_path
         self.limit_concurrency = limit_concurrency
         self.limit_max_requests = limit_max_requests
         self.limit_max_requests_jitter = limit_max_requests_jitter
@@ -283,6 +285,9 @@ class Config:
         self.reload_dirs_excludes: list[Path] = []
         self.reload_includes: list[str] = []
         self.reload_excludes: list[str] = []
+
+        if root_path and asgi_root_path:
+            logger.error("Setting both 'root_path' and 'asgi_root_path' is not supported.")
 
         if (reload_dirs or reload_includes or reload_excludes) and not self.should_reload:
             logger.warning(
