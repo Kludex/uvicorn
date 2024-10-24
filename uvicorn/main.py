@@ -260,7 +260,7 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     type=str,
     default="",
     help="Set the ASGI 'root_path' for applications submounted below a given URL path. "
-         "This is useful for applications served on a sub-URL, such as behind a reverse proxy.",
+    "This is useful for applications served on a sub-URL, such as behind a reverse proxy.",
 )
 @click.option(
     "--limit-concurrency",
@@ -607,7 +607,7 @@ def run(
         sys.exit(1)
 
     if root_path and asgi_root_path:
-        # Config did already log an error. Just quit.
+        # Config did already log an error. Just quit.
         sys.exit(1)
 
     try:
