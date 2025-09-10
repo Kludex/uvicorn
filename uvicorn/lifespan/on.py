@@ -50,7 +50,7 @@ class LifespanOn:
         loop = asyncio.get_event_loop()
         main_lifespan_task = loop.create_task(self.main())  # noqa: F841
         # Keep a hard reference to prevent garbage collection
-        # See https://github.com/encode/uvicorn/pull/972
+        # See https://github.com/Kludex/uvicorn/pull/972
         startup_event: LifespanStartupEvent = {"type": "lifespan.startup"}
         await self.receive_queue.put(startup_event)
         await self.startup_event.wait()

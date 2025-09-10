@@ -34,8 +34,8 @@ theme:
     - toc.follow # https://squidfunk.github.io/mkdocs-material/setup/setting-up-navigation/#anchor-following
     - announce.dismiss # https://squidfunk.github.io/mkdocs-material/setup/setting-up-the-header/#mark-as-read
 
-repo_name: encode/uvicorn
-repo_url: https://github.com/encode/uvicorn
+repo_name: Kludex/uvicorn
+repo_url: https://github.com/Kludex/uvicorn
 edit_uri: edit/master/docs/
 
 # https://www.mkdocs.org/user-guide/configuration/#validation

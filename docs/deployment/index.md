@@ -244,7 +244,7 @@ or Literals (e.g. `/path/to/socket.sock`). When running from CLI these are confi
 !!! Warning "Only trust clients you can actually trust!"
     Incorrectly trusting other clients can lead to malicious actors spoofing their apparent client address to your application.
 
-For more information, check [`ProxyHeadersMiddleware`](https://github.com/encode/uvicorn/blob/master/uvicorn/middleware/proxy_headers.py).
+For more information, check [`ProxyHeadersMiddleware`](https://github.com/Kludex/uvicorn/blob/master/uvicorn/middleware/proxy_headers.py).
 
 ### Client Port
 
