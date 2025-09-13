@@ -37,7 +37,7 @@ theme:
 
 repo_name: encode/uvicorn
 repo_url: https://github.com/encode/uvicorn
-edit_uri: edit/master/docs/
+edit_uri: edit/main/docs/
 
 # https://www.mkdocs.org/user-guide/configuration/#validation
 validation:
