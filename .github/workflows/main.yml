@@ -30,6 +30,7 @@ jobs:
 
       - name: Install dependencies
         run: scripts/install
+        shell: bash
 
       - name: Run linting checks
         run: scripts/check
@@ -37,12 +38,15 @@ jobs:
 
       - name: "Build package & docs"
         run: scripts/build
+        shell: bash
 
       - name: "Run tests"
         run: scripts/test
+        shell: bash
 
       - name: "Enforce coverage"
         run: scripts/coverage
+        shell: bash
 
   # https://github.com/marketplace/actions/alls-green#why
   check:
