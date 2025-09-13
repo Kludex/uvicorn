@@ -8,37 +8,36 @@ import ssl
 import sys
 import warnings
 from configparser import RawConfigParser
-from typing import IO, Any, Callable
+from typing import IO, Any, Callable, get_args
 
 import click
 
 import uvicorn
 from uvicorn._types import ASGIApplication
 from uvicorn.config import (
-    HTTP_PROTOCOLS,
     INTERFACES,
     LIFESPAN,
     LOG_LEVELS,
     LOGGING_CONFIG,
-    LOOP_SETUPS,
     SSL_PROTOCOL_VERSION,
-    WS_PROTOCOLS,
     Config,
     HTTPProtocolType,
     InterfaceType,
     LifespanType,
-    LoopSetupType,
+    LoopFactoryType,
     WSProtocolType,
 )
 from uvicorn.server import Server
 from uvicorn.supervisors import ChangeReload, Multiprocess
 
 LEVEL_CHOICES = click.Choice(list(LOG_LEVELS.keys()))
-HTTP_CHOICES = click.Choice(list(HTTP_PROTOCOLS.keys()))
-WS_CHOICES = click.Choice(list(WS_PROTOCOLS.keys()))
 LIFESPAN_CHOICES = click.Choice(list(LIFESPAN.keys()))
-LOOP_CHOICES = click.Choice([key for key in LOOP_SETUPS.keys() if key != "none"])
 INTERFACE_CHOICES = click.Choice(INTERFACES)
+
+
+def _metavar_from_type(_type: Any) -> str:
+    return f"[{'|'.join(key for key in get_args(_type) if key != 'none')}]"
+
 
 STARTUP_FAILURE = 3
 
@@ -118,21 +117,24 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
 )
 @click.option(
     "--loop",
-    type=LOOP_CHOICES,
+    type=str,
+    metavar=_metavar_from_type(LoopFactoryType),
     default="auto",
-    help="Event loop implementation.",
+    help="Event loop factory implementation.",
     show_default=True,
 )
 @click.option(
     "--http",
-    type=HTTP_CHOICES,
+    type=str,
+    metavar=_metavar_from_type(HTTPProtocolType),
     default="auto",
     help="HTTP protocol implementation.",
     show_default=True,
 )
 @click.option(
     "--ws",
-    type=WS_CHOICES,
+    type=str,
+    metavar=_metavar_from_type(WSProtocolType),
     default="auto",
     help="WebSocket protocol implementation.",
     show_default=True,
@@ -223,7 +225,7 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     "--proxy-headers/--no-proxy-headers",
     is_flag=True,
     default=True,
-    help="Enable/Disable X-Forwarded-Proto, X-Forwarded-For, X-Forwarded-Port to populate remote address info.",
+    help="Enable/Disable X-Forwarded-Proto, X-Forwarded-For to populate url scheme and remote address info.",
 )
 @click.option(
     "--server-header/--no-server-header",
@@ -367,9 +369,9 @@ def main(
     port: int,
     uds: str,
     fd: int,
-    loop: LoopSetupType,
-    http: HTTPProtocolType,
-    ws: WSProtocolType,
+    loop: LoopFactoryType | str,
+    http: HTTPProtocolType | str,
+    ws: WSProtocolType | str,
     ws_max_size: int,
     ws_max_queue: int,
     ws_ping_interval: float,
@@ -468,9 +470,9 @@ def run(
     port: int = 8000,
     uds: str | None = None,
     fd: int | None = None,
-    loop: LoopSetupType = "auto",
-    http: type[asyncio.Protocol] | HTTPProtocolType = "auto",
-    ws: type[asyncio.Protocol] | WSProtocolType = "auto",
+    loop: LoopFactoryType | str = "auto",
+    http: type[asyncio.Protocol] | HTTPProtocolType | str = "auto",
+    ws: type[asyncio.Protocol] | WSProtocolType | str = "auto",
     ws_max_size: int = 16777216,
     ws_max_queue: int = 32,
     ws_ping_interval: float | None = 20.0,

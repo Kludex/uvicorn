@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
@@ -44,3 +45,11 @@ def as_cwd(path: Path):
         yield
     finally:
         os.chdir(prev_cwd)
+
+
+def get_asyncio_default_loop_per_os() -> type[asyncio.AbstractEventLoop]:
+    """Get the default asyncio loop per OS."""
+    if sys.platform == "win32":
+        return asyncio.ProactorEventLoop  # type: ignore  # pragma: nocover
+    else:
+        return asyncio.SelectorEventLoop  # pragma: nocover

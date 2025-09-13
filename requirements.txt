@@ -30,3 +30,5 @@ httpx==0.28.1
 # Documentation
 mkdocs==1.6.1
 mkdocs-material==9.6.13
+mkdocstrings-python==1.16.12
+mkdocs-llmstxt==0.2.0
