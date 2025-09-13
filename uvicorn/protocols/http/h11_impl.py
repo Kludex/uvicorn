@@ -470,13 +470,25 @@ class RequestResponseCycle:
                 headers = headers + [CLOSE_HEADER]
 
             if self.access_log:
+                client_addr = get_client_addr(self.scope)
+                method = self.scope["method"]
+                http_version = self.scope["http_version"]
+                full_path = get_path_with_query_string(self.scope)
+
                 self.access_logger.info(
                     '%s - "%s %s HTTP/%s" %d',
-                    get_client_addr(self.scope),
-                    self.scope["method"],
-                    get_path_with_query_string(self.scope),
-                    self.scope["http_version"],
+                    client_addr,
+                    method,
+                    full_path,
+                    http_version,
                     status,
+                    extra={
+                        "client_addr": client_addr,
+                        "method": method,
+                        "full_path": full_path,
+                        "http_version": http_version,
+                        "status": status,
+                    },
                 )
 
             # Write response status line and headers
