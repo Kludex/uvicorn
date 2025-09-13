@@ -178,7 +178,7 @@ class Config:
     def __init__(
         self,
         app: ASGIApplication | Callable[..., Any] | str,
-        host: str = "127.0.0.1",
+        host: list[str] | str = "127.0.0.1",
         port: int = 8000,
         uds: str | None = None,
         fd: int | None = None,
@@ -227,6 +227,8 @@ class Config:
         h11_max_incomplete_event_size: int | None = None,
     ):
         self.app = app
+        if isinstance(host, str):
+            host = [host]
         self.host = host
         self.port = port
         self.uds = uds
@@ -486,7 +488,8 @@ class Config:
             return None
         return loop_factory(use_subprocess=self.use_subprocess)
 
-    def bind_socket(self) -> socket.socket:
+    def bind_socket(self) -> list[socket.socket]:
+        sockets: list[socket.socket] = []
         logger_args: list[str | int]
         if self.uds:  # pragma: py-win32
             path = self.uds
@@ -499,40 +502,46 @@ class Config:
                 logger.error(exc)
                 sys.exit(1)
 
+            sockets.append(sock)
             message = "Uvicorn running on unix socket %s (Press CTRL+C to quit)"
             sock_name_format = "%s"
             color_message = "Uvicorn running on " + click.style(sock_name_format, bold=True) + " (Press CTRL+C to quit)"
             logger_args = [self.uds]
+            logger.info(message, *logger_args, extra={"color_message": color_message})
         elif self.fd:  # pragma: py-win32
             sock = socket.fromfd(self.fd, socket.AF_UNIX, socket.SOCK_STREAM)
+            sockets.append(sock)
             message = "Uvicorn running on socket %s (Press CTRL+C to quit)"
             fd_name_format = "%s"
             color_message = "Uvicorn running on " + click.style(fd_name_format, bold=True) + " (Press CTRL+C to quit)"
             logger_args = [sock.getsockname()]
+            logger.info(message, *logger_args, extra={"color_message": color_message})
         else:
-            family = socket.AF_INET
-            addr_format = "%s://%s:%d"
+            for host in self.host:
+                family = socket.AF_INET
+                addr_format = "%s://%s:%d"
 
-            if self.host and ":" in self.host:  # pragma: full coverage
-                # It's an IPv6 address.
-                family = socket.AF_INET6
-                addr_format = "%s://[%s]:%d"
+                if ":" in host:  # pragma: full coverage
+                    # It's an IPv6 address.
+                    family = socket.AF_INET6
+                    addr_format = "%s://[%s]:%d"
 
-            sock = socket.socket(family=family)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            try:
-                sock.bind((self.host, self.port))
-            except OSError as exc:  # pragma: full coverage
-                logger.error(exc)
-                sys.exit(1)
-
-            message = f"Uvicorn running on {addr_format} (Press CTRL+C to quit)"
-            color_message = "Uvicorn running on " + click.style(addr_format, bold=True) + " (Press CTRL+C to quit)"
-            protocol_name = "https" if self.is_ssl else "http"
-            logger_args = [protocol_name, self.host, sock.getsockname()[1]]
-        logger.info(message, *logger_args, extra={"color_message": color_message})
-        sock.set_inheritable(True)
-        return sock
+                sock = socket.socket(family=family)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                try:
+                    sock.bind((host, self.port))
+                except OSError as exc:  # pragma: full coverage
+                    logger.error(exc)
+                    sys.exit(1)
+                sockets.append(sock)
+                message = f"Uvicorn running on {addr_format} (Press CTRL+C to quit)"
+                color_message = "Uvicorn running on " + click.style(addr_format, bold=True) + " (Press CTRL+C to quit)"
+                protocol_name = "https" if self.is_ssl else "http"
+                logger_args = [protocol_name, host, sock.getsockname()[1]]
+                logger.info(message, *logger_args, extra={"color_message": color_message})
+        for sock in sockets:
+            sock.set_inheritable(True)
+        return sockets
 
     @property
     def should_reload(self) -> bool:
