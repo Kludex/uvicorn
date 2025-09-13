@@ -394,8 +394,30 @@ class Config:
             logging.getLogger("uvicorn.access").handlers = []
             logging.getLogger("uvicorn.access").propagate = False
 
+    def check_load_app(self) -> Any:
+        try:
+            app = import_from_string(self.app)
+        except ImportFromStringError as exc:
+            logger.error("Error loading ASGI app. %s" % exc)
+            sys.exit(1)
+
+        try:
+            app = app()
+        except TypeError as exc:
+            if self.factory:
+                logger.error("Error loading ASGI app factory: %s", exc)
+                sys.exit(1)
+        else:
+            if not self.factory:
+                logger.warning(
+                    "ASGI app factory detected. Using it, but please consider setting the --factory flag explicitly."
+                )
+        return app
+
     def load(self) -> None:
         assert not self.loaded
+
+        self.loaded_app = self.check_load_app()
 
         if self.is_ssl:
             assert self.ssl_certfile
@@ -431,24 +453,6 @@ class Config:
             self.ws_protocol_class = self.ws
 
         self.lifespan_class = import_from_string(LIFESPAN[self.lifespan])
-
-        try:
-            self.loaded_app = import_from_string(self.app)
-        except ImportFromStringError as exc:
-            logger.error("Error loading ASGI app. %s" % exc)
-            sys.exit(1)
-
-        try:
-            self.loaded_app = self.loaded_app()
-        except TypeError as exc:
-            if self.factory:
-                logger.error("Error loading ASGI app factory: %s", exc)
-                sys.exit(1)
-        else:
-            if not self.factory:
-                logger.warning(
-                    "ASGI app factory detected. Using it, but please consider setting the --factory flag explicitly."
-                )
 
         if self.interface == "auto":
             if inspect.isclass(self.loaded_app):
