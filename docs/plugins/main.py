@@ -18,12 +18,12 @@ def on_page_content(html: str, page: Page, config: Config, files: Files) -> str:
 def add_hyperlink_to_pull_request(html: str, page: Page, config: Config, files: Files) -> str:
     """Add hyperlink on PRs mentioned on the release notes page.
 
-    If we find "(#\\d+)" it will be added an hyperlink to https://github.com/encode/uvicorn/pull/$1.
+    If we find "(#\\d+)" it will be added an hyperlink to https://github.com/Kludex/uvicorn/pull/$1.
     """
     if not page.file.name == "release-notes":
         return html
 
-    return re.sub(r"\(#(\d+)\)", r"(<a href='https://github.com/encode/uvicorn/pull/\1'>#\1</a>)", html)
+    return re.sub(r"\(#(\d+)\)", r"(<a href='https://github.com/Kludex/uvicorn/pull/\1'>#\1</a>)", html)
 
 
 def on_page_markdown(markdown: str, page: Page, config: Config, files: Files) -> str:

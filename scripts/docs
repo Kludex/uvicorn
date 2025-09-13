@@ -1,10 +1,5 @@
 #!/bin/sh -e
 
-PREFIX=""
-if [ -d "venv" ] ; then
-    PREFIX="venv/bin/"
-fi
-
 set -x
 
-${PREFIX}mkdocs "$@"
+uv run mkdocs "$@"

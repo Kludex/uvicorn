@@ -50,7 +50,7 @@ class ProxyHeadersMiddleware:
                 if host:
                     # If the x-forwarded-for header is empty then host is an empty string.
                     # Only set the client if we actually got something usable.
-                    # See: https://github.com/encode/uvicorn/issues/1068
+                    # See: https://github.com/Kludex/uvicorn/issues/1068
 
                     # We've lost the connecting client's port information by now,
                     # so only include the host.
@@ -138,5 +138,5 @@ class _TrustedHosts:
                 return host
 
         # All hosts are trusted meaning that the client was also a trusted proxy
-        # See https://github.com/encode/uvicorn/issues/1068#issuecomment-855371576
+        # See https://github.com/Kludex/uvicorn/issues/1068#issuecomment-855371576
         return x_forwarded_for_hosts[0]

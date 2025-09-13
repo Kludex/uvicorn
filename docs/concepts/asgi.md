@@ -229,7 +229,7 @@ For small services you can also write ASGI applications directly.
 
 ### Starlette
 
-[Starlette](https://github.com/encode/starlette) is a lightweight ASGI framework/toolkit.
+[Starlette](https://github.com/Kludex/starlette) is a lightweight ASGI framework/toolkit.
 
 It is ideal for building high performance asyncio services, and supports both HTTP and WebSockets.
 

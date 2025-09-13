@@ -354,14 +354,14 @@ def test_forwarded_hosts(init_hosts: str | list[str], test_host: str, expected: 
         (["127.0.0.1", "10.0.0.1"], "https://1.2.3.4:0"),
         ("127.0.0.1, 10.0.0.1", "https://1.2.3.4:0"),
         # trusted proxy network
-        # https://github.com/encode/uvicorn/issues/1068#issuecomment-1004813267
+        # https://github.com/Kludex/uvicorn/issues/1068#issuecomment-1004813267
         ("127.0.0.0/24, 10.0.0.1", "https://1.2.3.4:0"),
         # request from untrusted proxy
         ("192.168.0.1", "http://127.0.0.1:123"),
         # request from untrusted proxy network
         ("192.168.0.0/16", "http://127.0.0.1:123"),
         # request from client running on proxy server itself
-        # https://github.com/encode/uvicorn/issues/1068#issuecomment-855371576
+        # https://github.com/Kludex/uvicorn/issues/1068#issuecomment-855371576
         (["127.0.0.1", "1.2.3.4"], "https://1.2.3.4:0"),
     ],
 )
@@ -487,7 +487,7 @@ async def test_proxy_headers_websocket_x_forwarded_proto(
 @pytest.mark.anyio
 async def test_proxy_headers_empty_x_forwarded_for() -> None:
     # fallback to the default behavior if x-forwarded-for is an empty list
-    # https://github.com/encode/uvicorn/issues/1068#issuecomment-855371576
+    # https://github.com/Kludex/uvicorn/issues/1068#issuecomment-855371576
     async with make_httpx_client("*") as client:
         headers = {X_FORWARDED_FOR: "", X_FORWARDED_PROTO: "https"}
         response = await client.get("/", headers=headers)

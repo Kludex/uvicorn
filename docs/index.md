@@ -14,8 +14,8 @@
 </p>
 
 <p align="center">
-<a href="https://github.com/encode/uvicorn/actions">
-    <img src="https://github.com/encode/uvicorn/workflows/Test%20Suite/badge.svg" alt="Test Suite">
+<a href="https://github.com/Kludex/uvicorn/actions">
+    <img src="https://github.com/Kludex/uvicorn/workflows/Test%20Suite/badge.svg" alt="Test Suite">
 </a>
 <a href="https://pypi.org/project/uvicorn/">
     <img src="https://badge.fury.io/py/uvicorn.svg" alt="Package version">
@@ -31,7 +31,7 @@
 ---
 
 **Documentation**: [https://www.uvicorn.org](https://www.uvicorn.org)<br>
-**Source Code**: [https://www.github.com/encode/uvicorn](https://www.github.com/encode/uvicorn)
+**Source Code**: [https://www.github.com/Kludex/uvicorn](https://www.github.com/Kludex/uvicorn)
 
 ---
 
