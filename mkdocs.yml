@@ -36,7 +36,7 @@ theme:
 
 repo_name: Kludex/uvicorn
 repo_url: https://github.com/Kludex/uvicorn
-edit_uri: edit/master/docs/
+edit_uri: edit/main/docs/
 
 # https://www.mkdocs.org/user-guide/configuration/#validation
 validation:

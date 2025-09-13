@@ -110,7 +110,7 @@ If the test suite fails, you'll want to click through to the
 "Details" link, and try to identify why the test suite failed.
 
 <p align="center" style="margin: 0 0 10px">
-  <img src="https://raw.githubusercontent.com/Kludex/uvicorn/master/docs/img/gh-actions-fail.png" alt='Failing PR commit status'>
+  <img src="https://raw.githubusercontent.com/Kludex/uvicorn/main/docs/img/gh-actions-fail.png" alt='Failing PR commit status'>
 </p>
 
 Here are some common ways the test suite can fail:
@@ -118,7 +118,7 @@ Here are some common ways the test suite can fail:
 ### Check Job Failed
 
 <p align="center" style="margin: 0 0 10px">
-  <img src="https://raw.githubusercontent.com/Kludex/uvicorn/master/docs/img/gh-actions-fail-check.png" alt='Failing GitHub action lint job'>
+  <img src="https://raw.githubusercontent.com/Kludex/uvicorn/main/docs/img/gh-actions-fail-check.png" alt='Failing GitHub action lint job'>
 </p>
 
 This job failing means there is either a code formatting issue or type-annotation issue.
@@ -157,7 +157,7 @@ Before releasing a new version, create a pull request that includes:
 
 - **An update to the changelog**:
     - We follow the format from [keepachangelog](https://keepachangelog.com/en/1.0.0/).
-    - [Compare](https://github.com/Kludex/uvicorn/compare/) `master` with the tag of the latest release, and list all entries that are of interest to our users:
+    - [Compare](https://github.com/Kludex/uvicorn/compare/) `main` with the tag of the latest release, and list all entries that are of interest to our users:
         - Things that **must** go in the changelog: added, changed, deprecated or removed features, and bug fixes.
         - Things that **should not** go in the changelog: changes to documentation, tests or tooling.
         - Try sorting entries in descending order of impact / importance.
