@@ -53,6 +53,7 @@ nav:
       - ASGI: concepts/asgi.md
       - Lifespan: concepts/lifespan.md
       - WebSockets: concepts/websockets.md
+      - Event Loop: concepts/event-loop.md
   - Deployment:
       - Deployment: deployment/index.md
       - Docker: deployment/docker.md
