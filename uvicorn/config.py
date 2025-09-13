@@ -225,6 +225,7 @@ class Config:
         headers: list[tuple[str, str]] | None = None,
         factory: bool = False,
         h11_max_incomplete_event_size: int | None = None,
+        socket_load_balance: bool = False,
     ):
         self.app = app
         self.host = host
@@ -270,6 +271,7 @@ class Config:
         self.encoded_headers: list[tuple[bytes, bytes]] = []
         self.factory = factory
         self.h11_max_incomplete_event_size = h11_max_incomplete_event_size
+        self.socket_load_balance = socket_load_balance
 
         self.loaded = False
         self.configure_logging()
@@ -520,6 +522,8 @@ class Config:
 
             sock = socket.socket(family=family)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if self.socket_load_balance:
+                sock.setsockopt(socket.SOL_SOCKET, getattr(socket, "SO_REUSEPORT_LB", socket.SO_REUSEPORT), 1)
             try:
                 sock.bind((self.host, self.port))
             except OSError as exc:  # pragma: full coverage
@@ -537,3 +541,8 @@ class Config:
     @property
     def should_reload(self) -> bool:
         return isinstance(self.app, str) and self.reload
+
+    @staticmethod
+    def check_socket_lb() -> None:
+        if not (sys.platform == "linux" and hasattr(socket, "SO_REUSEPORT")) or hasattr(socket, "SO_REUSEPORT_LB"):
+            raise RuntimeError("socket_load_balance not supported")
