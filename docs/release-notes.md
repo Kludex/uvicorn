@@ -1,6 +1,16 @@
-
+---
 toc_depth: 2
 ---
+
+## 0.35.0 (June 28, 2025)
+
+### Added
+
+* Add `WebSocketsSansIOProtocol` (#2540)
+
+### Changed
+
+* Refine help message for option `--proxy-headers` (#2653)
 
 ## 0.34.3 (June 1, 2025)
 

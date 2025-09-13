@@ -8,7 +8,7 @@
 
 ---
 
-[![Build Status](https://github.com/encode/uvicorn/workflows/Test%20Suite/badge.svg)](https://github.com/encode/uvicorn/actions)
+[![Build Status](https://github.com/Kludex/uvicorn/workflows/Test%20Suite/badge.svg)](https://github.com/Kludex/uvicorn/actions)
 [![Package version](https://badge.fury.io/py/uvicorn.svg)](https://pypi.python.org/pypi/uvicorn)
 [![Supported Python Version](https://img.shields.io/pypi/pyversions/uvicorn.svg?color=%2334D058)](https://pypi.org/project/uvicorn)
 
@@ -137,7 +137,7 @@ $ hypercorn app:App
 
 ---
 
-<p align="center"><i>Uvicorn is <a href="https://github.com/encode/uvicorn/blob/master/LICENSE.md">BSD licensed</a> code.<br/>Designed & crafted with care.</i><br/>&mdash; 🦄  &mdash;</p>
+<p align="center"><i>Uvicorn is <a href="https://github.com/Kludex/uvicorn/blob/master/LICENSE.md">BSD licensed</a> code.<br/>Designed & crafted with care.</i><br/>&mdash; 🦄  &mdash;</p>
 
 [asgi]: https://asgi.readthedocs.io/en/latest/
 [daphne]: https://github.com/django/daphne

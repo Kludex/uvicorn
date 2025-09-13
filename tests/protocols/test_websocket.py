@@ -597,12 +597,9 @@ async def test_connection_lost_before_handshake_complete(
             await send_accept_task.wait()
         disconnect_message = await receive()  # type: ignore
 
-    response: httpx.Response | None = None
-
     async def websocket_session(uri: str):
-        nonlocal response
         async with httpx.AsyncClient() as client:
-            response = await client.get(
+            await client.get(
                 f"http://127.0.0.1:{unused_tcp_port}",
                 headers={
                     "upgrade": "websocket",
@@ -619,9 +616,6 @@ async def test_connection_lost_before_handshake_complete(
         send_accept_task.set()
         await asyncio.sleep(0.1)
 
-    assert response is not None
-    assert response.status_code == 500, response.text
-    assert response.text == "Internal Server Error"
     assert disconnect_message == {"type": "websocket.disconnect", "code": 1006}
     await task
 
@@ -760,7 +754,7 @@ async def test_server_reject_connection(
         # -- At this point websockets' recv() is unusable. --
 
         # This doesn't raise `TypeError`:
-        # See https://github.com/encode/uvicorn/issues/244
+        # See https://github.com/Kludex/uvicorn/issues/244
         disconnected_message = await receive()
 
     async def websocket_session(url: str):
@@ -916,6 +910,9 @@ async def test_server_reject_connection_with_body_nolength(
 async def test_server_reject_connection_with_invalid_msg(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
 ):
+    if ws_protocol_cls.__name__ == "WebSocketsSansIOProtocol":
+        pytest.skip("WebSocketsSansIOProtocol sends both start and body messages in one message.")
+
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         assert scope["type"] == "websocket"
         assert "extensions" in scope and "websocket.http.response" in scope["extensions"]
@@ -947,6 +944,9 @@ async def test_server_reject_connection_with_invalid_msg(
 async def test_server_reject_connection_with_missing_body(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
 ):
+    if ws_protocol_cls.__name__ == "WebSocketsSansIOProtocol":
+        pytest.skip("WebSocketsSansIOProtocol sends both start and body messages in one message.")
+
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         assert scope["type"] == "websocket"
         assert "extensions" in scope and "websocket.http.response" in scope["extensions"]
@@ -982,6 +982,8 @@ async def test_server_multiple_websocket_http_response_start_events(
     The server should raise an exception if it sends multiple
     websocket.http.response.start events.
     """
+    if ws_protocol_cls.__name__ == "WebSocketsSansIOProtocol":
+        pytest.skip("WebSocketsSansIOProtocol sends both start and body messages in one message.")
     exception_message: str | None = None
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):

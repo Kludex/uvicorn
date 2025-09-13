@@ -3,9 +3,9 @@
 Thank you for being interested in contributing to Uvicorn.
 There are many ways you can contribute to the project:
 
-- Using Uvicorn on your stack and [reporting bugs/issues you find](https://github.com/encode/uvicorn/issues/new)
-- [Implementing new features and fixing bugs](https://github.com/encode/uvicorn/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
-- [Review Pull Requests of others](https://github.com/encode/uvicorn/pulls)
+- Using Uvicorn on your stack and [reporting bugs/issues you find](https://github.com/Kludex/uvicorn/issues/new)
+- [Implementing new features and fixing bugs](https://github.com/Kludex/uvicorn/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
+- [Review Pull Requests of others](https://github.com/Kludex/uvicorn/pulls)
 - Write documentation
 - Participate in discussions
 
@@ -17,7 +17,7 @@ Need a missing functionality?
 
 Contributions should generally start out from a previous discussion.
 You can reach out someone at the [community chat](https://discord.com/invite/SWU73HffbV)
-or at the [github discussions tab](https://github.com/encode/uvicorn/discussions).
+or at the [github discussions tab](https://github.com/Kludex/uvicorn/discussions).
 
 When creating a new topic in the discussions tab, possible bugs may be raised
 as a "Potential Issue" discussion, feature requests may be raised as an
@@ -45,7 +45,7 @@ Some possibly useful tips for narrowing down potential issues...
 ## Development
 
 To start developing Uvicorn create a **fork** of the
-[Uvicorn repository](https://github.com/encode/uvicorn) on GitHub.
+[Uvicorn repository](https://github.com/Kludex/uvicorn) on GitHub.
 
 Then clone your fork with the following command replacing `YOUR-USERNAME` with
 your GitHub username:
@@ -110,7 +110,7 @@ If the test suite fails, you'll want to click through to the
 "Details" link, and try to identify why the test suite failed.
 
 <p align="center" style="margin: 0 0 10px">
-  <img src="https://raw.githubusercontent.com/encode/uvicorn/master/docs/img/gh-actions-fail.png" alt='Failing PR commit status'>
+  <img src="https://raw.githubusercontent.com/Kludex/uvicorn/master/docs/img/gh-actions-fail.png" alt='Failing PR commit status'>
 </p>
 
 Here are some common ways the test suite can fail:
@@ -118,7 +118,7 @@ Here are some common ways the test suite can fail:
 ### Check Job Failed
 
 <p align="center" style="margin: 0 0 10px">
-  <img src="https://raw.githubusercontent.com/encode/uvicorn/master/docs/img/gh-actions-fail-check.png" alt='Failing GitHub action lint job'>
+  <img src="https://raw.githubusercontent.com/Kludex/uvicorn/master/docs/img/gh-actions-fail-check.png" alt='Failing GitHub action lint job'>
 </p>
 
 This job failing means there is either a code formatting issue or type-annotation issue.
@@ -157,17 +157,17 @@ Before releasing a new version, create a pull request that includes:
 
 - **An update to the changelog**:
     - We follow the format from [keepachangelog](https://keepachangelog.com/en/1.0.0/).
-    - [Compare](https://github.com/encode/uvicorn/compare/) `master` with the tag of the latest release, and list all entries that are of interest to our users:
+    - [Compare](https://github.com/Kludex/uvicorn/compare/) `master` with the tag of the latest release, and list all entries that are of interest to our users:
         - Things that **must** go in the changelog: added, changed, deprecated or removed features, and bug fixes.
         - Things that **should not** go in the changelog: changes to documentation, tests or tooling.
         - Try sorting entries in descending order of impact / importance.
         - Keep it concise and to-the-point. 🎯
 - **A version bump**: see `__init__.py`.
 
-For an example, see [#1006](https://github.com/encode/uvicorn/pull/1107).
+For an example, see [#1006](https://github.com/Kludex/uvicorn/pull/1107).
 
 Once the release PR is merged, create a
-[new release](https://github.com/encode/uvicorn/releases/new) including:
+[new release](https://github.com/Kludex/uvicorn/releases/new) including:
 
 - Tag version like `0.13.3`.
 - Release title `Version 0.13.3`
