@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import functools
+import inspect
 import os
 import signal
 import sys
@@ -8,6 +10,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from socket import socket
+from typing import Any, Callable
 
 from uvicorn import Config, Server
 
@@ -53,3 +56,36 @@ def get_asyncio_default_loop_per_os() -> type[asyncio.AbstractEventLoop]:
         return asyncio.ProactorEventLoop  # type: ignore  # pragma: nocover
     else:
         return asyncio.SelectorEventLoop  # pragma: nocover
+
+
+def with_retry(retry_count: int = 1) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        if inspect.iscoroutinefunction(func):
+
+            @functools.wraps(func)  # pragma: nocover
+            async def async_wrapper(*args, **kwargs):
+                for attempt in range(retry_count):
+                    try:
+                        return await func(*args, **kwargs)
+                    except Exception as e:
+                        if attempt == retry_count - 1:
+                            raise e
+                return None
+
+            return async_wrapper  # pragma: nocover
+
+        else:
+            # Maintain the original calling method of the test case, e.g. test_multiprocess_health_check.
+            @functools.wraps(func)  # pragma: nocover
+            def sync_wrapper(*args, **kwargs):
+                for attempt in range(retry_count):
+                    try:
+                        return func(*args, **kwargs)
+                    except Exception as e:
+                        if attempt == retry_count - 1:
+                            raise e
+                return None
+
+            return sync_wrapper
+
+    return decorator
