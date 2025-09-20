@@ -220,7 +220,7 @@ class Config:
         ssl_keyfile_password: str | None = None,
         ssl_version: int = SSL_PROTOCOL_VERSION,
         ssl_cert_reqs: int = ssl.CERT_NONE,
-        ssl_ca_certs: str | None = None,
+        ssl_ca_certs: str | os.PathLike[str] | None = None,
         ssl_ciphers: str = "TLSv1",
         headers: list[tuple[str, str]] | None = None,
         factory: bool = False,
