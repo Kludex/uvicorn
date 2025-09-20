@@ -1,0 +1,1531 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="The lightning-fast ASGI server.">
+      
+      
+      
+        <link rel="canonical" href="https://uvicorn.dev/deployment/">
+      
+      
+        <link rel="prev" href="../concepts/websockets/">
+      
+      
+        <link rel="next" href="docker/">
+      
+      
+      <link rel="icon" href="../uvicorn.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.13">
+    
+    
+      
+        <title>Deployment - Uvicorn</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.342714a4.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-KTS6TXPD85"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-KTS6TXPD85",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-KTS6TXPD85",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#running-from-the-command-line" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+        <aside class="md-banner">
+          <div class="md-banner__inner md-grid md-typeset">
+            
+              <button class="md-banner__button md-icon" aria-label="Don't show this again">
+                
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+              </button>
+            
+            
+<style>
+    div[data-md-component="announce"] {
+        background-color: #f0f8ff;  /* Light blue */
+        color: #333;
+    }
+    div[data-md-component="announce"] a {
+        color: #0366d6;
+    }
+</style>
+     If you're using uvicorn in production, please consider <a href="/sponsorship">sponsoring the project</a> to help with maintenance and development. ✨
+
+          </div>
+          
+            <script>var el=document.querySelector("[data-md-component=announce]");if(el){var content=el.querySelector(".md-typeset");__md_hash(content.innerHTML)===__md_get("__announce")&&(el.hidden=!0)}</script>
+          
+        </aside>
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Uvicorn" class="md-header__button md-logo" aria-label="Uvicorn" data-md-component="logo">
+      
+  <img src="../uvicorn.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Uvicorn
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Deployment
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7M9 21a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-1H9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="blue" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7M9 21v-1h6v1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1m3-17a5 5 0 0 0-5 5c0 2.05 1.23 3.81 3 4.58V16h4v-2.42c1.77-.77 3-2.53 3-4.58a5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Kludex/uvicorn" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Kludex/uvicorn
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<!-- Determine class according to configuration -->
+ 
+ 
+ 
+
+ <!-- Main navigation -->
+ <nav
+   class="md-nav md-nav--primary"
+   aria-label="nav.title"
+   data-md-level="0"
+ >
+
+   <!-- Site title -->
+   <label class="md-nav__title" for="__drawer">
+     <a
+       href=".."
+       title="Uvicorn"
+       class="md-nav__button md-logo"
+       aria-label="Uvicorn"
+       data-md-component="logo"
+     >
+       
+  <img src="../uvicorn.png" alt="logo">
+
+     </a>
+     Uvicorn
+   </label>
+
+   <!-- Repository information -->
+   
+     <div class="md-nav__source">
+       <a href="https://github.com/Kludex/uvicorn" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Kludex/uvicorn
+  </div>
+</a>
+     </div>
+   
+
+   <!-- Navigation list -->
+   <ul class="md-nav__list" data-md-scrollfix>
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Welcome
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Installation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Settings
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../server-behavior/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Server Behavior
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Concepts
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Concepts
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/asgi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    ASGI
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/lifespan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Lifespan
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/websockets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    WebSockets
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+     
+       
+       
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Deployment
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            Deployment
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Deployment
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Deployment
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#running-from-the-command-line" class="md-nav__link">
+    <span class="md-ellipsis">
+        Running from the command line
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#running-programmatically" class="md-nav__link">
+    <span class="md-ellipsis">
+        Running programmatically
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#using-a-process-manager" class="md-nav__link">
+    <span class="md-ellipsis">
+        Using a process manager
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="Using a process manager">
+    <ul class="md-nav__list">
+        
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#built-in" class="md-nav__link">
+    <span class="md-ellipsis">
+        Built-in
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#gunicorn" class="md-nav__link">
+    <span class="md-ellipsis">
+        Gunicorn
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#supervisor" class="md-nav__link">
+    <span class="md-ellipsis">
+        Supervisor
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+              </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#running-behind-nginx" class="md-nav__link">
+    <span class="md-ellipsis">
+        Running behind Nginx
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#running-behind-a-cdn" class="md-nav__link">
+    <span class="md-ellipsis">
+        Running behind a CDN
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#running-with-https" class="md-nav__link">
+    <span class="md-ellipsis">
+        Running with HTTPS
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="Running with HTTPS">
+    <ul class="md-nav__list">
+        
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#running-gunicorn-worker" class="md-nav__link">
+    <span class="md-ellipsis">
+        Running gunicorn worker
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+              </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#proxies-and-forwarded-headers" class="md-nav__link">
+    <span class="md-ellipsis">
+        Proxies and Forwarded Headers
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="Proxies and Forwarded Headers">
+    <ul class="md-nav__list">
+        
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#client-port" class="md-nav__link">
+    <span class="md-ellipsis">
+        Client Port
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#unix-domain-sockets-uds" class="md-nav__link">
+    <span class="md-ellipsis">
+        UNIX Domain Sockets (UDS)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#trust-everything" class="md-nav__link">
+    <span class="md-ellipsis">
+        Trust Everything
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+              </ul>
+</nav>
+
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Docker
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../release-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Release Notes
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Contributing
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sponsorship/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Sponsorship
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+   </ul>
+ </nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#running-from-the-command-line" class="md-nav__link">
+    <span class="md-ellipsis">
+        Running from the command line
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#running-programmatically" class="md-nav__link">
+    <span class="md-ellipsis">
+        Running programmatically
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#using-a-process-manager" class="md-nav__link">
+    <span class="md-ellipsis">
+        Using a process manager
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="Using a process manager">
+    <ul class="md-nav__list">
+        
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#built-in" class="md-nav__link">
+    <span class="md-ellipsis">
+        Built-in
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#gunicorn" class="md-nav__link">
+    <span class="md-ellipsis">
+        Gunicorn
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#supervisor" class="md-nav__link">
+    <span class="md-ellipsis">
+        Supervisor
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+              </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#running-behind-nginx" class="md-nav__link">
+    <span class="md-ellipsis">
+        Running behind Nginx
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#running-behind-a-cdn" class="md-nav__link">
+    <span class="md-ellipsis">
+        Running behind a CDN
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#running-with-https" class="md-nav__link">
+    <span class="md-ellipsis">
+        Running with HTTPS
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="Running with HTTPS">
+    <ul class="md-nav__list">
+        
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#running-gunicorn-worker" class="md-nav__link">
+    <span class="md-ellipsis">
+        Running gunicorn worker
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+              </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#proxies-and-forwarded-headers" class="md-nav__link">
+    <span class="md-ellipsis">
+        Proxies and Forwarded Headers
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="Proxies and Forwarded Headers">
+    <ul class="md-nav__list">
+        
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#client-port" class="md-nav__link">
+    <span class="md-ellipsis">
+        Client Port
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#unix-domain-sockets-uds" class="md-nav__link">
+    <span class="md-ellipsis">
+        UNIX Domain Sockets (UDS)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#trust-everything" class="md-nav__link">
+    <span class="md-ellipsis">
+        Trust Everything
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+              </ul>
+</nav>
+
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+  <h1>Deployment</h1>
+
+<p>Server deployment is a complex area, that will depend on what kind of service you're deploying Uvicorn onto.</p>
+<p>As a general rule, you probably want to:</p>
+<ul>
+<li>Run <code>uvicorn --reload</code> from the command line for local development.</li>
+<li>Run <code>gunicorn -k uvicorn.workers.UvicornWorker</code> for production.</li>
+<li>Additionally run behind Nginx for self-hosted deployments.</li>
+<li>Finally, run everything behind a CDN for caching support, and serious DDOS protection.</li>
+</ul>
+<h2 id="running-from-the-command-line">Running from the command line<a class="headerlink" href="#running-from-the-command-line" title="Permanent link">&para;</a></h2>
+<p>Typically you'll run <code>uvicorn</code> from the command line.</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--reload<span class="w"> </span>--port<span class="w"> </span><span class="m">5000</span>
+</code></pre></div>
+<p>The ASGI application should be specified in the form <code>path.to.module:instance.path</code>.</p>
+<p>When running locally, use <code>--reload</code> to turn on auto-reloading.</p>
+<p>The <code>--reload</code> and <code>--workers</code> arguments are <strong>mutually exclusive</strong>.</p>
+<p>To see the complete set of available options, use <code>uvicorn --help</code>:</p>
+<div class="highlight"><pre><span></span><code>Usage:<span class="w"> </span>uvicorn<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>APP
+
+Options:
+<span class="w">  </span>--host<span class="w"> </span>TEXT<span class="w">                     </span>Bind<span class="w"> </span>socket<span class="w"> </span>to<span class="w"> </span>this<span class="w"> </span>host.<span class="w">  </span><span class="o">[</span>default:
+<span class="w">                                  </span><span class="m">127</span>.0.0.1<span class="o">]</span>
+<span class="w">  </span>--port<span class="w"> </span>INTEGER<span class="w">                  </span>Bind<span class="w"> </span>socket<span class="w"> </span>to<span class="w"> </span>this<span class="w"> </span>port.<span class="w"> </span>If<span class="w"> </span><span class="m">0</span>,<span class="w"> </span>an<span class="w"> </span>available
+<span class="w">                                  </span>port<span class="w"> </span>will<span class="w"> </span>be<span class="w"> </span>picked.<span class="w">  </span><span class="o">[</span>default:<span class="w"> </span><span class="m">8000</span><span class="o">]</span>
+<span class="w">  </span>--uds<span class="w"> </span>TEXT<span class="w">                      </span>Bind<span class="w"> </span>to<span class="w"> </span>a<span class="w"> </span>UNIX<span class="w"> </span>domain<span class="w"> </span>socket.
+<span class="w">  </span>--fd<span class="w"> </span>INTEGER<span class="w">                    </span>Bind<span class="w"> </span>to<span class="w"> </span>socket<span class="w"> </span>from<span class="w"> </span>this<span class="w"> </span>file<span class="w"> </span>descriptor.
+<span class="w">  </span>--reload<span class="w">                        </span>Enable<span class="w"> </span>auto-reload.
+<span class="w">  </span>--reload-dir<span class="w"> </span>PATH<span class="w">               </span>Set<span class="w"> </span>reload<span class="w"> </span>directories<span class="w"> </span>explicitly,<span class="w"> </span>instead
+<span class="w">                                  </span>of<span class="w"> </span>using<span class="w"> </span>the<span class="w"> </span>current<span class="w"> </span>working<span class="w"> </span>directory.
+<span class="w">  </span>--reload-include<span class="w"> </span>TEXT<span class="w">           </span>Set<span class="w"> </span>glob<span class="w"> </span>patterns<span class="w"> </span>to<span class="w"> </span>include<span class="w"> </span><span class="k">while</span><span class="w"> </span>watching
+<span class="w">                                  </span><span class="k">for</span><span class="w"> </span>files.<span class="w"> </span>Includes<span class="w"> </span><span class="s1">&#39;*.py&#39;</span><span class="w"> </span>by<span class="w"> </span>default<span class="p">;</span><span class="w"> </span>these
+<span class="w">                                  </span>defaults<span class="w"> </span>can<span class="w"> </span>be<span class="w"> </span>overridden<span class="w"> </span>with<span class="w"> </span><span class="sb">`</span>--reload-
+<span class="w">                                  </span>exclude<span class="sb">`</span>.<span class="w"> </span>This<span class="w"> </span>option<span class="w"> </span>has<span class="w"> </span>no<span class="w"> </span>effect<span class="w"> </span>unless
+<span class="w">                                  </span>watchfiles<span class="w"> </span>is<span class="w"> </span>installed.
+<span class="w">  </span>--reload-exclude<span class="w"> </span>TEXT<span class="w">           </span>Set<span class="w"> </span>glob<span class="w"> </span>patterns<span class="w"> </span>to<span class="w"> </span>exclude<span class="w"> </span><span class="k">while</span><span class="w"> </span>watching
+<span class="w">                                  </span><span class="k">for</span><span class="w"> </span>files.<span class="w"> </span>Includes<span class="w"> </span><span class="s1">&#39;.*, .py[cod], .sw.*,</span>
+<span class="s1">                                  ~*&#39;</span><span class="w"> </span>by<span class="w"> </span>default<span class="p">;</span><span class="w"> </span>these<span class="w"> </span>defaults<span class="w"> </span>can<span class="w"> </span>be
+<span class="w">                                  </span>overridden<span class="w"> </span>with<span class="w"> </span><span class="sb">`</span>--reload-include<span class="sb">`</span>.<span class="w"> </span>This
+<span class="w">                                  </span>option<span class="w"> </span>has<span class="w"> </span>no<span class="w"> </span>effect<span class="w"> </span>unless<span class="w"> </span>watchfiles<span class="w"> </span>is
+<span class="w">                                  </span>installed.
+<span class="w">  </span>--reload-delay<span class="w"> </span>FLOAT<span class="w">            </span>Delay<span class="w"> </span>between<span class="w"> </span>previous<span class="w"> </span>and<span class="w"> </span>next<span class="w"> </span>check<span class="w"> </span><span class="k">if</span>
+<span class="w">                                  </span>application<span class="w"> </span>needs<span class="w"> </span>to<span class="w"> </span>be.<span class="w"> </span>Defaults<span class="w"> </span>to<span class="w"> </span><span class="m">0</span>.25s.
+<span class="w">                                  </span><span class="o">[</span>default:<span class="w"> </span><span class="m">0</span>.25<span class="o">]</span>
+<span class="w">  </span>--workers<span class="w"> </span>INTEGER<span class="w">               </span>Number<span class="w"> </span>of<span class="w"> </span>worker<span class="w"> </span>processes.<span class="w"> </span>Defaults<span class="w"> </span>to<span class="w"> </span>the
+<span class="w">                                  </span><span class="nv">$WEB_CONCURRENCY</span><span class="w"> </span>environment<span class="w"> </span>variable<span class="w"> </span><span class="k">if</span>
+<span class="w">                                  </span>available,<span class="w"> </span>or<span class="w"> </span><span class="m">1</span>.<span class="w"> </span>Not<span class="w"> </span>valid<span class="w"> </span>with<span class="w"> </span>--reload.
+<span class="w">  </span>--loop<span class="w"> </span><span class="o">[</span>auto<span class="p">|</span>asyncio<span class="p">|</span>uvloop<span class="o">]</span><span class="w">    </span>Event<span class="w"> </span>loop<span class="w"> </span>factory<span class="w"> </span>implementation.
+<span class="w">                                  </span><span class="o">[</span>default:<span class="w"> </span>auto<span class="o">]</span>
+<span class="w">  </span>--http<span class="w"> </span><span class="o">[</span>auto<span class="p">|</span>h11<span class="p">|</span>httptools<span class="o">]</span><span class="w">     </span>HTTP<span class="w"> </span>protocol<span class="w"> </span>implementation.<span class="w">  </span><span class="o">[</span>default:
+<span class="w">                                  </span>auto<span class="o">]</span>
+<span class="w">  </span>--ws<span class="w"> </span><span class="o">[</span>auto<span class="p">|</span>websockets<span class="p">|</span>websockets-sansio<span class="p">|</span>wsproto<span class="o">]</span>
+<span class="w">                                  </span>WebSocket<span class="w"> </span>protocol<span class="w"> </span>implementation.
+<span class="w">                                  </span><span class="o">[</span>default:<span class="w"> </span>auto<span class="o">]</span>
+<span class="w">  </span>--ws-max-size<span class="w"> </span>INTEGER<span class="w">           </span>WebSocket<span class="w"> </span>max<span class="w"> </span>size<span class="w"> </span>message<span class="w"> </span><span class="k">in</span><span class="w"> </span>bytes
+<span class="w">                                  </span><span class="o">[</span>default:<span class="w"> </span><span class="m">16777216</span><span class="o">]</span>
+<span class="w">  </span>--ws-max-queue<span class="w"> </span>INTEGER<span class="w">          </span>The<span class="w"> </span>maximum<span class="w"> </span>length<span class="w"> </span>of<span class="w"> </span>the<span class="w"> </span>WebSocket<span class="w"> </span>message
+<span class="w">                                  </span>queue.<span class="w">  </span><span class="o">[</span>default:<span class="w"> </span><span class="m">32</span><span class="o">]</span>
+<span class="w">  </span>--ws-ping-interval<span class="w"> </span>FLOAT<span class="w">        </span>WebSocket<span class="w"> </span>ping<span class="w"> </span>interval<span class="w"> </span><span class="k">in</span><span class="w"> </span>seconds.
+<span class="w">                                  </span><span class="o">[</span>default:<span class="w"> </span><span class="m">20</span>.0<span class="o">]</span>
+<span class="w">  </span>--ws-ping-timeout<span class="w"> </span>FLOAT<span class="w">         </span>WebSocket<span class="w"> </span>ping<span class="w"> </span>timeout<span class="w"> </span><span class="k">in</span><span class="w"> </span>seconds.
+<span class="w">                                  </span><span class="o">[</span>default:<span class="w"> </span><span class="m">20</span>.0<span class="o">]</span>
+<span class="w">  </span>--ws-per-message-deflate<span class="w"> </span>BOOLEAN
+<span class="w">                                  </span>WebSocket<span class="w"> </span>per-message-deflate<span class="w"> </span>compression
+<span class="w">                                  </span><span class="o">[</span>default:<span class="w"> </span>True<span class="o">]</span>
+<span class="w">  </span>--lifespan<span class="w"> </span><span class="o">[</span>auto<span class="p">|</span>on<span class="p">|</span>off<span class="o">]</span><span class="w">        </span>Lifespan<span class="w"> </span>implementation.<span class="w">  </span><span class="o">[</span>default:<span class="w"> </span>auto<span class="o">]</span>
+<span class="w">  </span>--interface<span class="w"> </span><span class="o">[</span>auto<span class="p">|</span>asgi3<span class="p">|</span>asgi2<span class="p">|</span>wsgi<span class="o">]</span>
+<span class="w">                                  </span>Select<span class="w"> </span>ASGI3,<span class="w"> </span>ASGI2,<span class="w"> </span>or<span class="w"> </span>WSGI<span class="w"> </span>as<span class="w"> </span>the
+<span class="w">                                  </span>application<span class="w"> </span>interface.<span class="w">  </span><span class="o">[</span>default:<span class="w"> </span>auto<span class="o">]</span>
+<span class="w">  </span>--env-file<span class="w"> </span>PATH<span class="w">                 </span>Environment<span class="w"> </span>configuration<span class="w"> </span>file.
+<span class="w">  </span>--log-config<span class="w"> </span>PATH<span class="w">               </span>Logging<span class="w"> </span>configuration<span class="w"> </span>file.<span class="w"> </span>Supported
+<span class="w">                                  </span>formats:<span class="w"> </span>.ini,<span class="w"> </span>.json,<span class="w"> </span>.yaml.
+<span class="w">  </span>--log-level<span class="w"> </span><span class="o">[</span>critical<span class="p">|</span>error<span class="p">|</span>warning<span class="p">|</span>info<span class="p">|</span>debug<span class="p">|</span>trace<span class="o">]</span>
+<span class="w">                                  </span>Log<span class="w"> </span>level.<span class="w"> </span><span class="o">[</span>default:<span class="w"> </span>info<span class="o">]</span>
+<span class="w">  </span>--access-log<span class="w"> </span>/<span class="w"> </span>--no-access-log<span class="w">  </span>Enable/Disable<span class="w"> </span>access<span class="w"> </span>log.
+<span class="w">  </span>--use-colors<span class="w"> </span>/<span class="w"> </span>--no-use-colors<span class="w">  </span>Enable/Disable<span class="w"> </span>colorized<span class="w"> </span>logging.
+<span class="w">  </span>--proxy-headers<span class="w"> </span>/<span class="w"> </span>--no-proxy-headers
+<span class="w">                                  </span>Enable/Disable<span class="w"> </span>X-Forwarded-Proto,
+<span class="w">                                  </span>X-Forwarded-For<span class="w"> </span>to<span class="w"> </span>populate<span class="w"> </span>url<span class="w"> </span>scheme<span class="w"> </span>and
+<span class="w">                                  </span>remote<span class="w"> </span>address<span class="w"> </span>info.
+<span class="w">  </span>--server-header<span class="w"> </span>/<span class="w"> </span>--no-server-header
+<span class="w">                                  </span>Enable/Disable<span class="w"> </span>default<span class="w"> </span>Server<span class="w"> </span>header.
+<span class="w">  </span>--date-header<span class="w"> </span>/<span class="w"> </span>--no-date-header
+<span class="w">                                  </span>Enable/Disable<span class="w"> </span>default<span class="w"> </span>Date<span class="w"> </span>header.
+<span class="w">  </span>--forwarded-allow-ips<span class="w"> </span>TEXT<span class="w">      </span>Comma<span class="w"> </span>separated<span class="w"> </span>list<span class="w"> </span>of<span class="w"> </span>IP<span class="w"> </span>Addresses,<span class="w"> </span>IP
+<span class="w">                                  </span>Networks,<span class="w"> </span>or<span class="w"> </span>literals<span class="w"> </span><span class="o">(</span>e.g.<span class="w"> </span>UNIX<span class="w"> </span>Socket
+<span class="w">                                  </span>path<span class="o">)</span><span class="w"> </span>to<span class="w"> </span>trust<span class="w"> </span>with<span class="w"> </span>proxy<span class="w"> </span>headers.<span class="w"> </span>Defaults
+<span class="w">                                  </span>to<span class="w"> </span>the<span class="w"> </span><span class="nv">$FORWARDED_ALLOW_IPS</span><span class="w"> </span>environment
+<span class="w">                                  </span>variable<span class="w"> </span><span class="k">if</span><span class="w"> </span>available,<span class="w"> </span>or<span class="w"> </span><span class="s1">&#39;127.0.0.1&#39;</span>.<span class="w"> </span>The
+<span class="w">                                  </span>literal<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w"> </span>means<span class="w"> </span>trust<span class="w"> </span>everything.
+<span class="w">  </span>--root-path<span class="w"> </span>TEXT<span class="w">                </span>Set<span class="w"> </span>the<span class="w"> </span>ASGI<span class="w"> </span><span class="s1">&#39;root_path&#39;</span><span class="w"> </span><span class="k">for</span><span class="w"> </span>applications
+<span class="w">                                  </span>submounted<span class="w"> </span>below<span class="w"> </span>a<span class="w"> </span>given<span class="w"> </span>URL<span class="w"> </span>path.
+<span class="w">  </span>--limit-concurrency<span class="w"> </span>INTEGER<span class="w">     </span>Maximum<span class="w"> </span>number<span class="w"> </span>of<span class="w"> </span>concurrent<span class="w"> </span>connections<span class="w"> </span>or
+<span class="w">                                  </span>tasks<span class="w"> </span>to<span class="w"> </span>allow,<span class="w"> </span>before<span class="w"> </span>issuing<span class="w"> </span>HTTP<span class="w"> </span><span class="m">503</span>
+<span class="w">                                  </span>responses.
+<span class="w">  </span>--backlog<span class="w"> </span>INTEGER<span class="w">               </span>Maximum<span class="w"> </span>number<span class="w"> </span>of<span class="w"> </span>connections<span class="w"> </span>to<span class="w"> </span>hold<span class="w"> </span><span class="k">in</span>
+<span class="w">                                  </span>backlog
+<span class="w">  </span>--limit-max-requests<span class="w"> </span>INTEGER<span class="w">    </span>Maximum<span class="w"> </span>number<span class="w"> </span>of<span class="w"> </span>requests<span class="w"> </span>to<span class="w"> </span>service<span class="w"> </span>before
+<span class="w">                                  </span>terminating<span class="w"> </span>the<span class="w"> </span>process.
+<span class="w">  </span>--timeout-keep-alive<span class="w"> </span>INTEGER<span class="w">    </span>Close<span class="w"> </span>Keep-Alive<span class="w"> </span>connections<span class="w"> </span><span class="k">if</span><span class="w"> </span>no<span class="w"> </span>new<span class="w"> </span>data
+<span class="w">                                  </span>is<span class="w"> </span>received<span class="w"> </span>within<span class="w"> </span>this<span class="w"> </span>timeout.<span class="w">  </span><span class="o">[</span>default:
+<span class="w">                                  </span><span class="m">5</span><span class="o">]</span>
+<span class="w">  </span>--timeout-graceful-shutdown<span class="w"> </span>INTEGER
+<span class="w">                                  </span>Maximum<span class="w"> </span>number<span class="w"> </span>of<span class="w"> </span>seconds<span class="w"> </span>to<span class="w"> </span><span class="nb">wait</span><span class="w"> </span><span class="k">for</span>
+<span class="w">                                  </span>graceful<span class="w"> </span>shutdown.
+<span class="w">  </span>--ssl-keyfile<span class="w"> </span>TEXT<span class="w">              </span>SSL<span class="w"> </span>key<span class="w"> </span>file
+<span class="w">  </span>--ssl-certfile<span class="w"> </span>TEXT<span class="w">             </span>SSL<span class="w"> </span>certificate<span class="w"> </span>file
+<span class="w">  </span>--ssl-keyfile-password<span class="w"> </span>TEXT<span class="w">     </span>SSL<span class="w"> </span>keyfile<span class="w"> </span>password
+<span class="w">  </span>--ssl-version<span class="w"> </span>INTEGER<span class="w">           </span>SSL<span class="w"> </span>version<span class="w"> </span>to<span class="w"> </span>use<span class="w"> </span><span class="o">(</span>see<span class="w"> </span>stdlib<span class="w"> </span>ssl<span class="w"> </span>module<span class="s1">&#39;s)</span>
+<span class="s1">                                  [default: 17]</span>
+<span class="s1">  --ssl-cert-reqs INTEGER         Whether client certificate is required (see</span>
+<span class="s1">                                  stdlib ssl module&#39;</span>s<span class="o">)</span><span class="w">  </span><span class="o">[</span>default:<span class="w"> </span><span class="m">0</span><span class="o">]</span>
+<span class="w">  </span>--ssl-ca-certs<span class="w"> </span>TEXT<span class="w">             </span>CA<span class="w"> </span>certificates<span class="w"> </span>file
+<span class="w">  </span>--ssl-ciphers<span class="w"> </span>TEXT<span class="w">              </span>Ciphers<span class="w"> </span>to<span class="w"> </span>use<span class="w"> </span><span class="o">(</span>see<span class="w"> </span>stdlib<span class="w"> </span>ssl<span class="w"> </span>module<span class="err">&#39;</span>s<span class="o">)</span>
+<span class="w">                                  </span><span class="o">[</span>default:<span class="w"> </span>TLSv1<span class="o">]</span>
+<span class="w">  </span>--header<span class="w"> </span>TEXT<span class="w">                   </span>Specify<span class="w"> </span>custom<span class="w"> </span>default<span class="w"> </span>HTTP<span class="w"> </span>response<span class="w"> </span>headers
+<span class="w">                                  </span>as<span class="w"> </span>a<span class="w"> </span>Name:Value<span class="w"> </span>pair
+<span class="w">  </span>--version<span class="w">                       </span>Display<span class="w"> </span>the<span class="w"> </span>uvicorn<span class="w"> </span>version<span class="w"> </span>and<span class="w"> </span>exit.
+<span class="w">  </span>--app-dir<span class="w"> </span>TEXT<span class="w">                  </span>Look<span class="w"> </span><span class="k">for</span><span class="w"> </span>APP<span class="w"> </span><span class="k">in</span><span class="w"> </span>the<span class="w"> </span>specified<span class="w"> </span>directory,<span class="w"> </span>by
+<span class="w">                                  </span>adding<span class="w"> </span>this<span class="w"> </span>to<span class="w"> </span>the<span class="w"> </span>PYTHONPATH.<span class="w"> </span>Defaults<span class="w"> </span>to
+<span class="w">                                  </span>the<span class="w"> </span>current<span class="w"> </span>working<span class="w"> </span>directory.<span class="w">  </span><span class="o">[</span>default:
+<span class="w">                                  </span><span class="s2">&quot;&quot;</span><span class="o">]</span>
+<span class="w">  </span>--h11-max-incomplete-event-size<span class="w"> </span>INTEGER
+<span class="w">                                  </span>For<span class="w"> </span>h11,<span class="w"> </span>the<span class="w"> </span>maximum<span class="w"> </span>number<span class="w"> </span>of<span class="w"> </span>bytes<span class="w"> </span>to
+<span class="w">                                  </span>buffer<span class="w"> </span>of<span class="w"> </span>an<span class="w"> </span>incomplete<span class="w"> </span>event.
+<span class="w">  </span>--factory<span class="w">                       </span>Treat<span class="w"> </span>APP<span class="w"> </span>as<span class="w"> </span>an<span class="w"> </span>application<span class="w"> </span>factory,<span class="w"> </span>i.e.<span class="w"> </span>a
+<span class="w">                                  </span><span class="o">()</span><span class="w"> </span>-&gt;<span class="w"> </span>&lt;ASGI<span class="w"> </span>app&gt;<span class="w"> </span>callable.
+<span class="w">  </span>--help<span class="w">                          </span>Show<span class="w"> </span>this<span class="w"> </span>message<span class="w"> </span>and<span class="w"> </span>exit.
+</code></pre></div>
+<p>See the <a href="../settings/">settings documentation</a> for more details on the supported options for running uvicorn.</p>
+<h2 id="running-programmatically">Running programmatically<a class="headerlink" href="#running-programmatically" title="Permanent link">&para;</a></h2>
+<p>To run directly from within a Python program, you should use <code>uvicorn.run(app, **config)</code>. For example:</p>
+<div class="highlight"><span class="filename">main.py</span><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">uvicorn</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">App</span><span class="p">:</span>
+    <span class="o">...</span>
+
+<span class="n">app</span> <span class="o">=</span> <span class="n">App</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">uvicorn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;main:app&quot;</span><span class="p">,</span> <span class="n">host</span><span class="o">=</span><span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">5000</span><span class="p">,</span> <span class="n">log_level</span><span class="o">=</span><span class="s2">&quot;info&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>The set of configuration options is the same as for the command line tool.</p>
+<p>Note that the application instance itself <em>can</em> be passed instead of the app
+import string.</p>
+<div class="highlight"><pre><span></span><code><span class="n">uvicorn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">app</span><span class="p">,</span> <span class="n">host</span><span class="o">=</span><span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">5000</span><span class="p">,</span> <span class="n">log_level</span><span class="o">=</span><span class="s2">&quot;info&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>However, this style only works if you are not using multiprocessing (<code>workers=NUM</code>)
+or reloading (<code>reload=True</code>), so we recommend using the import string style.</p>
+<p>Also note that in this case, you should put <code>uvicorn.run</code> into <code>if __name__ == '__main__'</code> clause in the main module.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The <code>reload</code> and <code>workers</code> parameters are <strong>mutually exclusive</strong>.</p>
+</div>
+<h2 id="using-a-process-manager">Using a process manager<a class="headerlink" href="#using-a-process-manager" title="Permanent link">&para;</a></h2>
+<p>Running Uvicorn using a process manager ensures that you can run multiple processes in a resilient manner, and allows you to perform server upgrades without dropping requests.</p>
+<p>A process manager will handle the socket setup, start-up multiple server processes, monitor process aliveness, and listen for signals to provide for processes restarts, shutdowns, or dialing up and down the number of running processes.</p>
+<h3 id="built-in">Built-in<a class="headerlink" href="#built-in" title="Permanent link">&para;</a></h3>
+<p>Uvicorn includes a <code>--workers</code> option that allows you to run multiple worker processes.</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--workers<span class="w"> </span><span class="m">4</span>
+</code></pre></div>
+<p>Unlike gunicorn, uvicorn does not use pre-fork, but uses <a href="https://docs.python.org/3/library/multiprocessing.html#contexts-and-start-methods"><code>spawn</code></a>, which allows uvicorn's multiprocess manager to still work well on Windows.</p>
+<p>The default process manager monitors the status of child processes and automatically restarts child processes that die unexpectedly. Not only that, it will also monitor the status of the child process through the pipeline. When the child process is accidentally stuck, the corresponding child process will be killed through an unstoppable system signal or interface.</p>
+<p>You can also manage child processes by sending specific signals to the main process. (Not supported on Windows.)</p>
+<ul>
+<li><code>SIGHUP</code>: Work processeses are graceful restarted one after another. If you update the code, the new worker process will use the new code.</li>
+<li><code>SIGTTIN</code>: Increase the number of worker processes by one.</li>
+<li><code>SIGTTOU</code>: Decrease the number of worker processes by one.</li>
+</ul>
+<h3 id="gunicorn">Gunicorn<a class="headerlink" href="#gunicorn" title="Permanent link">&para;</a></h3>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>The <code>uvicorn.workers</code> module is deprecated and will be removed in a future release.</p>
+<p>You should use the <a href="https://github.com/Kludex/uvicorn-worker"><code>uvicorn-worker</code></a> package instead.</p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>uvicorn-worker
+</code></pre></div>
+</div>
+<p>Gunicorn is probably the simplest way to run and manage Uvicorn in a production setting. Uvicorn includes a gunicorn worker class that means you can get set up with very little configuration.</p>
+<p>The following will start Gunicorn with four worker processes:</p>
+<p><code>gunicorn -w 4 -k uvicorn.workers.UvicornWorker</code></p>
+<p>The <code>UvicornWorker</code> implementation uses the <code>uvloop</code> and <code>httptools</code> implementations. To run under PyPy you'll want to use pure-python implementation instead. You can do this by using the <code>UvicornH11Worker</code> class.</p>
+<p><code>gunicorn -w 4 -k uvicorn.workers.UvicornH11Worker</code></p>
+<p>Gunicorn provides a different set of configuration options to Uvicorn, so  some options such as <code>--limit-concurrency</code> are not yet supported when running with Gunicorn.</p>
+<p>If you need to pass uvicorn's config arguments to gunicorn workers then you'll have to subclass <code>UvicornWorker</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">uvicorn.workers</span><span class="w"> </span><span class="kn">import</span> <span class="n">UvicornWorker</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">MyUvicornWorker</span><span class="p">(</span><span class="n">UvicornWorker</span><span class="p">):</span>
+    <span class="n">CONFIG_KWARGS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;loop&quot;</span><span class="p">:</span> <span class="s2">&quot;asyncio&quot;</span><span class="p">,</span> <span class="s2">&quot;http&quot;</span><span class="p">:</span> <span class="s2">&quot;h11&quot;</span><span class="p">,</span> <span class="s2">&quot;lifespan&quot;</span><span class="p">:</span> <span class="s2">&quot;off&quot;</span><span class="p">}</span>
+</code></pre></div>
+<h3 id="supervisor">Supervisor<a class="headerlink" href="#supervisor" title="Permanent link">&para;</a></h3>
+<p>To use <code>supervisor</code> as a process manager you should either:</p>
+<ul>
+<li>Hand over the socket to uvicorn using its file descriptor, which supervisor always makes available as <code>0</code>, and which must be set in the <code>fcgi-program</code> section.</li>
+<li>Or use a UNIX domain socket for each <code>uvicorn</code> process.</li>
+</ul>
+<p>A simple supervisor configuration might look something like this:</p>
+<div class="highlight"><span class="filename">supervisord.conf</span><pre><span></span><code><span class="k">[supervisord]</span>
+
+<span class="k">[fcgi-program:uvicorn]</span>
+<span class="na">socket</span><span class="o">=</span><span class="s">tcp://localhost:8000</span>
+<span class="na">command</span><span class="o">=</span><span class="s">venv/bin/uvicorn --fd 0 main:App</span>
+<span class="na">numprocs</span><span class="o">=</span><span class="s">4</span>
+<span class="na">process_name</span><span class="o">=</span><span class="s">uvicorn-%(process_num)d</span>
+<span class="na">stdout_logfile</span><span class="o">=</span><span class="s">/dev/stdout</span>
+<span class="na">stdout_logfile_maxbytes</span><span class="o">=</span><span class="s">0</span>
+</code></pre></div>
+<p>Then run with <code>supervisord -n</code>.</p>
+<h2 id="running-behind-nginx">Running behind Nginx<a class="headerlink" href="#running-behind-nginx" title="Permanent link">&para;</a></h2>
+<p>Using Nginx as a proxy in front of your Uvicorn processes may not be necessary, but is recommended for additional resilience. Nginx can deal with serving your static media and buffering slow requests, leaving your application servers free from load as much as possible.</p>
+<p>In managed environments such as <code>Heroku</code>, you won't typically need to configure Nginx, as your server processes will already be running behind load balancing proxies.</p>
+<p>The recommended configuration for proxying from Nginx is to use a UNIX domain socket between Nginx and whatever the process manager that is being used to run Uvicorn. If using Uvicorn directly you can bind it to a UNIX domain socket using <code>uvicorn --uds /path/to/socket.sock &lt;...&gt;</code>.</p>
+<p>When running your application behind one or more proxies you will want to make sure that each proxy sets appropriate headers to ensure that your application can properly determine the client address of the incoming connection, and if the connection was over <code>http</code> or <code>https</code>. For more information see <a href="#proxies-and-forwarded-headers">Proxies and Forwarded Headers</a> below.</p>
+<p>Here's how a simple Nginx configuration might look. This example includes setting proxy headers, and using a UNIX domain socket to communicate with the application server.</p>
+<p>It also includes some basic configuration to forward websocket connections.
+For more info on this, check <a href="https://nginx.org/en/docs/http/websocket.html">Nginx recommendations</a>.</p>
+<div class="highlight"><pre><span></span><code>http {
+  server {
+    listen 80;
+    client_max_body_size 4G;
+
+    server_name example.com;
+
+    location / {
+      proxy_set_header Host $http_host;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection $connection_upgrade;
+      proxy_redirect off;
+      proxy_buffering off;
+      proxy_pass http://uvicorn;
+    }
+
+    location /static {
+      # path for static files
+      root /path/to/app/static;
+    }
+  }
+
+  map $http_upgrade $connection_upgrade {
+    default upgrade;
+    &#39;&#39; close;
+  }
+
+  upstream uvicorn {
+    server unix:/tmp/uvicorn.sock;
+  }
+
+}
+</code></pre></div>
+<p>Uvicorn's <code>--proxy-headers</code> behavior may not be sufficient for more complex proxy configurations that use different combinations of headers, or where the application is running behind more than one intermediary proxying service.</p>
+<p>In those cases, you might want to use an ASGI middleware to set the <code>client</code> and <code>scheme</code> dependant on the request headers.</p>
+<h2 id="running-behind-a-cdn">Running behind a CDN<a class="headerlink" href="#running-behind-a-cdn" title="Permanent link">&para;</a></h2>
+<p>Running behind a content delivery network, such as Cloudflare or Cloud Front, provides a serious layer of protection against DDoS attacks. Your service will be running behind huge clusters of proxies and load balancers that are designed for handling huge amounts of traffic, and have capabilities for detecting and closing off connections from DDoS attacks.</p>
+<p>Proper usage of cache control headers can mean that a CDN is able to serve large amounts of data without always having to forward the request on to your server.</p>
+<p>Content Delivery Networks can also be a low-effort way to provide HTTPS termination.</p>
+<h2 id="running-with-https">Running with HTTPS<a class="headerlink" href="#running-with-https" title="Permanent link">&para;</a></h2>
+<p>To run uvicorn with https, a certificate and a private key are required.
+The recommended way to get them is using <a href="https://letsencrypt.org/">Let's Encrypt</a>.</p>
+<p>For local development with https, it's possible to use <a href="https://github.com/FiloSottile/mkcert">mkcert</a>
+to generate a valid certificate and private key.</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--port<span class="w"> </span><span class="m">5000</span><span class="w"> </span>--ssl-keyfile<span class="o">=</span>./key.pem<span class="w"> </span>--ssl-certfile<span class="o">=</span>./cert.pem
+</code></pre></div>
+<h3 id="running-gunicorn-worker">Running gunicorn worker<a class="headerlink" href="#running-gunicorn-worker" title="Permanent link">&para;</a></h3>
+<p>It's also possible to use certificates with uvicorn's worker for gunicorn.</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>gunicorn<span class="w"> </span>--keyfile<span class="o">=</span>./key.pem<span class="w"> </span>--certfile<span class="o">=</span>./cert.pem<span class="w"> </span>-k<span class="w"> </span>uvicorn.workers.UvicornWorker<span class="w"> </span>main:app
+</code></pre></div>
+<h2 id="proxies-and-forwarded-headers">Proxies and Forwarded Headers<a class="headerlink" href="#proxies-and-forwarded-headers" title="Permanent link">&para;</a></h2>
+<p>When running an application behind one or more proxies, certain information about the request is lost.
+To avoid this most proxies will add headers containing this information for downstream servers to read.</p>
+<p>Uvicorn currently supports the following headers:</p>
+<ul>
+<li><code>X-Forwarded-For</code> (<a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For">MDN Reference</a>)</li>
+<li><code>X-Forwarded-Proto</code>(<a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-Proto">MDN Reference</a>)</li>
+</ul>
+<p>Uvicorn can use these headers to correctly set the client and protocol in the request.
+However as anyone can set these headers you must configure which "clients" you will trust to have set them correctly.</p>
+<p>Uvicorn can be configured to trust IP Addresses (e.g. <code>127.0.0.1</code>), IP Networks (e.g. <code>10.100.0.0/16</code>),
+or Literals (e.g. <code>/path/to/socket.sock</code>). When running from CLI these are configured using <code>--forwarded-allow-ips</code>.</p>
+<div class="admonition warning">
+<p class="admonition-title">Only trust clients you can actually trust!</p>
+<p>Incorrectly trusting other clients can lead to malicious actors spoofing their apparent client address to your application.</p>
+</div>
+<p>For more information, check <a href="https://github.com/Kludex/uvicorn/blob/main/uvicorn/middleware/proxy_headers.py"><code>ProxyHeadersMiddleware</code></a>.</p>
+<h3 id="client-port">Client Port<a class="headerlink" href="#client-port" title="Permanent link">&para;</a></h3>
+<p>Currently if the <code>ProxyHeadersMiddleware</code> is able to retrieve a trusted client value then the client's port will be set to <code>0</code>.
+This is because port information is lost when using these headers.</p>
+<h3 id="unix-domain-sockets-uds">UNIX Domain Sockets (UDS)<a class="headerlink" href="#unix-domain-sockets-uds" title="Permanent link">&para;</a></h3>
+<p>Although it is common for UNIX Domain Sockets to be used for communicating between various HTTP servers, they can mess with some of the expected received values as they will be various non-address strings or missing values.</p>
+<p>For example:</p>
+<ul>
+<li>when NGINX itself is running behind a UDS it will add the literal <code>unix:</code> as the client in the <code>X-Forwarded-For</code> header.</li>
+<li>When Uvicorn is running behind a UDS the initial client will be <code>None</code>.</li>
+</ul>
+<h3 id="trust-everything">Trust Everything<a class="headerlink" href="#trust-everything" title="Permanent link">&para;</a></h3>
+<p>Rather than specifying what to trust, you can instruct Uvicorn to trust all clients using the literal <code>"*"</code>.
+You should only set this when you know you can trust all values within the forwarded headers (e.g. because
+your proxies remove the existing headers before setting their own).</p>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../concepts/websockets/" class="md-footer__link md-footer__link--prev" aria-label="Previous: WebSockets">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                WebSockets
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="docker/" class="md-footer__link md-footer__link--next" aria-label="Next: Docker">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Docker
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": ["search.suggest", "search.highlight", "content.tabs.link", "content.code.annotate", "content.code.copy", "navigation.path", "navigation.sections", "navigation.top", "navigation.tracking", "navigation.footer", "toc.follow", "announce.dismiss"], "search": "../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.13a4f30d.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,1581 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="The lightning-fast ASGI server.">
+      
+      
+      
+        <link rel="canonical" href="https://uvicorn.dev/concepts/asgi/">
+      
+      
+        <link rel="prev" href="../../server-behavior/">
+      
+      
+        <link rel="next" href="../lifespan/">
+      
+      
+      <link rel="icon" href="../../uvicorn.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.13">
+    
+    
+      
+        <title>ASGI - Uvicorn</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.342714a4.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-KTS6TXPD85"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-KTS6TXPD85",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-KTS6TXPD85",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#asgi" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+        <aside class="md-banner">
+          <div class="md-banner__inner md-grid md-typeset">
+            
+              <button class="md-banner__button md-icon" aria-label="Don't show this again">
+                
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+              </button>
+            
+            
+<style>
+    div[data-md-component="announce"] {
+        background-color: #f0f8ff;  /* Light blue */
+        color: #333;
+    }
+    div[data-md-component="announce"] a {
+        color: #0366d6;
+    }
+</style>
+     If you're using uvicorn in production, please consider <a href="/sponsorship">sponsoring the project</a> to help with maintenance and development. ✨
+
+          </div>
+          
+            <script>var el=document.querySelector("[data-md-component=announce]");if(el){var content=el.querySelector(".md-typeset");__md_hash(content.innerHTML)===__md_get("__announce")&&(el.hidden=!0)}</script>
+          
+        </aside>
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Uvicorn" class="md-header__button md-logo" aria-label="Uvicorn" data-md-component="logo">
+      
+  <img src="../../uvicorn.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Uvicorn
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              ASGI
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7M9 21a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-1H9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="blue" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7M9 21v-1h6v1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1m3-17a5 5 0 0 0-5 5c0 2.05 1.23 3.81 3 4.58V16h4v-2.42c1.77-.77 3-2.53 3-4.58a5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Kludex/uvicorn" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Kludex/uvicorn
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<!-- Determine class according to configuration -->
+ 
+ 
+ 
+
+ <!-- Main navigation -->
+ <nav
+   class="md-nav md-nav--primary"
+   aria-label="nav.title"
+   data-md-level="0"
+ >
+
+   <!-- Site title -->
+   <label class="md-nav__title" for="__drawer">
+     <a
+       href="../.."
+       title="Uvicorn"
+       class="md-nav__button md-logo"
+       aria-label="Uvicorn"
+       data-md-component="logo"
+     >
+       
+  <img src="../../uvicorn.png" alt="logo">
+
+     </a>
+     Uvicorn
+   </label>
+
+   <!-- Repository information -->
+   
+     <div class="md-nav__source">
+       <a href="https://github.com/Kludex/uvicorn" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Kludex/uvicorn
+  </div>
+</a>
+     </div>
+   
+
+   <!-- Navigation list -->
+   <ul class="md-nav__list" data-md-scrollfix>
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Welcome
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Installation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Settings
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../server-behavior/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Server Behavior
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Concepts
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Concepts
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    ASGI
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    ASGI
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#asgi" class="md-nav__link">
+    <span class="md-ellipsis">
+        ASGI
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="ASGI">
+    <ul class="md-nav__list">
+        
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#http-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+        HTTP Scope
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#http-messages" class="md-nav__link">
+    <span class="md-ellipsis">
+        HTTP Messages
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#requests-responses" class="md-nav__link">
+    <span class="md-ellipsis">
+        Requests &amp; responses
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#reading-the-request-body" class="md-nav__link">
+    <span class="md-ellipsis">
+        Reading the request body
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#streaming-responses" class="md-nav__link">
+    <span class="md-ellipsis">
+        Streaming responses
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+              </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#why-asgi" class="md-nav__link">
+    <span class="md-ellipsis">
+        Why ASGI?
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#alternative-asgi-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+        Alternative ASGI servers
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="Alternative ASGI servers">
+    <ul class="md-nav__list">
+        
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#daphne" class="md-nav__link">
+    <span class="md-ellipsis">
+        Daphne
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#hypercorn" class="md-nav__link">
+    <span class="md-ellipsis">
+        Hypercorn
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+              </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#asgi-frameworks" class="md-nav__link">
+    <span class="md-ellipsis">
+        ASGI frameworks
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="ASGI frameworks">
+    <ul class="md-nav__list">
+        
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#starlette" class="md-nav__link">
+    <span class="md-ellipsis">
+        Starlette
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#django-channels" class="md-nav__link">
+    <span class="md-ellipsis">
+        Django Channels
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#quart" class="md-nav__link">
+    <span class="md-ellipsis">
+        Quart
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#fastapi" class="md-nav__link">
+    <span class="md-ellipsis">
+        FastAPI
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#blacksheep" class="md-nav__link">
+    <span class="md-ellipsis">
+        BlackSheep
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#falcon" class="md-nav__link">
+    <span class="md-ellipsis">
+        Falcon
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#muffin" class="md-nav__link">
+    <span class="md-ellipsis">
+        Muffin
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#litestar" class="md-nav__link">
+    <span class="md-ellipsis">
+        Litestar
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#panther" class="md-nav__link">
+    <span class="md-ellipsis">
+        Panther
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+              </ul>
+</nav>
+
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../lifespan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Lifespan
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../websockets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    WebSockets
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Deployment
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            Deployment
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Deployment
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Docker
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../release-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Release Notes
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Contributing
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../sponsorship/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Sponsorship
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+   </ul>
+ </nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#asgi" class="md-nav__link">
+    <span class="md-ellipsis">
+        ASGI
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="ASGI">
+    <ul class="md-nav__list">
+        
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#http-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+        HTTP Scope
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#http-messages" class="md-nav__link">
+    <span class="md-ellipsis">
+        HTTP Messages
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#requests-responses" class="md-nav__link">
+    <span class="md-ellipsis">
+        Requests &amp; responses
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#reading-the-request-body" class="md-nav__link">
+    <span class="md-ellipsis">
+        Reading the request body
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#streaming-responses" class="md-nav__link">
+    <span class="md-ellipsis">
+        Streaming responses
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+              </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#why-asgi" class="md-nav__link">
+    <span class="md-ellipsis">
+        Why ASGI?
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#alternative-asgi-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+        Alternative ASGI servers
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="Alternative ASGI servers">
+    <ul class="md-nav__list">
+        
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#daphne" class="md-nav__link">
+    <span class="md-ellipsis">
+        Daphne
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#hypercorn" class="md-nav__link">
+    <span class="md-ellipsis">
+        Hypercorn
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+              </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#asgi-frameworks" class="md-nav__link">
+    <span class="md-ellipsis">
+        ASGI frameworks
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="ASGI frameworks">
+    <ul class="md-nav__list">
+        
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#starlette" class="md-nav__link">
+    <span class="md-ellipsis">
+        Starlette
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#django-channels" class="md-nav__link">
+    <span class="md-ellipsis">
+        Django Channels
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#quart" class="md-nav__link">
+    <span class="md-ellipsis">
+        Quart
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#fastapi" class="md-nav__link">
+    <span class="md-ellipsis">
+        FastAPI
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#blacksheep" class="md-nav__link">
+    <span class="md-ellipsis">
+        BlackSheep
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#falcon" class="md-nav__link">
+    <span class="md-ellipsis">
+        Falcon
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#muffin" class="md-nav__link">
+    <span class="md-ellipsis">
+        Muffin
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#litestar" class="md-nav__link">
+    <span class="md-ellipsis">
+        Litestar
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#panther" class="md-nav__link">
+    <span class="md-ellipsis">
+        Panther
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+              </ul>
+</nav>
+
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+  <h1>ASGI</h1>
+
+<h2 id="asgi">ASGI<a class="headerlink" href="#asgi" title="Permanent link">&para;</a></h2>
+<p><strong>Uvicorn</strong> uses the <a href="https://asgi.readthedocs.io/en/latest/">ASGI specification</a> for interacting with an application.</p>
+<p>The application should expose an async callable which takes three arguments:</p>
+<ul>
+<li><code>scope</code> - A dictionary containing information about the incoming connection.</li>
+<li><code>receive</code> - A channel on which to receive incoming messages from the server.</li>
+<li><code>send</code> - A channel on which to send outgoing messages to the server.</li>
+</ul>
+<p>Two common patterns you might use are either function-based applications:</p>
+<div class="highlight"><pre><span></span><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">app</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">receive</span><span class="p">,</span> <span class="n">send</span><span class="p">):</span>
+    <span class="k">assert</span> <span class="n">scope</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;http&#39;</span>
+    <span class="o">...</span>
+</code></pre></div>
+<p>Or instance-based applications:</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">App</span><span class="p">:</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">receive</span><span class="p">,</span> <span class="n">send</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="n">scope</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;http&#39;</span>
+        <span class="o">...</span>
+
+<span class="n">app</span> <span class="o">=</span> <span class="n">App</span><span class="p">()</span>
+</code></pre></div>
+<p>It's good practice for applications to raise an exception on scope types
+that they do not handle.</p>
+<p>The content of the <code>scope</code> argument, and the messages expected by <code>receive</code> and <code>send</code> depend on the protocol being used.</p>
+<p>The format for HTTP messages is described in the <a href="https://asgi.readthedocs.io/en/latest/specs/www.html">ASGI HTTP Message format</a>.</p>
+<h3 id="http-scope">HTTP Scope<a class="headerlink" href="#http-scope" title="Permanent link">&para;</a></h3>
+<p>An incoming HTTP request might have a connection <code>scope</code> like this:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+    <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;http&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;scheme&#39;</span><span class="p">:</span> <span class="s1">&#39;http&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;root_path&#39;</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;server&#39;</span><span class="p">:</span> <span class="p">(</span><span class="s1">&#39;127.0.0.1&#39;</span><span class="p">,</span> <span class="mi">8000</span><span class="p">),</span>
+    <span class="s1">&#39;http_version&#39;</span><span class="p">:</span> <span class="s1">&#39;1.1&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;GET&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;path&#39;</span><span class="p">:</span> <span class="s1">&#39;/&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;headers&#39;</span><span class="p">:</span> <span class="p">[</span>
+        <span class="p">(</span><span class="sa">b</span><span class="s1">&#39;host&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;127.0.0.1:8000&#39;</span><span class="p">),</span>
+        <span class="p">(</span><span class="sa">b</span><span class="s1">&#39;user-agent&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;curl/7.51.0&#39;</span><span class="p">),</span>
+        <span class="p">(</span><span class="sa">b</span><span class="s1">&#39;accept&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;*/*&#39;</span><span class="p">)</span>
+    <span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+<h3 id="http-messages">HTTP Messages<a class="headerlink" href="#http-messages" title="Permanent link">&para;</a></h3>
+<p>The instance coroutine communicates back to the server by sending messages to the <code>send</code> coroutine.</p>
+<div class="highlight"><pre><span></span><code><span class="k">await</span> <span class="n">send</span><span class="p">({</span>
+    <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;http.response.start&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;status&#39;</span><span class="p">:</span> <span class="mi">200</span><span class="p">,</span>
+    <span class="s1">&#39;headers&#39;</span><span class="p">:</span> <span class="p">[</span>
+        <span class="p">[</span><span class="sa">b</span><span class="s1">&#39;content-type&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;text/plain&#39;</span><span class="p">],</span>
+    <span class="p">]</span>
+<span class="p">})</span>
+<span class="k">await</span> <span class="n">send</span><span class="p">({</span>
+    <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;http.response.body&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;body&#39;</span><span class="p">:</span> <span class="sa">b</span><span class="s1">&#39;Hello, world!&#39;</span><span class="p">,</span>
+<span class="p">})</span>
+</code></pre></div>
+<h3 id="requests-responses">Requests &amp; responses<a class="headerlink" href="#requests-responses" title="Permanent link">&para;</a></h3>
+<p>Here's an example that displays the method and path used in the incoming request:</p>
+<div class="highlight"><pre><span></span><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">app</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">receive</span><span class="p">,</span> <span class="n">send</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Echo the method and path back in an HTTP response.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">assert</span> <span class="n">scope</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;http&#39;</span>
+
+    <span class="n">body</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Received </span><span class="si">{</span><span class="n">scope</span><span class="p">[</span><span class="s2">&quot;method&quot;</span><span class="p">]</span><span class="si">}</span><span class="s1"> request to </span><span class="si">{</span><span class="n">scope</span><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">]</span><span class="si">}</span><span class="s1">&#39;</span>
+    <span class="k">await</span> <span class="n">send</span><span class="p">({</span>
+        <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;http.response.start&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;status&#39;</span><span class="p">:</span> <span class="mi">200</span><span class="p">,</span>
+        <span class="s1">&#39;headers&#39;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="p">[</span><span class="sa">b</span><span class="s1">&#39;content-type&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;text/plain&#39;</span><span class="p">],</span>
+        <span class="p">]</span>
+    <span class="p">})</span>
+    <span class="k">await</span> <span class="n">send</span><span class="p">({</span>
+        <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;http.response.body&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;body&#39;</span><span class="p">:</span> <span class="n">body</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">),</span>
+    <span class="p">})</span>
+</code></pre></div>
+<h3 id="reading-the-request-body">Reading the request body<a class="headerlink" href="#reading-the-request-body" title="Permanent link">&para;</a></h3>
+<p>You can stream the request body without blocking the asyncio task pool,
+by fetching messages from the <code>receive</code> coroutine.</p>
+<div class="highlight"><pre><span></span><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">read_body</span><span class="p">(</span><span class="n">receive</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Read and return the entire body from an incoming ASGI message.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">body</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;&#39;</span>
+    <span class="n">more_body</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="k">while</span> <span class="n">more_body</span><span class="p">:</span>
+        <span class="n">message</span> <span class="o">=</span> <span class="k">await</span> <span class="n">receive</span><span class="p">()</span>
+        <span class="n">body</span> <span class="o">+=</span> <span class="n">message</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;body&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;&#39;</span><span class="p">)</span>
+        <span class="n">more_body</span> <span class="o">=</span> <span class="n">message</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;more_body&#39;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">body</span>
+
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">app</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">receive</span><span class="p">,</span> <span class="n">send</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Echo the request body back in an HTTP response.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">body</span> <span class="o">=</span> <span class="k">await</span> <span class="n">read_body</span><span class="p">(</span><span class="n">receive</span><span class="p">)</span>
+    <span class="k">await</span> <span class="n">send</span><span class="p">({</span>
+        <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;http.response.start&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;status&#39;</span><span class="p">:</span> <span class="mi">200</span><span class="p">,</span>
+        <span class="s1">&#39;headers&#39;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="p">(</span><span class="sa">b</span><span class="s1">&#39;content-type&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;text/plain&#39;</span><span class="p">),</span>
+            <span class="p">(</span><span class="sa">b</span><span class="s1">&#39;content-length&#39;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">body</span><span class="p">))</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span>
+        <span class="p">]</span>
+    <span class="p">})</span>
+    <span class="k">await</span> <span class="n">send</span><span class="p">({</span>
+        <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;http.response.body&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;body&#39;</span><span class="p">:</span> <span class="n">body</span><span class="p">,</span>
+    <span class="p">})</span>
+</code></pre></div>
+<h3 id="streaming-responses">Streaming responses<a class="headerlink" href="#streaming-responses" title="Permanent link">&para;</a></h3>
+<p>You can stream responses by sending multiple <code>http.response.body</code> messages to
+the <code>send</code> coroutine.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">app</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">receive</span><span class="p">,</span> <span class="n">send</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Send a slowly streaming HTTP response back to the client.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">await</span> <span class="n">send</span><span class="p">({</span>
+        <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;http.response.start&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;status&#39;</span><span class="p">:</span> <span class="mi">200</span><span class="p">,</span>
+        <span class="s1">&#39;headers&#39;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="p">[</span><span class="sa">b</span><span class="s1">&#39;content-type&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;text/plain&#39;</span><span class="p">],</span>
+        <span class="p">]</span>
+    <span class="p">})</span>
+    <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="p">[</span><span class="sa">b</span><span class="s1">&#39;Hello&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;, &#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;world!&#39;</span><span class="p">]:</span>
+        <span class="k">await</span> <span class="n">send</span><span class="p">({</span>
+            <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;http.response.body&#39;</span><span class="p">,</span>
+            <span class="s1">&#39;body&#39;</span><span class="p">:</span> <span class="n">chunk</span><span class="p">,</span>
+            <span class="s1">&#39;more_body&#39;</span><span class="p">:</span> <span class="kc">True</span>
+        <span class="p">})</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">await</span> <span class="n">send</span><span class="p">({</span>
+        <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;http.response.body&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;body&#39;</span><span class="p">:</span> <span class="sa">b</span><span class="s1">&#39;&#39;</span><span class="p">,</span>
+    <span class="p">})</span>
+</code></pre></div>
+<hr />
+<h2 id="why-asgi">Why ASGI?<a class="headerlink" href="#why-asgi" title="Permanent link">&para;</a></h2>
+<p>Most well established Python Web frameworks started out as WSGI-based frameworks.</p>
+<p>WSGI applications are a single, synchronous callable that takes a request and returns a response.
+This doesn’t allow for long-lived connections, like you get with long-poll HTTP or WebSocket connections,
+which WSGI doesn't support well.</p>
+<p>Having an async concurrency model also allows for options such as lightweight background tasks,
+and can be less of a limiting factor for endpoints that have long periods being blocked on network
+I/O such as dealing with slow HTTP requests.</p>
+<hr />
+<h2 id="alternative-asgi-servers">Alternative ASGI servers<a class="headerlink" href="#alternative-asgi-servers" title="Permanent link">&para;</a></h2>
+<p>A strength of the ASGI protocol is that it decouples the server implementation
+from the application framework. This allows for an ecosystem of interoperating
+webservers and application frameworks.</p>
+<h3 id="daphne">Daphne<a class="headerlink" href="#daphne" title="Permanent link">&para;</a></h3>
+<p>The first ASGI server implementation, originally developed to power Django Channels, is
+<a href="https://github.com/django/daphne">the Daphne webserver</a>.</p>
+<p>It is run widely in production, and supports HTTP/1.1, HTTP/2, and WebSockets.</p>
+<p>Any of the example applications given here can equally well be run using <code>daphne</code> instead.</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>daphne
+daphne<span class="w"> </span>app:App
+</code></pre></div>
+<h3 id="hypercorn">Hypercorn<a class="headerlink" href="#hypercorn" title="Permanent link">&para;</a></h3>
+<p><a href="https://github.com/pgjones/hypercorn">Hypercorn</a> was initially part of the Quart web framework,
+before being separated out into a standalone ASGI server.</p>
+<p>Hypercorn supports HTTP/1.1, HTTP/2, HTTP/3 and WebSockets.</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>hypercorn
+hypercorn<span class="w"> </span>app:App
+</code></pre></div>
+<hr />
+<h2 id="asgi-frameworks">ASGI frameworks<a class="headerlink" href="#asgi-frameworks" title="Permanent link">&para;</a></h2>
+<p>You can use Uvicorn, Daphne, or Hypercorn to run any ASGI framework.</p>
+<p>For small services you can also write ASGI applications directly.</p>
+<h3 id="starlette">Starlette<a class="headerlink" href="#starlette" title="Permanent link">&para;</a></h3>
+<p><a href="https://github.com/Kludex/starlette">Starlette</a> is a lightweight ASGI framework/toolkit.</p>
+<p>It is ideal for building high performance asyncio services, and supports both HTTP and WebSockets.</p>
+<h3 id="django-channels">Django Channels<a class="headerlink" href="#django-channels" title="Permanent link">&para;</a></h3>
+<p>The ASGI specification was originally designed for use with <a href="https://channels.readthedocs.io/en/latest/">Django Channels</a>.</p>
+<p>Channels is a little different to other ASGI frameworks in that it provides
+an asynchronous frontend onto a threaded-framework backend. It allows Django
+to support WebSockets, background tasks, and long-running connections,
+with application code still running in a standard threaded context.</p>
+<h3 id="quart">Quart<a class="headerlink" href="#quart" title="Permanent link">&para;</a></h3>
+<p><a href="https://pgjones.gitlab.io/quart/">Quart</a> is a Flask-like ASGI web framework.</p>
+<h3 id="fastapi">FastAPI<a class="headerlink" href="#fastapi" title="Permanent link">&para;</a></h3>
+<p><a href="https://github.com/tiangolo/fastapi"><strong>FastAPI</strong></a> is an API framework based on <strong>Starlette</strong> and <strong>Pydantic</strong>, heavily inspired by previous server versions of <strong>APIStar</strong>.</p>
+<p>You write your API function parameters with Python 3.6+ type declarations and get automatic data conversion, data validation, OpenAPI schemas (with JSON Schemas) and interactive API documentation UIs.</p>
+<h3 id="blacksheep">BlackSheep<a class="headerlink" href="#blacksheep" title="Permanent link">&para;</a></h3>
+<p><a href="https://www.neoteroi.dev/blacksheep/">BlackSheep</a> is a web framework based on ASGI, inspired by Flask and ASP.NET Core.</p>
+<p>Its most distinctive features are built-in support for dependency injection, automatic binding of parameters by request handler's type annotations, and automatic generation of OpenAPI documentation and Swagger UI.</p>
+<h3 id="falcon">Falcon<a class="headerlink" href="#falcon" title="Permanent link">&para;</a></h3>
+<p><a href="https://falconframework.org">Falcon</a> is a minimalist REST and app backend framework for Python, with a focus on reliability, correctness, and performance at scale.</p>
+<h3 id="muffin">Muffin<a class="headerlink" href="#muffin" title="Permanent link">&para;</a></h3>
+<p><a href="https://github.com/klen/muffin">Muffin</a> is a fast, lightweight and asynchronous ASGI web-framework for Python 3.</p>
+<h3 id="litestar">Litestar<a class="headerlink" href="#litestar" title="Permanent link">&para;</a></h3>
+<p><a href="https://litestar.dev">Litestar</a> is a powerful, lightweight and flexible ASGI framework.</p>
+<p>It includes everything that's needed to build modern APIs - from data serialization and validation to websockets, ORM integration, session management, authentication and more.</p>
+<h3 id="panther">Panther<a class="headerlink" href="#panther" title="Permanent link">&para;</a></h3>
+<p><a href="https://PantherPy.github.io/">Panther</a> is a fast &amp; friendly web framework for building async APIs with Python 3.10+.</p>
+<p>It has built-in Document-oriented Database, Caching System, Authentication and Permission Classes, Visual API Monitoring and also supports Websocket, Throttling, Middlewares.</p>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../../server-behavior/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Server Behavior">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Server Behavior
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../lifespan/" class="md-footer__link md-footer__link--next" aria-label="Next: Lifespan">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Lifespan
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": ["search.suggest", "search.highlight", "content.tabs.link", "content.code.annotate", "content.code.copy", "navigation.path", "navigation.sections", "navigation.top", "navigation.tracking", "navigation.footer", "toc.follow", "announce.dismiss"], "search": "../../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.13a4f30d.min.js"></script>
+      
+    
+  </body>
+</html>
