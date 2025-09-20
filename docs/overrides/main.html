@@ -1,14 +1,13 @@
+{% endblock %}
 {% extends "base.html" %}
 
-{% block announce %}
-<style>
-    div[data-md-component="announce"] {
-        background-color: #f0f8ff;  /* Light blue */
-        color: #333;
+{% block extrahead %}
+  {{ super() }}
+  <script>
+    // Redirect starlette.io to starlette.dev
+    if (window.location.hostname === 'www.uvicorn.org' || window.location.hostname === 'uvicorn.org') {
+      const newUrl = window.location.href.replace(/^https?:\/\/(www\.)?uvicorn\.org/, 'https://uvicorn.dev');
+      window.location.replace(newUrl);
     }
-    div[data-md-component="announce"] a {
-        color: #0366d6;
-    }
-</style>
-     If you're using uvicorn in production, please consider <a href="/sponsorship">sponsoring the project</a> to help with maintenance and development. ✨
+  </script>
 {% endblock %}
