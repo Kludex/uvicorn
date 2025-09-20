@@ -30,7 +30,7 @@
 
 ---
 
-**Documentation**: [https://www.uvicorn.org](https://www.uvicorn.org)<br>
+**Documentation**: [https://uvicorn.dev](https://uvicorn.dev)<br>
 **Source Code**: [https://www.github.com/Kludex/uvicorn](https://www.github.com/Kludex/uvicorn)
 
 ---

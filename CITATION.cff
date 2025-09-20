@@ -14,8 +14,8 @@ authors:
   - given-names: Tom
     family-names: Christie
     email: tom@tomchristie.com
-repository-code: 'https://github.com/Kludex/uvicorn'
-url: 'https://www.uvicorn.org/'
+repository-code: "https://github.com/Kludex/uvicorn"
+url: "https://uvicorn.dev/"
 abstract: Uvicorn is an ASGI web server implementation for Python.
 keywords:
   - asgi
