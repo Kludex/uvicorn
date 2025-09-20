@@ -112,6 +112,7 @@ class Multiprocess:
 
         self.processes_num = config.workers
         self.processes: list[Process] = []
+        self.timeout_process_probing = config.timeout_process_probing
 
         self.should_exit = threading.Event()
 
@@ -164,7 +165,7 @@ class Multiprocess:
             return  # parent process is exiting, no need to keep subprocess alive
 
         for idx, process in enumerate(self.processes):
-            if process.is_alive():
+            if process.is_alive(self.timeout_process_probing):
                 continue
 
             process.kill()  # process is hung, kill it

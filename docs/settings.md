@@ -146,3 +146,4 @@ To understand more about the SSL context options, please refer to the [Python do
 
 * `--timeout-keep-alive <int>` - Close Keep-Alive connections if no new data is received within this timeout. **Default:** *5*.
 * `--timeout-graceful-shutdown <int>` - Maximum number of seconds to wait for graceful shutdown. After this timeout, the server will start terminating requests.
+* `--timeout-process-probing` - Maximum number of seconds to wait for a child process to become alive. After this timeout, the main process will terminate the child process and then spawn a new child process.

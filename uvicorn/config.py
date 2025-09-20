@@ -213,6 +213,7 @@ class Config:
         backlog: int = 2048,
         timeout_keep_alive: int = 5,
         timeout_notify: int = 30,
+        timeout_process_probing: int = 5,
         timeout_graceful_shutdown: int | None = None,
         callback_notify: Callable[..., Awaitable[None]] | None = None,
         ssl_keyfile: str | os.PathLike[str] | None = None,
@@ -257,6 +258,7 @@ class Config:
         self.backlog = backlog
         self.timeout_keep_alive = timeout_keep_alive
         self.timeout_notify = timeout_notify
+        self.timeout_process_probing = timeout_process_probing
         self.timeout_graceful_shutdown = timeout_graceful_shutdown
         self.callback_notify = callback_notify
         self.ssl_keyfile = ssl_keyfile
