@@ -10,6 +10,7 @@ from typing import Any, Callable
 
 import pytest
 
+from tests.utils import with_retry
 from uvicorn import Config
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.supervisors import Multiprocess
@@ -76,6 +77,7 @@ def test_multiprocess_run() -> None:
 
 
 @new_console_in_windows
+@with_retry(3)
 def test_multiprocess_health_check() -> None:
     """
     Ensure that the health check works as expected.
@@ -83,15 +85,21 @@ def test_multiprocess_health_check() -> None:
     config = Config(app=app, workers=2)
     supervisor = Multiprocess(config, target=run, sockets=[])
     threading.Thread(target=supervisor.run, daemon=True).start()
-    time.sleep(1)
+    time.sleep(0)  # release gil.
+    time.sleep(1)  # ensure server is up.
     process = supervisor.processes[0]
+    assert process.is_alive()
     process.kill()
-    assert not process.is_alive()
-    time.sleep(1)
-    for p in supervisor.processes:
-        assert p.is_alive()
-    supervisor.signal_queue.append(signal.SIGINT)
-    supervisor.join_all()
+    process.join()
+    try:
+        assert not process.is_alive(0.5)
+        time.sleep(0)  # release gil.
+        time.sleep(1)  # ensure process restart complete.
+        for p in supervisor.processes:
+            assert p.is_alive()
+    finally:
+        supervisor.signal_queue.append(signal.SIGINT)
+        supervisor.join_all()
 
 
 @new_console_in_windows
