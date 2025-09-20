@@ -564,6 +564,7 @@ def run(
         factory=factory,
         h11_max_incomplete_event_size=h11_max_incomplete_event_size,
     )
+    config.check_load_app()
     server = Server(config=config)
 
     if (config.reload or config.workers > 1) and not isinstance(app, str):
@@ -580,8 +581,8 @@ def run(
             Multiprocess(config, target=server.run, sockets=[sock]).run()
         else:
             server.run()
-    except KeyboardInterrupt:
-        pass  # pragma: full coverage
+    except KeyboardInterrupt:  # pragma: full coverage
+        pass
     finally:
         if config.uds and os.path.exists(config.uds):
             os.remove(config.uds)  # pragma: py-win32

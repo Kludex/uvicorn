@@ -119,7 +119,10 @@ def test_cli_uds(uds_file: Path) -> None:  # pragma: py-win32
             result = runner.invoke(cli, ["tests.test_cli:App", "--workers=2", "--uds", str(uds_file)])
 
     assert result.exit_code == 0
-    assert result.output == ""
+    assert (
+        result.output
+        == "WARNING:  ASGI app factory detected. Using it, but please consider setting the --factory flag explicitly.\n"
+    )
     mock_bind_socket.assert_called_once()
     mock_run.assert_called_once()
     assert not uds_file.exists()
