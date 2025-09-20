@@ -512,6 +512,7 @@ def run(
     app_dir: str | None = None,
     factory: bool = False,
     h11_max_incomplete_event_size: int | None = None,
+    factory_kwargs: dict[str, Any] | None = None,
 ) -> None:
     if app_dir is not None:
         sys.path.insert(0, app_dir)
@@ -563,6 +564,7 @@ def run(
         use_colors=use_colors,
         factory=factory,
         h11_max_incomplete_event_size=h11_max_incomplete_event_size,
+        factory_kwargs=factory_kwargs,
     )
     server = Server(config=config)
 
