@@ -407,7 +407,7 @@ class RequestResponseCycle:
     async def run_asgi(self, app: ASGI3Application) -> None:
         try:
             result = await app(  # type: ignore[func-returns-value]
-                self.scope, self.receive, self.send
+                self.scope.copy(), self.receive, self.send
             )
         except BaseException as exc:
             msg = "Exception in ASGI application\n"
