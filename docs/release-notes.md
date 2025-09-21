@@ -2,6 +2,13 @@
 toc_depth: 2
 ---
 
+## 0.36.0 (September 20, 2025)
+
+### Added
+
+* Support custom IOLOOPs (#2435)
+* Allow to provide importable string in `--http`, `--ws` and `--loop` (#2658)
+
 ## 0.35.0 (June 28, 2025)
 
 ### Added

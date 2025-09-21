@@ -85,9 +85,9 @@ required-version = ">=0.8.6"
 uvicorn = "uvicorn.main:main"
 
 [project.urls]
-Changelog = "https://www.uvicorn.org/release-notes"
+Changelog = "https://uvicorn.dev/release-notes"
 Funding = "https://github.com/sponsors/encode"
-Homepage = "https://www.uvicorn.org/"
+Homepage = "https://uvicorn.dev/"
 Source = "https://github.com/Kludex/uvicorn"
 
 [tool.hatch.version]
