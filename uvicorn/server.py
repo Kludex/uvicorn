@@ -5,6 +5,7 @@ import contextlib
 import logging
 import os
 import platform
+import random
 import signal
 import socket
 import sys
@@ -62,6 +63,13 @@ class Server:
         self.last_notified = 0.0
 
         self._captured_signals: list[int] = []
+
+        # Calculate jittered limit for max requests
+        if self.config.limit_max_requests is None:
+            self.jittered_limit_max_requests = None
+        else:
+            jitter = random.randint(0, self.config.max_requests_jitter)
+            self.jittered_limit_max_requests = self.config.limit_max_requests + jitter
 
     def run(self, sockets: list[socket.socket] | None = None) -> None:
         return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
@@ -253,7 +261,7 @@ class Server:
         if self.should_exit:
             return True
 
-        max_requests = self.config.limit_max_requests
+        max_requests = self.jittered_limit_max_requests
         if max_requests is not None and self.server_state.total_requests >= max_requests:
             logger.warning(f"Maximum request limit of {max_requests} exceeded. Terminating process.")
             return True
