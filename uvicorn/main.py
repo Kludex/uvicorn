@@ -273,6 +273,15 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     help="Maximum number of requests to service before terminating the process.",
 )
 @click.option(
+    "--max-requests-jitter",
+    type=int,
+    default=0,
+    help="The maximum jitter to add to the max_requests setting. "
+    "The jitter causes the restart per worker to be randomized by randint(0, max_requests_jitter). "
+    "This is intended to stagger worker restarts to avoid all workers restarting at the same time.",
+    show_default=True,
+)
+@click.option(
     "--timeout-keep-alive",
     type=int,
     default=5,
@@ -397,6 +406,7 @@ def main(
     limit_concurrency: int,
     backlog: int,
     limit_max_requests: int,
+    max_requests_jitter: int,
     timeout_keep_alive: int,
     timeout_graceful_shutdown: int | None,
     ssl_keyfile: str,
@@ -446,6 +456,7 @@ def main(
         limit_concurrency=limit_concurrency,
         backlog=backlog,
         limit_max_requests=limit_max_requests,
+        max_requests_jitter=max_requests_jitter,
         timeout_keep_alive=timeout_keep_alive,
         timeout_graceful_shutdown=timeout_graceful_shutdown,
         ssl_keyfile=ssl_keyfile,
@@ -498,6 +509,7 @@ def run(
     limit_concurrency: int | None = None,
     backlog: int = 2048,
     limit_max_requests: int | None = None,
+    max_requests_jitter: int = 0,
     timeout_keep_alive: int = 5,
     timeout_graceful_shutdown: int | None = None,
     ssl_keyfile: str | os.PathLike[str] | None = None,
@@ -550,6 +562,7 @@ def run(
         limit_concurrency=limit_concurrency,
         backlog=backlog,
         limit_max_requests=limit_max_requests,
+        max_requests_jitter=max_requests_jitter,
         timeout_keep_alive=timeout_keep_alive,
         timeout_graceful_shutdown=timeout_graceful_shutdown,
         ssl_keyfile=ssl_keyfile,
