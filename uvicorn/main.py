@@ -276,7 +276,7 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     "--timeout-keep-alive",
     type=int,
     default=5,
-    help="Close Keep-Alive connections if no new data is received within this timeout.",
+    help="Close Keep-Alive connections if no new data is received within this timeout (in seconds).",
     show_default=True,
 )
 @click.option(
