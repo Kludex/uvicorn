@@ -1,6 +1,6 @@
 site_name: Uvicorn
 site_description: The lightning-fast ASGI server.
-site_url: https://www.uvicorn.org
+site_url: https://uvicorn.dev
 strict: true
 
 theme:

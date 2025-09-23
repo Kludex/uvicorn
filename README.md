@@ -12,7 +12,8 @@
 [![Package version](https://badge.fury.io/py/uvicorn.svg)](https://pypi.python.org/pypi/uvicorn)
 [![Supported Python Version](https://img.shields.io/pypi/pyversions/uvicorn.svg?color=%2334D058)](https://pypi.org/project/uvicorn)
 
-**Documentation**: [https://www.uvicorn.org](https://www.uvicorn.org)
+**Documentation**: [https://uvicorn.dev](https://uvicorn.dev)
+**Source Code**: [https://www.github.com/Kludex/uvicorn](https://www.github.com/Kludex/uvicorn)
 
 ---
 
