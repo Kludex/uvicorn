@@ -285,6 +285,13 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     default=None,
     help="Maximum number of seconds to wait for graceful shutdown.",
 )
+@click.option(
+    "--timeout-worker-healthcheck",
+    type=int,
+    default=5,
+    help="Maximum number of seconds to wait for a worker to respond to a healthcheck.",
+    show_default=True,
+)
 @click.option("--ssl-keyfile", type=str, default=None, help="SSL key file", show_default=True)
 @click.option(
     "--ssl-certfile",
@@ -399,6 +406,7 @@ def main(
     limit_max_requests: int,
     timeout_keep_alive: int,
     timeout_graceful_shutdown: int | None,
+    timeout_worker_healthcheck: int,
     ssl_keyfile: str,
     ssl_certfile: str,
     ssl_keyfile_password: str,
@@ -448,6 +456,7 @@ def main(
         limit_max_requests=limit_max_requests,
         timeout_keep_alive=timeout_keep_alive,
         timeout_graceful_shutdown=timeout_graceful_shutdown,
+        timeout_worker_healthcheck=timeout_worker_healthcheck,
         ssl_keyfile=ssl_keyfile,
         ssl_certfile=ssl_certfile,
         ssl_keyfile_password=ssl_keyfile_password,
@@ -500,6 +509,7 @@ def run(
     limit_max_requests: int | None = None,
     timeout_keep_alive: int = 5,
     timeout_graceful_shutdown: int | None = None,
+    timeout_worker_healthcheck: int = 5,
     ssl_keyfile: str | os.PathLike[str] | None = None,
     ssl_certfile: str | os.PathLike[str] | None = None,
     ssl_keyfile_password: str | None = None,
@@ -552,6 +562,7 @@ def run(
         limit_max_requests=limit_max_requests,
         timeout_keep_alive=timeout_keep_alive,
         timeout_graceful_shutdown=timeout_graceful_shutdown,
+        timeout_worker_healthcheck=timeout_worker_healthcheck,
         ssl_keyfile=ssl_keyfile,
         ssl_certfile=ssl_certfile,
         ssl_keyfile_password=ssl_keyfile_password,
