@@ -1,0 +1,1309 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="The lightning-fast ASGI server.">
+      
+      
+      
+        <link rel="canonical" href="https://uvicorn.dev/server-behavior/">
+      
+      
+        <link rel="prev" href="../settings/">
+      
+      
+        <link rel="next" href="../concepts/asgi/">
+      
+      
+      <link rel="icon" href="../uvicorn.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.13">
+    
+    
+      
+        <title>Server Behavior - Uvicorn</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.342714a4.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-KTS6TXPD85"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-KTS6TXPD85",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-KTS6TXPD85",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+    
+  
+  <script>
+    // Redirect starlette.io to starlette.dev
+    if (window.location.hostname === 'www.uvicorn.org' || window.location.hostname === 'uvicorn.org') {
+      const newUrl = window.location.href.replace(/^https?:\/\/(www\.)?uvicorn\.org/, 'https://uvicorn.dev');
+      window.location.replace(newUrl);
+    }
+  </script>
+
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#server-behavior" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Uvicorn" class="md-header__button md-logo" aria-label="Uvicorn" data-md-component="logo">
+      
+  <img src="../uvicorn.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Uvicorn
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Server Behavior
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7M9 21a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-1H9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="blue" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7M9 21v-1h6v1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1m3-17a5 5 0 0 0-5 5c0 2.05 1.23 3.81 3 4.58V16h4v-2.42c1.77-.77 3-2.53 3-4.58a5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Kludex/uvicorn" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Kludex/uvicorn
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<!-- Determine class according to configuration -->
+ 
+ 
+ 
+
+ <!-- Main navigation -->
+ <nav
+   class="md-nav md-nav--primary"
+   aria-label="nav.title"
+   data-md-level="0"
+ >
+
+   <!-- Site title -->
+   <label class="md-nav__title" for="__drawer">
+     <a
+       href=".."
+       title="Uvicorn"
+       class="md-nav__button md-logo"
+       aria-label="Uvicorn"
+       data-md-component="logo"
+     >
+       
+  <img src="../uvicorn.png" alt="logo">
+
+     </a>
+     Uvicorn
+   </label>
+
+   <!-- Repository information -->
+   
+     <div class="md-nav__source">
+       <a href="https://github.com/Kludex/uvicorn" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Kludex/uvicorn
+  </div>
+</a>
+     </div>
+   
+
+   <!-- Navigation list -->
+   <ul class="md-nav__list" data-md-scrollfix>
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Welcome
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Installation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Settings
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Server Behavior
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Server Behavior
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#http-headers" class="md-nav__link">
+    <span class="md-ellipsis">
+        HTTP Headers
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#flow-control" class="md-nav__link">
+    <span class="md-ellipsis">
+        Flow Control
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="Flow Control">
+    <ul class="md-nav__list">
+        
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#write-flow-control" class="md-nav__link">
+    <span class="md-ellipsis">
+        Write flow control
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#read-flow-control" class="md-nav__link">
+    <span class="md-ellipsis">
+        Read flow control
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+              </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#request-and-response-bodies" class="md-nav__link">
+    <span class="md-ellipsis">
+        Request and Response bodies
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="Request and Response bodies">
+    <ul class="md-nav__list">
+        
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#response-completion" class="md-nav__link">
+    <span class="md-ellipsis">
+        Response completion
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#expect-100-continue" class="md-nav__link">
+    <span class="md-ellipsis">
+        Expect: 100-Continue
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#head-requests" class="md-nav__link">
+    <span class="md-ellipsis">
+        HEAD requests
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+              </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#timeouts" class="md-nav__link">
+    <span class="md-ellipsis">
+        Timeouts
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#resource-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+        Resource Limits
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#server-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+        Server Errors
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="Server Errors">
+    <ul class="md-nav__list">
+        
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#exceptions" class="md-nav__link">
+    <span class="md-ellipsis">
+        Exceptions
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#invalid-responses" class="md-nav__link">
+    <span class="md-ellipsis">
+        Invalid responses
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+              </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#graceful-process-shutdown" class="md-nav__link">
+    <span class="md-ellipsis">
+        Graceful Process Shutdown
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#http-pipelining" class="md-nav__link">
+    <span class="md-ellipsis">
+        HTTP Pipelining
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Concepts
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Concepts
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/asgi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    ASGI
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/lifespan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Lifespan
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/websockets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    WebSockets
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Deployment
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            Deployment
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Deployment
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Docker
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../release-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Release Notes
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Contributing
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sponsorship/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Sponsorship
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+   </ul>
+ </nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#http-headers" class="md-nav__link">
+    <span class="md-ellipsis">
+        HTTP Headers
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#flow-control" class="md-nav__link">
+    <span class="md-ellipsis">
+        Flow Control
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="Flow Control">
+    <ul class="md-nav__list">
+        
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#write-flow-control" class="md-nav__link">
+    <span class="md-ellipsis">
+        Write flow control
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#read-flow-control" class="md-nav__link">
+    <span class="md-ellipsis">
+        Read flow control
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+              </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#request-and-response-bodies" class="md-nav__link">
+    <span class="md-ellipsis">
+        Request and Response bodies
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="Request and Response bodies">
+    <ul class="md-nav__list">
+        
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#response-completion" class="md-nav__link">
+    <span class="md-ellipsis">
+        Response completion
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#expect-100-continue" class="md-nav__link">
+    <span class="md-ellipsis">
+        Expect: 100-Continue
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#head-requests" class="md-nav__link">
+    <span class="md-ellipsis">
+        HEAD requests
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+              </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#timeouts" class="md-nav__link">
+    <span class="md-ellipsis">
+        Timeouts
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#resource-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+        Resource Limits
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#server-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+        Server Errors
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="Server Errors">
+    <ul class="md-nav__list">
+        
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#exceptions" class="md-nav__link">
+    <span class="md-ellipsis">
+        Exceptions
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#invalid-responses" class="md-nav__link">
+    <span class="md-ellipsis">
+        Invalid responses
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+              </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#graceful-process-shutdown" class="md-nav__link">
+    <span class="md-ellipsis">
+        Graceful Process Shutdown
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#http-pipelining" class="md-nav__link">
+    <span class="md-ellipsis">
+        HTTP Pipelining
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="server-behavior">Server Behavior<a class="headerlink" href="#server-behavior" title="Permanent link">&para;</a></h1>
+<p>Uvicorn is designed with particular attention to connection and resource management, in order to provide a robust server implementation. It aims to ensure graceful behavior to either server or client errors, and resilience to poor client behavior or denial of service attacks.</p>
+<h2 id="http-headers">HTTP Headers<a class="headerlink" href="#http-headers" title="Permanent link">&para;</a></h2>
+<p>The <code>Server</code> and <code>Date</code> headers are added to all outgoing requests.</p>
+<p>If a <code>Connection: Close</code> header is included then Uvicorn will close the connection after the response. Otherwise connections will stay open, pending the keep-alive timeout.</p>
+<p>If a <code>Content-Length</code> header is included then Uvicorn will ensure that the content length of the response body matches the value in the header, and raise an error otherwise.</p>
+<p>If no <code>Content-Length</code> header is included then Uvicorn will use chunked encoding for the response body, and will set a <code>Transfer-Encoding</code> header if required.</p>
+<p>If a <code>Transfer-Encoding</code> header is included then any <code>Content-Length</code> header will be ignored.</p>
+<p>HTTP headers are mandated to be case-insensitive. Uvicorn will always send response headers strictly in lowercase.</p>
+<hr />
+<h2 id="flow-control">Flow Control<a class="headerlink" href="#flow-control" title="Permanent link">&para;</a></h2>
+<p>Proper flow control ensures that large amounts of data do not become buffered on the transport when either side of a connection is sending data faster than its counterpart is able to handle.</p>
+<h3 id="write-flow-control">Write flow control<a class="headerlink" href="#write-flow-control" title="Permanent link">&para;</a></h3>
+<p>If the write buffer passes a high water mark, then Uvicorn ensures the ASGI <code>send</code> messages will only return once the write buffer has been drained below the low water mark.</p>
+<h3 id="read-flow-control">Read flow control<a class="headerlink" href="#read-flow-control" title="Permanent link">&para;</a></h3>
+<p>Uvicorn will pause reading from a transport once the buffered request body hits a high water mark, and will only resume once <code>receive</code> has been called, or once the response has been sent.</p>
+<hr />
+<h2 id="request-and-response-bodies">Request and Response bodies<a class="headerlink" href="#request-and-response-bodies" title="Permanent link">&para;</a></h2>
+<h3 id="response-completion">Response completion<a class="headerlink" href="#response-completion" title="Permanent link">&para;</a></h3>
+<p>Once a response has been sent, Uvicorn will no longer buffer any remaining request body. Any later calls to <code>receive</code> will return an <code>http.disconnect</code> message.</p>
+<p>Together with the read flow control, this behavior ensures that responses that return without reading the request body will not stream any substantial amounts of data into memory.</p>
+<h3 id="expect-100-continue">Expect: 100-Continue<a class="headerlink" href="#expect-100-continue" title="Permanent link">&para;</a></h3>
+<p>The <code>Expect: 100-Continue</code> header may be sent by clients to require a confirmation from the server before uploading the request body. This can be used to ensure that large request bodies are only sent once the client has confirmation that the server is willing to accept the request.</p>
+<p>Uvicorn ensures that any required <code>100 Continue</code> confirmations are only sent if the ASGI application calls <code>receive</code> to read the request body.</p>
+<p>Note that proxy configurations may not necessarily forward on <code>Expect: 100-Continue</code> headers. In particular, Nginx defaults to buffering request bodies, and automatically sends <code>100 Continues</code> rather than passing the header on to the upstream server.</p>
+<h3 id="head-requests">HEAD requests<a class="headerlink" href="#head-requests" title="Permanent link">&para;</a></h3>
+<p>Uvicorn will strip any response body from HTTP requests with the <code>HEAD</code> method.</p>
+<p>Applications should generally treat <code>HEAD</code> requests in the same manner as <code>GET</code> requests, in order to ensure that identical headers are sent in both cases, and that any ASGI middleware that modifies the headers will operate identically in either case.</p>
+<p>One exception to this might be if your application serves large file downloads, in which case you might wish to only generate the response headers.</p>
+<hr />
+<h2 id="timeouts">Timeouts<a class="headerlink" href="#timeouts" title="Permanent link">&para;</a></h2>
+<p>Uvicorn provides the following timeouts:</p>
+<ul>
+<li>Keep-Alive. Defaults to 5 seconds. Between requests, connections must receive new data within this period or be disconnected.</li>
+</ul>
+<hr />
+<h2 id="resource-limits">Resource Limits<a class="headerlink" href="#resource-limits" title="Permanent link">&para;</a></h2>
+<p>Uvicorn provides the following resource limiting:</p>
+<ul>
+<li>Concurrency. Defaults to <code>None</code>. If set, this provides a maximum number of concurrent tasks <em>or</em> open connections that should be allowed. Any new requests or connections that occur once this limit has been reached will result in a "503 Service Unavailable" response. Setting this value to a limit that you know your servers are able to support will help ensure reliable resource usage, even against significantly over-resourced servers.</li>
+<li>Max requests. Defaults to <code>None</code>. If set, this provides a maximum number of HTTP requests that will be serviced before terminating a process. Together with a process manager this can be used to prevent memory leaks from impacting long running processes.</li>
+</ul>
+<hr />
+<h2 id="server-errors">Server Errors<a class="headerlink" href="#server-errors" title="Permanent link">&para;</a></h2>
+<p>Server errors will be logged at the <code>error</code> log level. All logging defaults to being written to <code>stdout</code>.</p>
+<h3 id="exceptions">Exceptions<a class="headerlink" href="#exceptions" title="Permanent link">&para;</a></h3>
+<p>If an exception is raised by an ASGI application, and a response has not yet been sent on the connection, then a <code>500 Server Error</code> HTTP response will be sent.</p>
+<p>Uvicorn sends the headers and the status code as soon as it receives from the ASGI application. This means that if the application sends a <a href="https://asgi.readthedocs.io/en/latest/specs/www.html#response-start-send-event">Response Start</a>
+message with a status code of <code>200 OK</code>, and then an exception is raised, the response will still be sent with a status code of <code>200 OK</code>.</p>
+<h3 id="invalid-responses">Invalid responses<a class="headerlink" href="#invalid-responses" title="Permanent link">&para;</a></h3>
+<p>Uvicorn will ensure that ASGI applications send the correct sequence of messages, and will raise errors otherwise. This includes checking for no response sent, partial response sent, or invalid message sequences being sent.</p>
+<hr />
+<h2 id="graceful-process-shutdown">Graceful Process Shutdown<a class="headerlink" href="#graceful-process-shutdown" title="Permanent link">&para;</a></h2>
+<p>Graceful process shutdowns are particularly important during a restart period. During this period you want to:</p>
+<ul>
+<li>Start a number of new server processes to handle incoming requests, listening on the existing socket.</li>
+<li>Stop the previous server processes from listening on the existing socket.</li>
+<li>Close any connections that are not currently waiting on an HTTP response, and wait for any other connections to finalize their HTTP responses.</li>
+<li>Wait for any background tasks to run to completion, such as occurs when the ASGI application has sent the HTTP response, but the asyncio task has not yet run to completion.</li>
+</ul>
+<p>Uvicorn handles process shutdown gracefully, ensuring that connections are properly finalized, and all tasks have run to completion. During a shutdown period Uvicorn will ensure that responses and tasks must still complete within the configured timeout periods.</p>
+<hr />
+<h2 id="http-pipelining">HTTP Pipelining<a class="headerlink" href="#http-pipelining" title="Permanent link">&para;</a></h2>
+<p>HTTP/1.1 provides support for sending multiple requests on a single connection, before having received each corresponding response. Servers are required to support HTTP pipelining, but it is now generally accepted to lead to implementation issues. It is not enabled on browsers, and may not necessarily be enabled on any proxies that the HTTP request passes through.</p>
+<p>Uvicorn supports pipelining pragmatically. It will queue up any pipelined HTTP requests, and pause reading from the underlying transport. It will not start processing pipelined requests until each response has been dealt with in turn.</p>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../settings/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Settings">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Settings
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../concepts/asgi/" class="md-footer__link md-footer__link--next" aria-label="Next: ASGI">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                ASGI
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": ["search.suggest", "search.highlight", "content.tabs.link", "content.code.annotate", "content.code.copy", "navigation.path", "navigation.sections", "navigation.top", "navigation.tracking", "navigation.footer", "toc.follow", "announce.dismiss"], "search": "../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.13a4f30d.min.js"></script>
+      
+    
+  </body>
+</html>

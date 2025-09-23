@@ -1,0 +1,1347 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="The lightning-fast ASGI server.">
+      
+      
+      
+        <link rel="canonical" href="https://uvicorn.dev/settings/">
+      
+      
+        <link rel="prev" href="../installation/">
+      
+      
+        <link rel="next" href="../server-behavior/">
+      
+      
+      <link rel="icon" href="../uvicorn.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.13">
+    
+    
+      
+        <title>Settings - Uvicorn</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.342714a4.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-KTS6TXPD85"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-KTS6TXPD85",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-KTS6TXPD85",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+    
+  
+  <script>
+    // Redirect starlette.io to starlette.dev
+    if (window.location.hostname === 'www.uvicorn.org' || window.location.hostname === 'uvicorn.org') {
+      const newUrl = window.location.href.replace(/^https?:\/\/(www\.)?uvicorn\.org/, 'https://uvicorn.dev');
+      window.location.replace(newUrl);
+    }
+  </script>
+
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#settings" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Uvicorn" class="md-header__button md-logo" aria-label="Uvicorn" data-md-component="logo">
+      
+  <img src="../uvicorn.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Uvicorn
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Settings
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7M9 21a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-1H9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="blue" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7M9 21v-1h6v1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1m3-17a5 5 0 0 0-5 5c0 2.05 1.23 3.81 3 4.58V16h4v-2.42c1.77-.77 3-2.53 3-4.58a5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Kludex/uvicorn" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Kludex/uvicorn
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<!-- Determine class according to configuration -->
+ 
+ 
+ 
+
+ <!-- Main navigation -->
+ <nav
+   class="md-nav md-nav--primary"
+   aria-label="nav.title"
+   data-md-level="0"
+ >
+
+   <!-- Site title -->
+   <label class="md-nav__title" for="__drawer">
+     <a
+       href=".."
+       title="Uvicorn"
+       class="md-nav__button md-logo"
+       aria-label="Uvicorn"
+       data-md-component="logo"
+     >
+       
+  <img src="../uvicorn.png" alt="logo">
+
+     </a>
+     Uvicorn
+   </label>
+
+   <!-- Repository information -->
+   
+     <div class="md-nav__source">
+       <a href="https://github.com/Kludex/uvicorn" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Kludex/uvicorn
+  </div>
+</a>
+     </div>
+   
+
+   <!-- Navigation list -->
+   <ul class="md-nav__list" data-md-scrollfix>
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Welcome
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Installation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Settings
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Settings
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#configuration-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+        Configuration Methods
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#application" class="md-nav__link">
+    <span class="md-ellipsis">
+        Application
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#socket-binding" class="md-nav__link">
+    <span class="md-ellipsis">
+        Socket Binding
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#development" class="md-nav__link">
+    <span class="md-ellipsis">
+        Development
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="Development">
+    <ul class="md-nav__list">
+        
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#reloading-without-watchfiles" class="md-nav__link">
+    <span class="md-ellipsis">
+        Reloading without watchfiles
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#reloading-with-watchfiles" class="md-nav__link">
+    <span class="md-ellipsis">
+        Reloading with watchfiles
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+              </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#production" class="md-nav__link">
+    <span class="md-ellipsis">
+        Production
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#logging" class="md-nav__link">
+    <span class="md-ellipsis">
+        Logging
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+        Implementation
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#application-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+        Application Interface
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#http" class="md-nav__link">
+    <span class="md-ellipsis">
+        HTTP
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#https" class="md-nav__link">
+    <span class="md-ellipsis">
+        HTTPS
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#resource-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+        Resource Limits
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#timeouts" class="md-nav__link">
+    <span class="md-ellipsis">
+        Timeouts
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../server-behavior/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Server Behavior
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Concepts
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Concepts
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/asgi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    ASGI
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/lifespan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Lifespan
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/websockets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    WebSockets
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Deployment
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            Deployment
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Deployment
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Docker
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../release-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Release Notes
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Contributing
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sponsorship/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Sponsorship
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+     
+   </ul>
+ </nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#configuration-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+        Configuration Methods
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#application" class="md-nav__link">
+    <span class="md-ellipsis">
+        Application
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#socket-binding" class="md-nav__link">
+    <span class="md-ellipsis">
+        Socket Binding
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#development" class="md-nav__link">
+    <span class="md-ellipsis">
+        Development
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="Development">
+    <ul class="md-nav__list">
+        
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#reloading-without-watchfiles" class="md-nav__link">
+    <span class="md-ellipsis">
+        Reloading without watchfiles
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+             
+         <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#reloading-with-watchfiles" class="md-nav__link">
+    <span class="md-ellipsis">
+        Reloading with watchfiles
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+              </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#production" class="md-nav__link">
+    <span class="md-ellipsis">
+        Production
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#logging" class="md-nav__link">
+    <span class="md-ellipsis">
+        Logging
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+        Implementation
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#application-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+        Application Interface
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#http" class="md-nav__link">
+    <span class="md-ellipsis">
+        HTTP
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#https" class="md-nav__link">
+    <span class="md-ellipsis">
+        HTTPS
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#resource-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+        Resource Limits
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#timeouts" class="md-nav__link">
+    <span class="md-ellipsis">
+        Timeouts
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="settings">Settings<a class="headerlink" href="#settings" title="Permanent link">&para;</a></h1>
+<p>Use the following options to configure Uvicorn, when running from the command line.</p>
+<h2 id="configuration-methods">Configuration Methods<a class="headerlink" href="#configuration-methods" title="Permanent link">&para;</a></h2>
+<p>There are three ways to configure Uvicorn:</p>
+<ol>
+<li>
+<p><strong>Command Line</strong>: Use command line options when running Uvicorn directly.
+   <div class="highlight"><pre><span></span><code>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--host<span class="w"> </span><span class="m">0</span>.0.0.0<span class="w"> </span>--port<span class="w"> </span><span class="m">8000</span>
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>Programmatic</strong>: Use keyword arguments when running programmatically with <code>uvicorn.run()</code>.
+   <div class="highlight"><pre><span></span><code><span class="n">uvicorn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;main:app&quot;</span><span class="p">,</span> <span class="n">host</span><span class="o">=</span><span class="s2">&quot;0.0.0.0&quot;</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">8000</span><span class="p">)</span>
+</code></pre></div></p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>When using <code>reload=True</code> or <code>workers=NUM</code>, you should put <code>uvicorn.run</code> into
+an <code>if __name__ == '__main__'</code> clause in the main module.</p>
+</div>
+</li>
+<li>
+<p><strong>Environment Variables</strong>: Use environment variables with the prefix <code>UVICORN_</code>.
+   <div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">UVICORN_HOST</span><span class="o">=</span><span class="s2">&quot;0.0.0.0&quot;</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">UVICORN_PORT</span><span class="o">=</span><span class="s2">&quot;8000&quot;</span>
+uvicorn<span class="w"> </span>main:app
+</code></pre></div></p>
+</li>
+</ol>
+<p>CLI options and the arguments for <code>uvicorn.run()</code> take precedence over environment variables.</p>
+<p>Also note that <code>UVICORN_*</code> prefixed settings cannot be used from within an environment
+configuration file. Using an environment configuration file with the <code>--env-file</code> flag is
+intended for configuring the ASGI application that uvicorn runs, rather than configuring
+uvicorn itself.</p>
+<h2 id="application">Application<a class="headerlink" href="#application" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>APP</code> - The ASGI application to run, in the format <code>"&lt;module&gt;:&lt;attribute&gt;"</code>.</li>
+<li><code>--factory</code> - Treat <code>APP</code> as an application factory, i.e. a <code>() -&gt; &lt;ASGI app&gt;</code> callable.</li>
+<li><code>--app-dir &lt;path&gt;</code> - Look for APP in the specified directory by adding it to the PYTHONPATH. <strong>Default:</strong> <em>Current working directory</em>.</li>
+</ul>
+<h2 id="socket-binding">Socket Binding<a class="headerlink" href="#socket-binding" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>--host &lt;str&gt;</code> - Bind socket to this host. Use <code>--host 0.0.0.0</code> to make the application available on your local network. IPv6 addresses are supported, for example: <code>--host '::'</code>. <strong>Default:</strong> <em>'127.0.0.1'</em>.</li>
+<li><code>--port &lt;int&gt;</code> - Bind to a socket with this port. If set to 0, an available port will be picked. <strong>Default:</strong> <em>8000</em>.</li>
+<li><code>--uds &lt;path&gt;</code> - Bind to a UNIX domain socket, for example <code>--uds /tmp/uvicorn.sock</code>. Useful if you want to run Uvicorn behind a reverse proxy.</li>
+<li><code>--fd &lt;int&gt;</code> - Bind to socket from this file descriptor. Useful if you want to run Uvicorn within a process manager.</li>
+</ul>
+<h2 id="development">Development<a class="headerlink" href="#development" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>--reload</code> - Enable auto-reload. Uvicorn supports two versions of auto-reloading behavior enabled by this option. <strong>Default:</strong> <em>False</em>.</li>
+<li><code>--reload-dir &lt;path&gt;</code> - Specify which directories to watch for python file changes. May be used multiple times. If unused, then by default the whole current directory will be watched. If you are running programmatically use <code>reload_dirs=[]</code> and pass a list of strings.</li>
+<li><code>--reload-delay &lt;float&gt;</code> - Delay between previous and next check if application needs to be reloaded. <strong>Default:</strong> <em>0.25</em>.</li>
+</ul>
+<h3 id="reloading-without-watchfiles">Reloading without watchfiles<a class="headerlink" href="#reloading-without-watchfiles" title="Permanent link">&para;</a></h3>
+<p>If Uvicorn <em>cannot</em> load <a href="https://pypi.org/project/watchfiles/">watchfiles</a> at runtime, it will periodically look for changes in modification times to all <code>*.py</code> files (and only <code>*.py</code> files) inside of its monitored directories. See the <code>--reload-dir</code> option. Specifying other file extensions is not supported unless watchfiles is installed. See the <code>--reload-include</code> and <code>--reload-exclude</code> options for details.</p>
+<h3 id="reloading-with-watchfiles">Reloading with watchfiles<a class="headerlink" href="#reloading-with-watchfiles" title="Permanent link">&para;</a></h3>
+<p>For more nuanced control over which file modifications trigger reloads, install <code>uvicorn[standard]</code>, which includes watchfiles as a dependency. Alternatively, install <a href="https://pypi.org/project/watchfiles/">watchfiles</a> where Uvicorn can see it.</p>
+<p>Using Uvicorn with watchfiles will enable the following options (which are otherwise ignored):</p>
+<ul>
+<li><code>--reload-include &lt;glob-pattern&gt;</code> - Specify a glob pattern to match files or directories which will be watched. May be used multiple times. By default the following patterns are included: <code>*.py</code>. These defaults can be overwritten by including them in <code>--reload-exclude</code>.</li>
+<li><code>--reload-exclude &lt;glob-pattern&gt;</code> - Specify a glob pattern to match files or directories which will excluded from watching. May be used multiple times. By default the following patterns are excluded: <code>.*, .py[cod], .sw.*, ~*</code>. These defaults can be overwritten by including them in <code>--reload-include</code>.</li>
+</ul>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>When using Uvicorn through <a href="https://en.wikipedia.org/wiki/Windows_Subsystem_for_Linux">WSL</a>, you might
+have to set the <code>WATCHFILES_FORCE_POLLING</code> environment variable, for file changes to trigger a reload.
+See <a href="https://watchfiles.helpmanual.io/api/watch/">watchfiles documentation</a> for further details.</p>
+</div>
+<h2 id="production">Production<a class="headerlink" href="#production" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>--workers &lt;int&gt;</code> - Number of worker processes. Defaults to the <code>$WEB_CONCURRENCY</code> environment variable if available, or 1. Not valid with <code>--reload</code>.</li>
+<li><code>--env-file &lt;path&gt;</code> - Environment configuration file for the ASGI application. <strong>Default:</strong> <em>None</em>.</li>
+<li><code>--timeout-worker-healthcheck &lt;int&gt;</code> - Maximum number of seconds to wait for a worker to respond to a healthcheck. <strong>Default:</strong> <em>5</em>.</li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The <code>--reload</code> and <code>--workers</code> arguments are mutually exclusive. You cannot use both at the same time.</p>
+</div>
+<h2 id="logging">Logging<a class="headerlink" href="#logging" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>--log-config &lt;path&gt;</code> - Logging configuration file. <strong>Options:</strong> <em><code>dictConfig()</code> formats: .json, .yaml</em>. Any other format will be processed with <code>fileConfig()</code>. Set the <code>formatters.default.use_colors</code> and <code>formatters.access.use_colors</code> values to override the auto-detected behavior.<ul>
+<li>If you wish to use a YAML file for your logging config, you will need to include PyYAML as a dependency for your project or install uvicorn with the <code>[standard]</code> optional extras.</li>
+</ul>
+</li>
+<li><code>--log-level &lt;str&gt;</code> - Set the log level. <strong>Options:</strong> <em>'critical', 'error', 'warning', 'info', 'debug', 'trace'.</em> <strong>Default:</strong> <em>'info'</em>.</li>
+<li><code>--no-access-log</code> - Disable access log only, without changing log level.</li>
+<li><code>--use-colors / --no-use-colors</code> - Enable / disable colorized formatting of the log records. If not set, colors will be auto-detected. This option is ignored if the <code>--log-config</code> CLI option is used.</li>
+</ul>
+<h2 id="implementation">Implementation<a class="headerlink" href="#implementation" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>--loop &lt;str&gt;</code> - Set the event loop implementation. The uvloop implementation provides greater performance, but is not compatible with Windows or PyPy. <strong>Options:</strong> <em>'auto', 'asyncio', 'uvloop'.</em> <strong>Default:</strong> <em>'auto'</em>.</li>
+<li><code>--http &lt;str&gt;</code> - Set the HTTP protocol implementation. The httptools implementation provides greater performance, but it not compatible with PyPy. <strong>Options:</strong> <em>'auto', 'h11', 'httptools'.</em> <strong>Default:</strong> <em>'auto'</em>.</li>
+<li><code>--ws &lt;str&gt;</code> - Set the WebSockets protocol implementation. Either of the <code>websockets</code> and <code>wsproto</code> packages are supported. There are two versions of <code>websockets</code> supported: <code>websockets</code> and <code>websockets-sansio</code>. Use <code>'none'</code> to ignore all websocket requests. <strong>Options:</strong> <em>'auto', 'none', 'websockets', 'websockets-sansio', 'wsproto'.</em> <strong>Default:</strong> <em>'auto'</em>.</li>
+<li><code>--ws-max-size &lt;int&gt;</code> - Set the WebSockets max message size, in bytes. Only available with the <code>websockets</code> protocol. <strong>Default:</strong> <em>16777216</em> (16 MB).</li>
+<li><code>--ws-max-queue &lt;int&gt;</code> - Set the maximum length of the WebSocket incoming message queue. Only available with the <code>websockets</code> protocol. <strong>Default:</strong> <em>32</em>.</li>
+<li><code>--ws-ping-interval &lt;float&gt;</code> - Set the WebSockets ping interval, in seconds. Only available with the <code>websockets</code> protocol. <strong>Default:</strong> <em>20.0</em>.</li>
+<li><code>--ws-ping-timeout &lt;float&gt;</code> - Set the WebSockets ping timeout, in seconds. Only available with the <code>websockets</code> protocol. <strong>Default:</strong> <em>20.0</em>.</li>
+<li><code>--ws-per-message-deflate &lt;bool&gt;</code> - Enable/disable WebSocket per-message-deflate compression. Only available with the <code>websockets</code> protocol. <strong>Default:</strong> <em>True</em>.</li>
+<li><code>--lifespan &lt;str&gt;</code> - Set the Lifespan protocol implementation. <strong>Options:</strong> <em>'auto', 'on', 'off'.</em> <strong>Default:</strong> <em>'auto'</em>.</li>
+<li><code>--h11-max-incomplete-event-size &lt;int&gt;</code> - Set the maximum number of bytes to buffer of an incomplete event. Only available for <code>h11</code> HTTP protocol implementation. <strong>Default:</strong> <em>16384</em> (16 KB).</li>
+</ul>
+<h2 id="application-interface">Application Interface<a class="headerlink" href="#application-interface" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>--interface &lt;str&gt;</code> - Select ASGI3, ASGI2, or WSGI as the application interface.
+Note that WSGI mode always disables WebSocket support, as it is not supported by the WSGI interface.
+<strong>Options:</strong> <em>'auto', 'asgi3', 'asgi2', 'wsgi'.</em> <strong>Default:</strong> <em>'auto'</em>.</li>
+</ul>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Uvicorn's native WSGI implementation is deprecated, you should switch
+to <a href="https://github.com/abersheeran/a2wsgi">a2wsgi</a> (<code>pip install a2wsgi</code>).</p>
+</div>
+<h2 id="http">HTTP<a class="headerlink" href="#http" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>--root-path &lt;str&gt;</code> - Set the ASGI <code>root_path</code> for applications submounted below a given URL path. <strong>Default:</strong> <em>""</em>.</li>
+<li><code>--proxy-headers / --no-proxy-headers</code> - Enable/Disable X-Forwarded-Proto, X-Forwarded-For to populate remote address info. Defaults to enabled, but is restricted to only trusting connecting IPs in the <code>forwarded-allow-ips</code> configuration.</li>
+<li><code>--forwarded-allow-ips &lt;comma-separated-list&gt;</code> - Comma separated list of IP Addresses, IP Networks, or literals (e.g. UNIX Socket path) to trust with proxy headers. Defaults to the <code>$FORWARDED_ALLOW_IPS</code> environment variable if available, or '127.0.0.1'. The literal <code>'*'</code> means trust everything.</li>
+<li><code>--server-header / --no-server-header</code> - Enable/Disable default <code>Server</code> header. <strong>Default:</strong> <em>True</em>.</li>
+<li><code>--date-header / --no-date-header</code> - Enable/Disable default <code>Date</code> header. <strong>Default:</strong> <em>True</em>.</li>
+<li><code>--header &lt;name:value&gt;</code> - Specify custom default HTTP response headers as a Name:Value pair. May be used multiple times.</li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The <code>--no-date-header</code> flag doesn't have effect on the <code>websockets</code> implementation.</p>
+</div>
+<h2 id="https">HTTPS<a class="headerlink" href="#https" title="Permanent link">&para;</a></h2>
+<p>The <a href="https://docs.python.org/3/library/ssl.html#ssl.SSLContext">SSL context</a> can be configured with the following options:</p>
+<ul>
+<li><code>--ssl-keyfile &lt;path&gt;</code> - The SSL key file.</li>
+<li><code>--ssl-keyfile-password &lt;str&gt;</code> - The password to decrypt the ssl key.</li>
+<li><code>--ssl-certfile &lt;path&gt;</code> - The SSL certificate file.</li>
+<li><code>--ssl-version &lt;int&gt;</code> - The SSL version to use. <strong>Default:</strong> <em>ssl.PROTOCOL_TLS_SERVER</em>.</li>
+<li><code>--ssl-cert-reqs &lt;int&gt;</code> - Whether client certificate is required. <strong>Default:</strong> <em>ssl.CERT_NONE</em>.</li>
+<li><code>--ssl-ca-certs &lt;str&gt;</code> - The CA certificates file.</li>
+<li><code>--ssl-ciphers &lt;str&gt;</code> - The ciphers to use. <strong>Default:</strong> <em>"TLSv1"</em>.</li>
+</ul>
+<p>To understand more about the SSL context options, please refer to the <a href="https://docs.python.org/3/library/ssl.html">Python documentation</a>.</p>
+<h2 id="resource-limits">Resource Limits<a class="headerlink" href="#resource-limits" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>--limit-concurrency &lt;int&gt;</code> - Maximum number of concurrent connections or tasks to allow, before issuing HTTP 503 responses. Useful for ensuring known memory usage patterns even under over-resourced loads.</li>
+<li><code>--limit-max-requests &lt;int&gt;</code> - Maximum number of requests to service before terminating the process. Useful when running together with a process manager, for preventing memory leaks from impacting long-running processes.</li>
+<li><code>--backlog &lt;int&gt;</code> - Maximum number of connections to hold in backlog. Relevant for heavy incoming traffic. <strong>Default:</strong> <em>2048</em>.</li>
+</ul>
+<h2 id="timeouts">Timeouts<a class="headerlink" href="#timeouts" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>--timeout-keep-alive &lt;int&gt;</code> - Close Keep-Alive connections if no new data is received within this timeout (in seconds). <strong>Default:</strong> <em>5</em>.</li>
+<li><code>--timeout-graceful-shutdown &lt;int&gt;</code> - Maximum number of seconds to wait for graceful shutdown. After this timeout, the server will start terminating requests.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../installation/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Installation">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Installation
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../server-behavior/" class="md-footer__link md-footer__link--next" aria-label="Next: Server Behavior">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Server Behavior
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": ["search.suggest", "search.highlight", "content.tabs.link", "content.code.annotate", "content.code.copy", "navigation.path", "navigation.sections", "navigation.top", "navigation.tracking", "navigation.footer", "toc.follow", "announce.dismiss"], "search": "../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.13a4f30d.min.js"></script>
+      
+    
+  </body>
+</html>
