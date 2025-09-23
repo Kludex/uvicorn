@@ -2,6 +2,13 @@
 toc_depth: 2
 ---
 
+## 0.37.0 (September 23, 2025)
+
+### Added
+
+* Add `--timeout-worker-healthcheck` option (#2711)
+* Add `os.PathLike[str]` type to `ssl_ca_certs` (#2676)
+
 ## 0.36.1 (September 23, 2025)
 
 ### Fixed
