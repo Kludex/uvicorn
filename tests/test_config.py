@@ -585,3 +585,11 @@ def test_custom_loop__not_importable_custom_loop_setup_function(caplog: pytest.L
         'Error loading custom loop setup function. Attribute "non_existing_setup_function" not found in module "tests.test_config".'  # noqa: E501
         == error_messages.pop(0)
     )
+
+
+def test_setup_event_loop_is_removed(caplog: pytest.LogCaptureFixture) -> None:
+    config = Config(app=asgi_app)
+    with pytest.raises(
+        AttributeError, match="The `setup_event_loop` method was replaced by `get_loop_factory` in uvicorn 0.36.0."
+    ):
+        config.setup_event_loop()

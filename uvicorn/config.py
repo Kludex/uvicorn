@@ -473,9 +473,16 @@ class Config:
 
         self.loaded = True
 
+    def setup_event_loop(self) -> None:
+        raise AttributeError(
+            "The `setup_event_loop` method was replaced by `get_loop_factory` in uvicorn 0.36.0.\n"
+            "None of those methods are supposed to be used directly. If you are doing it, please let me know here: "
+            "https://github.com/Kludex/uvicorn/discussions/2706. Thank you, and sorry for the inconvenience."
+        )
+
     def get_loop_factory(self) -> Callable[[], asyncio.AbstractEventLoop] | None:
         if self.loop in LOOP_FACTORIES:
-            loop_factory: Callable | None = import_from_string(LOOP_FACTORIES[self.loop])
+            loop_factory: Callable[..., Any] | None = import_from_string(LOOP_FACTORIES[self.loop])
         else:
             try:
                 return import_from_string(self.loop)
