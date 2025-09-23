@@ -101,12 +101,18 @@ async def test_max_requests_jitter_warn_log(
     unused_tcp_port: int, http_protocol_cls: type[H11Protocol | HttpToolsProtocol], caplog: pytest.LogCaptureFixture
 ):
     caplog.set_level(logging.WARNING, logger="uvicorn.error")
-    config = Config(app=app, limit_max_requests=1, max_requests_jitter=2,  port=unused_tcp_port, http=http_protocol_cls)
+    config = Config(app=app, limit_max_requests=1, max_requests_jitter=2, port=unused_tcp_port, http=http_protocol_cls)
     server = Server(config)
     assert 1 <= server.jittered_limit_max_requests <= 3
     async with run_server(config):
         async with httpx.AsyncClient() as client:
-            tasks = [client.get(f"http://127.0.0.1:{unused_tcp_port}") for _ in range(server.jittered_limit_max_requests + 1)]
+            tasks = [
+                client.get(f"http://127.0.0.1:{unused_tcp_port}") for _ in range(server.jittered_limit_max_requests + 1)
+            ]
             responses = await asyncio.gather(*tasks)
             assert len(responses) == server.jittered_limit_max_requests + 1
-    assert "Maximum request limit of 1" in caplog.text or "Maximum request limit of 2" in caplog.text or "Maximum request limit of 3" in caplog.text
+    assert (
+        "Maximum request limit of 1" in caplog.text
+        or "Maximum request limit of 2" in caplog.text
+        or "Maximum request limit of 3" in caplog.text
+    )
