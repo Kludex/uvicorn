@@ -223,7 +223,7 @@ class WebSocketProtocol(WebSocketServerProtocol):
         ]
         self.transport.write(b"".join(content))
         # Allow handler task to terminate cleanly, as websockets doesn't cancel it by
-        # itself (see https://github.com/encode/uvicorn/issues/920)
+        # itself (see https://github.com/Kludex/uvicorn/issues/920)
         self.handshake_started_event.set()
 
     async def ws_handler(self, protocol: WebSocketServerProtocol, path: str) -> Any:  # type: ignore[override]

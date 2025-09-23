@@ -754,7 +754,7 @@ async def test_server_reject_connection(
         # -- At this point websockets' recv() is unusable. --
 
         # This doesn't raise `TypeError`:
-        # See https://github.com/encode/uvicorn/issues/244
+        # See https://github.com/Kludex/uvicorn/issues/244
         disconnected_message = await receive()
 
     async def websocket_session(url: str):

@@ -74,7 +74,7 @@ class UvicornWorker(Worker):
     def init_signals(self) -> None:
         # Reset signals so Gunicorn doesn't swallow subprocess return codes
         # other signals are set up by Server.install_signal_handlers()
-        # See: https://github.com/encode/uvicorn/issues/894
+        # See: https://github.com/Kludex/uvicorn/issues/894
         for s in self.SIGNALS:
             signal.signal(s, signal.SIG_DFL)
 
@@ -85,7 +85,7 @@ class UvicornWorker(Worker):
     def _install_sigquit_handler(self) -> None:
         """Install a SIGQUIT handler on workers.
 
-        - https://github.com/encode/uvicorn/issues/1116
+        - https://github.com/Kludex/uvicorn/issues/1116
         - https://github.com/benoitc/gunicorn/issues/2604
         """
 

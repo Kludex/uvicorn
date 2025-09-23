@@ -46,14 +46,49 @@ standard = [
     "websockets>=10.4",
 ]
 
+[dependency-groups]
+dev = [
+    # We add uvicorn[standard] so `uv sync` considers the extras.
+    "uvicorn[standard]",
+    "ruff==0.11.9",
+    "pytest==8.3.5",
+    "pytest-mock==3.14.0",
+    "pytest-xdist[psutil]==3.6.1",
+    "mypy==1.15.0",
+    "types-click==7.1.8",
+    "types-pyyaml==6.0.12.20250402",
+    "trustme==1.2.1",
+    "cryptography==44.0.3",
+    "coverage==7.8.0",
+    "coverage-conditional-plugin==0.9.0",
+    "coverage-enable-subprocess==1.0",
+    "httpx==0.28.1",
+    # check dist
+    "twine==6.1.0",
+    # Explicit optionals,
+    "a2wsgi==1.10.8",
+    "wsproto==1.2.0",
+    "websockets==13.1",
+]
+docs = [
+    "mkdocs==1.6.1",
+    "mkdocs-material==9.6.13",
+    "mkdocstrings-python==1.16.12",
+    "mkdocs-llmstxt==0.2.0",
+]
+
+[tool.uv]
+default-groups = ["dev", "docs"]
+required-version = ">=0.8.6"
+
 [project.scripts]
 uvicorn = "uvicorn.main:main"
 
 [project.urls]
-Changelog = "https://www.uvicorn.org/release-notes"
+Changelog = "https://uvicorn.dev/release-notes"
 Funding = "https://github.com/sponsors/encode"
-Homepage = "https://www.uvicorn.org/"
-Source = "https://github.com/encode/uvicorn"
+Homepage = "https://uvicorn.dev/"
+Source = "https://github.com/Kludex/uvicorn"
 
 [tool.hatch.version]
 path = "uvicorn/__init__.py"

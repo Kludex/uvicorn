@@ -2,6 +2,19 @@
 toc_depth: 2
 ---
 
+## 0.36.1 (September 23, 2025)
+
+### Fixed
+
+* Raise an exception when calling removed `Config.setup_event_loop()` (#2709)
+
+## 0.36.0 (September 20, 2025)
+
+### Added
+
+* Support custom IOLOOPs (#2435)
+* Allow to provide importable string in `--http`, `--ws` and `--loop` (#2658)
+
 ## 0.35.0 (June 28, 2025)
 
 ### Added
