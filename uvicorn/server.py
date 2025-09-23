@@ -217,7 +217,7 @@ class Server:
                 message,
                 protocol_name,
                 host,
-                port,
+                int(port),
                 extra={"color_message": color_message},
             )
 
