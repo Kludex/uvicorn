@@ -7,8 +7,8 @@ name = "uvicorn"
 dynamic = ["version"]
 description = "The lightning-fast ASGI server."
 readme = "README.md"
-license = { text = "BSD-3-Clause" }
-licence-files = ["LICENCE", "COPYING"]
+license = "BSD-3-Clause"
+license-files = ["LICENSE.md"]
 requires-python = ">=3.9"
 authors = [
     { name = "Tom Christie", email = "tom@tomchristie.com" },
