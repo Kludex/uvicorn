@@ -400,8 +400,14 @@ class RequestResponseCycle:
     # ASGI exception wrapper
     async def run_asgi(self, app: ASGI3Application) -> None:
         try:
+            # asgi apps can manipulate the scope, make sure we don't get a manipulated scope
+            # this can lead to problems when e.g. the headers are exchanged by an iterator
             result = await app(  # type: ignore[func-returns-value]
-                self.scope, self.receive, self.send
+                # asgi apps can manipulate the scope, make sure we don't get a manipulated scope
+                # this can lead to problems when e.g. the headers are exchanged by an iterator
+                self.scope.copy(),
+                self.receive,
+                self.send,
             )
         except BaseException as exc:
             msg = "Exception in ASGI application\n"
