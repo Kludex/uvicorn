@@ -102,10 +102,9 @@ async def test_max_requests_jitter_warn_log(
 ):
     caplog.set_level(logging.WARNING, logger="uvicorn.error")
     config = Config(app=app, limit_max_requests=1, max_requests_jitter=2, port=unused_tcp_port, http=http_protocol_cls)
-    server = Server(config)
-    assert server.jittered_limit_max_requests is not None
-    assert 1 <= server.jittered_limit_max_requests <= 3
-    async with run_server(config):
+    async with run_server(config) as server:
+        assert server.jittered_limit_max_requests is not None
+        assert 1 <= server.jittered_limit_max_requests <= 3
         async with httpx.AsyncClient() as client:
             tasks = [
                 client.get(f"http://127.0.0.1:{unused_tcp_port}") for _ in range(server.jittered_limit_max_requests + 1)
