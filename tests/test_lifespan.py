@@ -1,4 +1,5 @@
 import asyncio
+from unittest import mock
 
 import pytest
 
@@ -120,6 +121,44 @@ def test_lifespan_on_with_error():
         assert lifespan.error_occured
         assert lifespan.should_exit
         await lifespan.shutdown()
+
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(test())
+    loop.close()
+
+
+@pytest.mark.parametrize("mode", ("auto", "on"))
+def test_lifespan_on_when_app_is_cancelled(mode):
+    def get_app(started_event: asyncio.Event):
+        async def app(scope, receive, send):
+            started_event.set()
+            await receive()
+            pytest.fail("Should be cancelled before it gets here.")
+
+        return app
+
+    async def test():
+        # Python 3.8/3.9 doesn't allow us to instantiate an asyncio.Event object
+        # while outside of a running event loop context
+        started_event = asyncio.Event()
+
+        config = Config(app=get_app(started_event), lifespan=mode)
+        lifespan = LifespanOn(config)
+
+        main_lifespan_task = asyncio.create_task(lifespan.main())
+
+        started_response = await started_event.wait()
+        assert started_response
+        assert not lifespan.shutdown_event.is_set()
+
+        with mock.patch.object(lifespan, "logger") as logger:
+            main_lifespan_task.cancel()
+            await main_lifespan_task
+
+        assert not lifespan.error_occured
+        logger.info.assert_called_with("Lifespan task cancelled.")
+        assert lifespan.startup_event.is_set()
+        assert lifespan.shutdown_event.is_set()
 
     loop = asyncio.new_event_loop()
     loop.run_until_complete(test())
