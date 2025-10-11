@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import importlib
 import logging
 import signal
 import sys
 from collections.abc import Generator
 from contextlib import AbstractContextManager
 from typing import Callable
+from unittest import mock
 
 import httpx
 import pytest
@@ -95,3 +97,28 @@ async def test_request_than_limit_max_requests_warn_log(
             responses = await asyncio.gather(*tasks)
             assert len(responses) == 2
     assert "Maximum request limit of 1 exceeded. Terminating process." in caplog.text
+
+
+async def test_notify_is_triggered_on_every_tick(
+    unused_tcp_port: int, http_protocol_cls: type[H11Protocol | HttpToolsProtocol], caplog: pytest.LogCaptureFixture
+):
+    server_module = importlib.import_module("uvicorn.server")
+    notify = mock.AsyncMock()
+
+    config = Config(
+        app=app,
+        limit_max_requests=1,
+        port=unused_tcp_port,
+        http=http_protocol_cls,
+        callback_notify=notify,
+        timeout_notify=10,
+    )
+
+    # mocking time() to simulate a slow sync call
+    with mock.patch.object(server_module.time, "time") as mock_time:
+        mock_time.return_value = 1e9
+        async with run_server(config):
+            assert notify.call_count == 1
+            mock_time.return_value = 2e9
+            await asyncio.sleep(0.1)  # step forward just one tick
+            assert notify.call_count == 2
