@@ -270,12 +270,5 @@ class ASGI2Protocol(Protocol):
 
 
 ASGI2Application = type[ASGI2Protocol]
-ASGI3Application = Callable[
-    [
-        Scope,
-        ASGIReceiveCallable,
-        ASGISendCallable,
-    ],
-    Awaitable[None],
-]
+ASGI3Application = Callable[[Scope, ASGIReceiveCallable, ASGISendCallable], Awaitable[None]]
 ASGIApplication = Union[ASGI2Application, ASGI3Application]

@@ -9,7 +9,7 @@ from uvicorn._types import WWWScope
 class ClientDisconnected(OSError): ...
 
 
-def get_remote_addr(transport: asyncio.Transport) -> tuple[str, int] | None:
+def get_remote_addr(transport: asyncio.BaseTransport) -> tuple[str, int] | None:
     socket_info = transport.get_extra_info("socket")
     if socket_info is not None:
         try:
@@ -26,7 +26,7 @@ def get_remote_addr(transport: asyncio.Transport) -> tuple[str, int] | None:
     return None
 
 
-def get_local_addr(transport: asyncio.Transport) -> tuple[str, int] | None:
+def get_local_addr(transport: asyncio.BaseTransport) -> tuple[str, int] | None:
     socket_info = transport.get_extra_info("socket")
     if socket_info is not None:
         info = socket_info.getsockname()
@@ -38,7 +38,7 @@ def get_local_addr(transport: asyncio.Transport) -> tuple[str, int] | None:
     return None
 
 
-def is_ssl(transport: asyncio.Transport) -> bool:
+def is_ssl(transport: asyncio.BaseTransport) -> bool:
     return bool(transport.get_extra_info("sslcontext"))
 
 
