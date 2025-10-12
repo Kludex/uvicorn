@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import socket
 from unittest.mock import patch
 
@@ -39,5 +40,22 @@ def test_subprocess_started() -> None:
             subprocess_started(config, server_run, [fdsock], None)
             mock_run.assert_called_once()
             mock_config_logging.assert_called_once()
+
+    fdsock.close()
+
+
+def test_subprocess_started_with_invalid_stdin() -> None:
+    fdsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    fd = fdsock.fileno()
+    config = Config(app=app, fd=fd)
+    config.load()
+
+    with patch("tests.test_subprocess.server_run") as mock_run:
+        with patch.object(config, "configure_logging") as mock_config_logging:
+            with patch.object(os, "fdopen", side_effect=OSError("Bad file descriptor")):
+                # Should not raise an exception even with invalid stdin_fileno
+                subprocess_started(config, server_run, [fdsock], 999)
+                mock_run.assert_called_once()
+                mock_config_logging.assert_called_once()
 
     fdsock.close()
