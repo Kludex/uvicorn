@@ -99,11 +99,8 @@ plugins:
   - mkdocstrings:
       handlers:
         python:
-          import:
-            - url: https://docs.python.org/3/objects.inv
-
-plugins:
-  - search
+          inventories:
+            - https://docs.python.org/3/objects.inv
   - llmstxt:
       full_output: llms-full.txt
       markdown_description: |-
