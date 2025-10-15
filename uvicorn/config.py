@@ -27,7 +27,7 @@ from uvicorn.middleware.wsgi import WSGIMiddleware
 HTTPProtocolType = Literal["auto", "h11", "httptools"]
 WSProtocolType = Literal["auto", "none", "websockets", "websockets-sansio", "wsproto"]
 LifespanType = Literal["auto", "on", "off"]
-LoopFactoryType = Literal["none", "auto", "asyncio", "uvloop"]
+LoopFactoryType = Literal["none", "auto", "asyncio", "uvloop", "winloop"]
 InterfaceType = Literal["auto", "asgi3", "asgi2", "wsgi"]
 
 LOG_LEVELS: dict[str, int] = {
@@ -60,6 +60,7 @@ LOOP_FACTORIES: dict[str, str | None] = {
     "auto": "uvicorn.loops.auto:auto_loop_factory",
     "asyncio": "uvicorn.loops.asyncio:asyncio_loop_factory",
     "uvloop": "uvicorn.loops.uvloop:uvloop_loop_factory",
+    "winloop": "uvicorn.loops.winloop:winloop_loop_factory",
 }
 INTERFACES: list[InterfaceType] = ["auto", "asgi3", "asgi2", "wsgi"]
 

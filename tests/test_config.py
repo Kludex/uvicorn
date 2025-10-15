@@ -593,3 +593,17 @@ def test_setup_event_loop_is_removed(caplog: pytest.LogCaptureFixture) -> None:
         AttributeError, match="The `setup_event_loop` method was replaced by `get_loop_factory` in uvicorn 0.36.0."
     ):
         config.setup_event_loop()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="winloop is for Windows only")
+def test_winloop_loop_factory() -> None:
+    """Test that winloop can be explicitly configured on Windows."""
+    pytest.importorskip("winloop")
+    config = Config(app=asgi_app, loop="winloop")
+    config.load()
+    loop_factory = config.get_loop_factory()
+    assert loop_factory is not None
+    event_loop = loop_factory()
+    with closing(event_loop):
+        assert event_loop is not None
+        assert type(event_loop).__module__.startswith("winloop")
