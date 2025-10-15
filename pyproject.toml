@@ -161,7 +161,9 @@ exclude_lines = [
     "uvicorn/supervisors/multiprocess.py",
     "tests/supervisors/test_multiprocess.py",
 ]
-"sys_platform != 'win32'" = ["uvicorn/loops/asyncio.py"]
+"sys_platform != 'win32'" = [
+    "uvicorn/loops/winloop.py",
+]
 
 [tool.coverage.coverage_conditional_plugin.rules]
 py-win32 = "sys_platform == 'win32'"

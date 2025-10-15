@@ -11,17 +11,14 @@ from uvicorn.protocols.http.auto import AutoHTTPProtocol
 from uvicorn.protocols.websockets.auto import AutoWebSocketsProtocol
 from uvicorn.server import ServerState
 
-# Determine expected loop implementation based on platform
 try:
-    if sys.platform == "win32":
-        # On Windows, check for winloop first, then asyncio
+    if sys.platform == "win32":  # pragma: py-not-win32
         importlib.import_module("winloop")
         expected_loop = "winloop"
-    else:
-        # On Unix, check for uvloop first, then asyncio
+    else:  # pragma: py-win32
         importlib.import_module("uvloop")
-        expected_loop = "uvloop"  # pragma: py-win32
-except ImportError:  # pragma: py-not-win32
+        expected_loop = "uvloop"
+except ImportError:  # pragma: no cover
     expected_loop = "asyncio"
 
 try:
