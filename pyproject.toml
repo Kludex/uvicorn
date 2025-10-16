@@ -133,6 +133,8 @@ filterwarnings = [
     "ignore: websockets.legacy is deprecated.*:DeprecationWarning",
     "ignore: websockets.server.WebSocketServerProtocol is deprecated.*:DeprecationWarning",
     "ignore: websockets.client.connect is deprecated.*:DeprecationWarning",
+    # httptools in Python 3.14t needs the `PYTHON_GIL=0` environment variable, or raises a RuntimeWarning.
+    "ignore: The global interpreter lock (GIL)*:RuntimeWarning"
 ]
 
 [tool.coverage.run]
