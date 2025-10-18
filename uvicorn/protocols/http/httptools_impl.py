@@ -5,9 +5,8 @@ import http
 import logging
 import re
 import urllib
-from asyncio.events import TimerHandle
 from collections import deque
-from typing import Any, Callable, Literal, cast
+from typing import Any, Callable, cast
 
 import httptools
 
@@ -21,6 +20,7 @@ from uvicorn._types import (
 )
 from uvicorn.config import Config
 from uvicorn.logging import TRACE_LOG_LEVEL
+from uvicorn.protocols.http.base import HTTPProtocol
 from uvicorn.protocols.http.flow_control import CLOSE_HEADER, HIGH_WATER_LIMIT, FlowControl, service_unavailable
 from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
 from uvicorn.server import ServerState
@@ -40,7 +40,7 @@ def _get_status_line(status_code: int) -> bytes:
 STATUS_LINE = {status_code: _get_status_line(status_code) for status_code in range(100, 600)}
 
 
-class HttpToolsProtocol(asyncio.Protocol):
+class HttpToolsProtocol(HTTPProtocol):
     def __init__(
         self,
         config: Config,
@@ -48,15 +48,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         app_state: dict[str, Any],
         _loop: asyncio.AbstractEventLoop | None = None,
     ) -> None:
-        if not config.loaded:
-            config.load()
-
-        self.config = config
-        self.app = config.loaded_app
-        self.loop = _loop or asyncio.get_event_loop()
-        self.logger = logging.getLogger("uvicorn.error")
-        self.access_logger = logging.getLogger("uvicorn.access")
-        self.access_log = self.access_logger.hasHandlers()
+        super().__init__(config, server_state, app_state, _loop)
         self.parser = httptools.HttpRequestParser(self)
 
         try:
@@ -66,42 +58,19 @@ class HttpToolsProtocol(asyncio.Protocol):
             # httptools < 0.6.3
             pass
 
-        self.ws_protocol_class = config.ws_protocol_class
-        self.root_path = config.root_path
-        self.limit_concurrency = config.limit_concurrency
-        self.app_state = app_state
-
-        # Timeouts
-        self.timeout_keep_alive_task: TimerHandle | None = None
-        self.timeout_keep_alive = config.timeout_keep_alive
-
-        # Global state
-        self.server_state = server_state
-        self.connections = server_state.connections
-        self.tasks = server_state.tasks
-
         # Per-connection state
-        self.transport: asyncio.Transport = None  # type: ignore[assignment]
-        self.flow: FlowControl = None  # type: ignore[assignment]
-        self.server: tuple[str, int] | None = None
-        self.client: tuple[str, int] | None = None
-        self.scheme: Literal["http", "https"] | None = None
         self.pipeline: deque[tuple[RequestResponseCycle, ASGI3Application]] = deque()
 
         # Per-request state
-        self.scope: HTTPScope = None  # type: ignore[assignment]
-        self.headers: list[tuple[bytes, bytes]] = None  # type: ignore[assignment]
         self.expect_100_continue = False
         self.cycle: RequestResponseCycle = None  # type: ignore[assignment]
 
     # Protocol interface
-    def connection_made(  # type: ignore[override]
-        self, transport: asyncio.Transport
-    ) -> None:
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
         self.connections.add(self)
 
-        self.transport = transport
-        self.flow = FlowControl(transport)
+        self.transport = cast(asyncio.Transport, transport)
+        self.flow = FlowControl(self.transport)
         self.server = get_local_addr(transport)
         self.client = get_remote_addr(transport)
         self.scheme = "https" if is_ssl(transport) else "http"
@@ -226,7 +195,7 @@ class HttpToolsProtocol(asyncio.Protocol):
             "http_version": "1.1",
             "server": self.server,
             "client": self.client,
-            "scheme": self.scheme,  # type: ignore[typeddict-item]
+            "scheme": self.scheme,
             "root_path": self.root_path,
             "headers": self.headers,
             "state": self.app_state.copy(),
