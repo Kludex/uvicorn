@@ -2,6 +2,12 @@
 toc_depth: 2
 ---
 
+## 0.38.0 (October 18, 2025)
+
+### Added
+
+* Support Python 3.14 (#2723)
+
 ## 0.37.0 (September 23, 2025)
 
 ### Added
