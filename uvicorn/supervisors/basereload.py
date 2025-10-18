@@ -19,6 +19,7 @@ from uvicorn.config import Config
 HANDLED_SIGNALS = (
     signal.SIGINT,  # Unix signal 2. Sent by Ctrl+C.
     signal.SIGTERM,  # Unix signal 15. Sent by `kill <pid>`.
+    signal.SIGHUP, # Unix signal 1. Used for reloading.
 )
 
 logger = logging.getLogger("uvicorn.error")
@@ -43,10 +44,15 @@ class BaseReload:
         """
         A signal handler that is registered with the parent process.
         """
-        if sys.platform == "win32" and self.is_restarting:
-            self.is_restarting = False
+        if sig == signal.SIGHUP:
+            logger.info("Received SIGHUP. Reloading...")
+            self.restart()
         else:
-            self.should_exit.set()
+            # shutdown
+            if sys.platform == "win32" and self.is_restarting:
+                self.is_restarting = False
+            else:
+                self.should_exit.set()
 
     def run(self) -> None:
         self.startup()
