@@ -264,6 +264,7 @@ class Config:
         self.callback_notify = callback_notify
         self.ssl_keyfile = ssl_keyfile
         self.ssl_certfile = ssl_certfile
+        self.ssl_cert_pem: str | None = None
         self.ssl_keyfile_password = ssl_keyfile_password
         self.ssl_version = ssl_version
         self.ssl_cert_reqs = ssl_cert_reqs
@@ -411,6 +412,8 @@ class Config:
                 ca_certs=self.ssl_ca_certs,
                 ciphers=self.ssl_ciphers,
             )
+            with open(self.ssl_certfile) as file:
+                self.ssl_cert_pem = file.read()
         else:
             self.ssl = None
 
