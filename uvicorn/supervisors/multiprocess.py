@@ -90,9 +90,13 @@ class Process:
         # In Unix, the method will send SIGKILL to the process.
         self.process.kill()
 
-    def join(self) -> None:
+    def join(self, timeout: float | None = None) -> None:
         logger.info(f"Waiting for child process [{self.process.pid}]")
-        self.process.join()
+        self.process.join(timeout)
+        # Timeout, kill the process
+        while self.process.exitcode is None:
+            self.process.kill()
+            self.process.join(1)
 
     @property
     def pid(self) -> int | None:
@@ -131,7 +135,7 @@ class Multiprocess:
 
     def join_all(self) -> None:
         for process in self.processes:
-            process.join()
+            process.join(self.config.timeout_graceful_shutdown)
 
     def restart_all(self) -> None:
         for idx, process in enumerate(self.processes):
