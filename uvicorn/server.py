@@ -64,7 +64,15 @@ class Server:
         self._captured_signals: list[int] = []
 
     def run(self, sockets: list[socket.socket] | None = None) -> None:
-        return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+        try:
+            return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+        except TypeError:
+            logger.exception(
+                "Your code is likely running on a patched environment with `nest_asyncio`. "
+                "See https://github.com/Kludex/uvicorn/issues/2737 for more details."
+            )
+            # This code completely ignores the `--loop` flag. The idea is to at least be able to run the server.
+            return asyncio_run(self.serve(sockets=sockets))
 
     async def serve(self, sockets: list[socket.socket] | None = None) -> None:
         with self.capture_signals():
