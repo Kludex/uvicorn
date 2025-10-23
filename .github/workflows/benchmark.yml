@@ -26,4 +26,4 @@ jobs:
         uses: CodSpeedHQ/action@v4
         with:
           mode: instrumentation
-          run: ./scripts/test --codspeed
+          run: uv run pytest tests/protocols/test_http.py --codspeed
