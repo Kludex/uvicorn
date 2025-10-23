@@ -84,6 +84,11 @@ class LifespanOn:
                 "state": self.state,
             }
             await app(scope, self.receive, self.send)
+        except asyncio.CancelledError:
+            # Lifespan task was cancelled, likely due to the server shutting down.
+            # This is not an error that should be handled by BaseException above,
+            # so we just log it and exit.
+            self.logger.info("Lifespan task cancelled.")
         except BaseException as exc:
             self.asgi = None
             self.error_occured = True
