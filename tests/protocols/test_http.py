@@ -283,6 +283,7 @@ def get_connected_protocol(
     return protocol  # type: ignore[return-value]
 
 
+@pytest.mark.benchmark
 async def test_get_request(http_protocol_cls: type[HTTPProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
@@ -338,6 +339,7 @@ async def test_head_request(http_protocol_cls: type[HTTPProtocol]):
     assert b"Hello, world" not in protocol.transport.buffer
 
 
+@pytest.mark.benchmark
 async def test_post_request(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         body = b""
@@ -357,6 +359,7 @@ async def test_post_request(http_protocol_cls: type[HTTPProtocol]):
     assert b'Body: {"hello": "world"}' in protocol.transport.buffer
 
 
+@pytest.mark.benchmark
 async def test_keepalive(http_protocol_cls: type[HTTPProtocol]):
     app = Response(b"", status_code=204)
 
@@ -415,6 +418,7 @@ async def test_close(http_protocol_cls: type[HTTPProtocol]):
     assert protocol.transport.is_closing()
 
 
+@pytest.mark.benchmark
 async def test_chunked_encoding(http_protocol_cls: type[HTTPProtocol]):
     app = Response(b"Hello, world!", status_code=200, headers={"transfer-encoding": "chunked"})
 
@@ -447,6 +451,7 @@ async def test_chunked_encoding_head_request(http_protocol_cls: type[HTTPProtoco
     assert not protocol.transport.is_closing()
 
 
+@pytest.mark.benchmark
 async def test_pipelined_requests(http_protocol_cls: type[HTTPProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
@@ -486,6 +491,7 @@ async def test_oversized_request(http_protocol_cls: type[HTTPProtocol]):
     assert protocol.transport.is_closing()
 
 
+@pytest.mark.benchmark
 async def test_large_post_request(http_protocol_cls: type[HTTPProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
@@ -630,6 +636,7 @@ async def test_early_disconnect(http_protocol_cls: type[HTTPProtocol]):
     assert got_disconnect_event
 
 
+@pytest.mark.benchmark
 async def test_early_response(http_protocol_cls: type[HTTPProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
@@ -658,6 +665,7 @@ async def test_read_after_response(http_protocol_cls: type[HTTPProtocol]):
     assert message_after_response == {"type": "http.disconnect"}
 
 
+@pytest.mark.benchmark
 async def test_http10_request(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         assert scope["type"] == "http"
@@ -745,6 +753,7 @@ async def test_shutdown_during_idle(http_protocol_cls: type[HTTPProtocol]):
     assert protocol.transport.is_closing()
 
 
+@pytest.mark.benchmark
 async def test_100_continue_sent_when_body_consumed(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         body = b""
