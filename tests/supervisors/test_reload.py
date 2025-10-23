@@ -233,6 +233,42 @@ class TestBaseReload:
 
         reloader.shutdown()
 
+    @pytest.mark.parametrize("reloader_class", [WatchFilesReload])
+    def test_should_not_reload_when_exact_subdirectory_is_watched(self, touch_soon: Callable[[Path], None]):
+        included_file = self.reload_path / "ext" / "ext.jpg"
+
+        sub_file = self.reload_path / "app" / "src" / "main.py"
+        relative_file = self.reload_path / "app_first" / "css" / "main.css"
+        relative_sub_file = self.reload_path / "app_second" / "js" / "main.js"
+        absolute_file = self.reload_path / "app_third" / "js" / "main.js"
+
+        with as_cwd(self.reload_path):
+            config = Config(
+                app="tests.test_config:asgi_app",
+                reload=True,
+                reload_includes=["*"],
+                reload_excludes=[
+                    # Sub directory
+                    "src",
+                    # Relative directory
+                    "app_first",
+                    # Relative directory with sub directory
+                    "app_second/js",
+                    # Absolute path
+                    str(self.reload_path / "app_third"),
+                ],
+            )
+            reloader = self._setup_reloader(config)
+
+            assert self._reload_tester(touch_soon, reloader, included_file)
+
+            assert not self._reload_tester(touch_soon, reloader, sub_file)
+            assert not self._reload_tester(touch_soon, reloader, relative_file)
+            assert not self._reload_tester(touch_soon, reloader, relative_sub_file)
+            assert not self._reload_tester(touch_soon, reloader, absolute_file)
+
+            reloader.shutdown()
+
     @pytest.mark.parametrize("reloader_class", [pytest.param(WatchFilesReload, marks=skip_non_linux)])
     def test_override_defaults(self, touch_soon: Callable[[Path], None]) -> None:  # pragma: py-not-linux
         dotted_file = self.reload_path / ".dotted"
