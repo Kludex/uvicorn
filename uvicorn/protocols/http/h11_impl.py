@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import http
 import logging
 from typing import Any, Callable, Literal, cast
@@ -247,7 +248,10 @@ class H11Protocol(asyncio.Protocol):
                     message_event=asyncio.Event(),
                     on_response=self.on_response_complete,
                 )
-                task = self.loop.create_task(self.cycle.run_asgi(app))
+                # This can be replaced by
+                # self.loop.create_task(self.cycle.run_asgi(app), context=contextvars.Context())
+                # for Python >= 3.11
+                task = contextvars.Context().run(self.loop.create_task, self.cycle.run_asgi(app))
                 task.add_done_callback(self.tasks.discard)
                 self.tasks.add(task)
 
