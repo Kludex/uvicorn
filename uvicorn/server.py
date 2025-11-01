@@ -231,9 +231,10 @@ class Server:
             should_exit = await self.on_tick(counter)
 
     async def on_tick(self, counter: int) -> bool:
+        current_time = time.time()
+
         # Update the default headers, once per second.
         if counter % 10 == 0:
-            current_time = time.time()
             current_date = formatdate(current_time, usegmt=True).encode()
 
             if self.config.date_header:
@@ -243,11 +244,11 @@ class Server:
 
             self.server_state.default_headers = date_header + self.config.encoded_headers
 
-            # Callback to `callback_notify` once every `timeout_notify` seconds.
-            if self.config.callback_notify is not None:
-                if current_time - self.last_notified > self.config.timeout_notify:  # pragma: full coverage
-                    self.last_notified = current_time
-                    await self.config.callback_notify()
+        # Callback to `callback_notify` once every `timeout_notify` seconds.
+        if self.config.callback_notify is not None:
+            if current_time - self.last_notified > self.config.timeout_notify:  # pragma: full coverage
+                self.last_notified = current_time
+                await self.config.callback_notify()
 
         # Determine if we should exit.
         if self.should_exit:
