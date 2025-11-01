@@ -466,24 +466,36 @@ class RequestResponseCycle:
             self.response_started = True
             self.waiting_for_100_continue = False
 
-            status_code = message["status"]
+            status = message["status"]
             headers = self.default_headers + list(message.get("headers", []))
 
             if CLOSE_HEADER in self.scope["headers"] and CLOSE_HEADER not in headers:
                 headers = headers + [CLOSE_HEADER]
 
             if self.access_log:
+                client_addr = get_client_addr(self.scope)
+                method = self.scope["method"]
+                http_version = self.scope["http_version"]
+                full_path = get_path_with_query_string(self.scope)
+
                 self.access_logger.info(
                     '%s - "%s %s HTTP/%s" %d',
-                    get_client_addr(self.scope),
-                    self.scope["method"],
-                    get_path_with_query_string(self.scope),
-                    self.scope["http_version"],
-                    status_code,
+                    client_addr,
+                    method,
+                    full_path,
+                    http_version,
+                    status,
+                    extra={
+                        "client_addr": client_addr,
+                        "method": method,
+                        "full_path": full_path,
+                        "http_version": http_version,
+                        "status": status,
+                    },
                 )
 
             # Write response status line and headers
-            content = [STATUS_LINE[status_code]]
+            content = [STATUS_LINE[status]]
 
             for name, value in headers:
                 if HEADER_RE.search(name):
@@ -502,7 +514,7 @@ class RequestResponseCycle:
                     self.keep_alive = False
                 content.extend([name, b": ", value, b"\r\n"])
 
-            if self.chunked_encoding is None and self.scope["method"] != "HEAD" and status_code not in (204, 304):
+            if self.chunked_encoding is None and self.scope["method"] != "HEAD" and status not in (204, 304):
                 # Neither content-length nor transfer-encoding specified
                 self.chunked_encoding = True
                 content.append(b"transfer-encoding: chunked\r\n")
