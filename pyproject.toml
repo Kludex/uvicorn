@@ -45,6 +45,7 @@ standard = [
     "python-dotenv>=0.13",
     "PyYAML>=5.1",
     "uvloop>=0.15.1; sys_platform != 'win32' and (sys_platform != 'cygwin' and platform_python_implementation != 'PyPy')",
+    "winloop>=0.3.0; sys_platform == 'win32' and platform_python_implementation != 'PyPy'",
     "watchfiles>=0.13",
     "websockets>=10.4",
 ]
@@ -163,7 +164,9 @@ exclude_lines = [
     "uvicorn/supervisors/multiprocess.py",
     "tests/supervisors/test_multiprocess.py",
 ]
-"sys_platform != 'win32'" = ["uvicorn/loops/asyncio.py"]
+"sys_platform != 'win32'" = [
+    "uvicorn/loops/winloop.py",
+]
 
 [tool.coverage.coverage_conditional_plugin.rules]
 py-win32 = "sys_platform == 'win32'"

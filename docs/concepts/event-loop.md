@@ -3,15 +3,15 @@
 Uvicorn provides two event loop implementations that you can choose from using the [`--loop`](../settings.md#implementation) option:
 
 ```bash
-uvicorn main:app --loop <auto|asyncio|uvloop>
+uvicorn main:app --loop <auto|asyncio|uvloop|winloop>
 ```
 
 By default, Uvicorn uses `--loop auto`, which automatically selects:
 
-1. **uvloop** - If [uvloop](https://github.com/MagicStack/uvloop) is installed, Uvicorn will use it for maximum performance
-2. **asyncio** - If uvloop is not available, Uvicorn falls back to Python's built-in asyncio event loop
+1. **uvloop** / **winloop** - If [uvloop](https://github.com/MagicStack/uvloop) (on Unix) or [winloop](https://github.com/Vizonex/Winloop) (on Windows) is installed, Uvicorn will use it for maximum performance
+2. **asyncio** - If uvloop/winloop is not available, Uvicorn falls back to Python's built-in asyncio event loop
 
-Since `uvloop` is not compatible with Windows or PyPy, it is not available on these platforms.
+Both `uvloop` and `winloop` are based on libuv and are not compatible with PyPy.
 
 On Windows, the asyncio implementation uses [`ProactorEventLoop`][asyncio.ProactorEventLoop] if running with multiple workers,
 otherwise it uses the standard [`SelectorEventLoop`][asyncio.SelectorEventLoop] for better performance.
@@ -55,9 +55,9 @@ uvicorn main:app --loop rloop:new_event_loop
 
 ### Winloop
 
-[Winloop](https://github.com/Vizonex/Winloop) is an alternative library that brings uvloop-like performance to Windows. Since uvloop is based on libuv and doesn't support Windows, Winloop provides a Windows-compatible implementation with significant performance improvements over the standard Windows event loop policies.
+[Winloop](https://github.com/Vizonex/Winloop) brings uvloop-like performance to Windows. Both winloop and uvloop are based on libuv, but winloop provides a Windows-compatible implementation with significant performance improvements over the standard Windows event loop policies.
 
-You can install it with:
+Winloop is now a built-in option in Uvicorn. You can install it with:
 
 === "pip"
     ```bash
@@ -68,8 +68,8 @@ You can install it with:
     uv add winloop
     ```
 
-You can run `uvicorn` with `Winloop` with the following command:
+You can explicitly use Winloop with the following command:
 
 ```bash
-uvicorn main:app --loop winloop:new_event_loop
+uvicorn main:app --loop winloop
 ```
