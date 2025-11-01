@@ -84,8 +84,7 @@ class Server:
         logger.info(message, process_id, extra={"color_message": color_message})
 
         await self.startup(sockets=sockets)
-        if self.should_exit:
-            return
+        # FIX: make sure always execute the shutdown logic, even if server received a signal during startup
         await self.main_loop()
         await self.shutdown(sockets=sockets)
 
@@ -264,8 +263,9 @@ class Server:
         logger.info("Shutting down")
 
         # Stop accepting new connections.
-        for server in self.servers:
-            server.close()
+        if hasattr(self, "servers") and self.servers:
+            for server in self.servers:
+                server.close()
         for sock in sockets or []:
             sock.close()  # pragma: full coverage
 
@@ -307,8 +307,9 @@ class Server:
             while self.server_state.tasks and not self.force_exit:
                 await asyncio.sleep(0.1)
 
-        for server in self.servers:
-            await server.wait_closed()
+        if hasattr(self, "servers") and self.servers:
+            for server in self.servers:
+                await server.wait_closed()
 
     @contextlib.contextmanager
     def capture_signals(self) -> Generator[None, None, None]:
