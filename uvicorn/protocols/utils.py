@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import urllib.parse
 
 from uvicorn._types import WWWScope
@@ -26,16 +27,19 @@ def get_remote_addr(transport: asyncio.Transport) -> tuple[str, int] | None:
     return None
 
 
-def get_local_addr(transport: asyncio.Transport) -> tuple[str, int] | None:
+def get_local_addr(transport: asyncio.Transport) -> tuple[str, int | None] | None:
     socket_info = transport.get_extra_info("socket")
     if socket_info is not None:
         info = socket_info.getsockname()
+    else:
+        info = transport.get_extra_info("sockname")
 
-        return (str(info[0]), int(info[1])) if isinstance(info, tuple) else None
-    info = transport.get_extra_info("sockname")
-    if info is not None and isinstance(info, (list, tuple)) and len(info) == 2:
+    if isinstance(info, (list, tuple)):
         return (str(info[0]), int(info[1]))
-    return None
+    elif isinstance(info, (bytes, str)):
+        return (os.fsdecode(info), None)
+    else:
+        return None
 
 
 def is_ssl(transport: asyncio.Transport) -> bool:
