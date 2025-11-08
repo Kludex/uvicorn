@@ -516,3 +516,54 @@ def test_formatter_with_logger() -> None:
     assert '"GET /api/users?page=1 HTTP/1.1"' in output
     assert " 200 " in output
     assert " 2048" in output
+
+
+def test_formatter_with_colors() -> None:
+    """Test formatter with colors enabled."""
+    formatter = GunicornAccessFormatter(fmt="%(r)s %(s)s", use_colors=True)
+    scope = create_scope(method="POST", path="/test")
+
+    record = logging.LogRecord(
+        name="test",
+        level=logging.INFO,
+        pathname="test.py",
+        lineno=1,
+        msg="",
+        args=(scope, 200, 0.123, 1024),
+        exc_info=None,
+    )
+
+    output = formatter.format(record)
+    # With colors, the request line and status should contain ANSI codes
+    assert "POST /test?foo=bar HTTP/1.1" in output
+    assert "200" in output
+
+
+def test_get_status_code_colored() -> None:
+    """Test get_status_code_colored method."""
+    formatter = GunicornAccessFormatter(use_colors=True)
+
+    # Test various status code ranges
+    assert "200" in formatter.get_status_code_colored(200)
+    assert "OK" in formatter.get_status_code_colored(200)
+
+    assert "301" in formatter.get_status_code_colored(301)
+    assert "Moved Permanently" in formatter.get_status_code_colored(301)
+
+    assert "404" in formatter.get_status_code_colored(404)
+    assert "Not Found" in formatter.get_status_code_colored(404)
+
+    assert "500" in formatter.get_status_code_colored(500)
+    assert "Internal Server Error" in formatter.get_status_code_colored(500)
+
+    # Test unknown status code
+    assert "599" in formatter.get_status_code_colored(599)
+
+
+def test_get_status_code_colored_without_colors() -> None:
+    """Test get_status_code_colored without colors."""
+    formatter = GunicornAccessFormatter(use_colors=False)
+    result = formatter.get_status_code_colored(200)
+    assert result == "200 OK"
+    # Should not contain ANSI escape codes
+    assert "\x1b" not in result
