@@ -216,6 +216,13 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     help="Enable/Disable access log.",
 )
 @click.option(
+    "--access-log-format",
+    type=str,
+    default=None,
+    help="Access log format (gunicorn style). "
+    'Example: \'%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)s\'',
+)
+@click.option(
     "--use-colors/--no-use-colors",
     is_flag=True,
     default=None,
@@ -396,6 +403,7 @@ def main(
     log_config: str,
     log_level: str,
     access_log: bool,
+    access_log_format: str,
     proxy_headers: bool,
     server_header: bool,
     date_header: bool,
@@ -439,6 +447,7 @@ def main(
         log_config=LOGGING_CONFIG if log_config is None else log_config,
         log_level=log_level,
         access_log=access_log,
+        access_log_format=access_log_format,
         interface=interface,
         reload=reload,
         reload_dirs=reload_dirs or None,
@@ -499,6 +508,7 @@ def run(
     log_config: dict[str, Any] | str | RawConfigParser | IO[Any] | None = LOGGING_CONFIG,
     log_level: str | int | None = None,
     access_log: bool = True,
+    access_log_format: str | None = None,
     proxy_headers: bool = True,
     server_header: bool = True,
     date_header: bool = True,
@@ -552,6 +562,7 @@ def run(
         log_config=log_config,
         log_level=log_level,
         access_log=access_log,
+        access_log_format=access_log_format,
         proxy_headers=proxy_headers,
         server_header=server_header,
         date_header=date_header,
