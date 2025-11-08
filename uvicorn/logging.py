@@ -189,7 +189,7 @@ class GunicornAccessFormatter(ColourizedFormatter):
         import binascii
         import os
         import re
-        from typing import Any, cast
+        from typing import Any, Optional, cast
 
         recordcopy = copy(record)
 
@@ -198,8 +198,8 @@ class GunicornAccessFormatter(ColourizedFormatter):
             args_tuple = cast(tuple[Any, ...], recordcopy.args)
             scope = cast(dict[str, Any], args_tuple[0])
             status_code = cast(int, args_tuple[1])
-            response_time = cast(float | None, args_tuple[2])
-            response_length = cast(int | None, args_tuple[3])
+            response_time = cast(Optional[float], args_tuple[2])
+            response_length = cast(Optional[int], args_tuple[3])
 
             method = cast(str, scope.get("method", ""))
             path = cast(str, scope.get("path", ""))
