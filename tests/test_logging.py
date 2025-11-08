@@ -40,7 +40,9 @@ def test_basic_access_formatter() -> None:
     assert "200" in output
 
 
-def format_log(fmt: str, scope: dict[str, Any], status: int, response_time: float, response_size: int | None) -> str:
+def format_log(
+    fmt: str, scope: dict[str, Any], status: int, response_time: float | None, response_size: int | None
+) -> str:
     """Helper to format a log entry using GunicornAccessFormatter."""
     formatter = GunicornAccessFormatter(fmt=fmt, use_colors=False)
 

@@ -186,17 +186,24 @@ class GunicornAccessFormatter(ColourizedFormatter):
     def format(self, record: logging.LogRecord) -> str:
         """Format log record using gunicorn-style access log format."""
         import base64
+        import binascii
         import os
         import re
+        from typing import Any, cast
 
         recordcopy = copy(record)
 
-        if hasattr(recordcopy, "args") and recordcopy.args and len(recordcopy.args) >= 4:  # type: ignore[arg-type]
-            scope, status_code, response_time, response_length = recordcopy.args[:4]  # type: ignore[misc]
+        if hasattr(recordcopy, "args") and recordcopy.args and len(recordcopy.args) >= 4:
+            # Extract scope, status_code, response_time, response_length from args
+            args_tuple = cast(tuple[Any, ...], recordcopy.args)
+            scope = cast(dict[str, Any], args_tuple[0])
+            status_code = cast(int, args_tuple[1])
+            response_time = cast(float | None, args_tuple[2])
+            response_length = cast(int | None, args_tuple[3])
 
-            method = scope.get("method", "")
-            path = scope.get("path", "")
-            http_version = scope.get("http_version", "1.1")
+            method = cast(str, scope.get("method", ""))
+            path = cast(str, scope.get("path", ""))
+            http_version = cast(str, scope.get("http_version", "1.1"))
             client = scope.get("client")
 
             remote_addr = client[0] if client else "-"
@@ -204,17 +211,19 @@ class GunicornAccessFormatter(ColourizedFormatter):
             response_length_clf = str(response_length) if response_length and response_length > 0 else "-"
             current_time = time.strftime("[%d/%b/%Y:%H:%M:%S %z]")
 
-            query_string = scope.get("query_string", b"").decode("latin1")
+            query_string_bytes = cast(bytes, scope.get("query_string", b""))
+            query_string = query_string_bytes.decode("latin1")
             full_path = f"{path}?{query_string}" if query_string else path
             request_line = f"{method} {full_path} HTTP/{http_version}"
             if self.use_colors:
                 request_line = click.style(request_line, bold=True)
 
-            time_sec = response_time if response_time is not None else 0
+            time_sec = response_time if response_time is not None else 0.0
             time_us = int(time_sec * 1_000_000)
 
-            headers_dict = {}
-            for header_name, header_value in scope.get("headers", []):
+            headers_dict: dict[str, str] = {}
+            headers_list = cast(list[tuple[bytes, bytes]], scope.get("headers", []))
+            for header_name, header_value in headers_list:
                 headers_dict[header_name.decode("latin1").lower()] = header_value.decode("latin1")
 
             username = "-"
@@ -224,7 +233,7 @@ class GunicornAccessFormatter(ColourizedFormatter):
                     encoded = auth_header[6:].strip()
                     decoded = base64.b64decode(encoded).decode("utf-8")
                     username = decoded.split(":", 1)[0]
-                except (ValueError, UnicodeDecodeError, base64.binascii.Error):
+                except (ValueError, UnicodeDecodeError, binascii.Error):
                     pass
 
             atoms = {
