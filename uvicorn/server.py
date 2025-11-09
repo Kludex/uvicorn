@@ -85,7 +85,6 @@ class Server:
         color_message = "Started server process [" + click.style("%d", fg="cyan") + "]"
         logger.info(message, process_id, extra={"color_message": color_message})
         await self.startup(sockets=sockets)
-
         if self.should_exit:
             yield
         else:
