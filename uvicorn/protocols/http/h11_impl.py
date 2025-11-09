@@ -572,4 +572,3 @@ class RequestResponseCycle:
         }
         self.body = b""
         return message
-        return message
