@@ -56,11 +56,9 @@ def make_httpx_client(
         receive: ASGIReceiveCallable,
         send: ASGISendCallable,
     ) -> None:
-        scope = {
-            **scope,
-            "client": client,
-            "server": server,
-        }
+        if scope["type"] != "lifespan":
+            scope["client"] = client
+            scope["server"] = server
         return await app(scope, receive, send)
 
     transport = httpx.ASGITransport(app=wrapper)  # type: ignore
