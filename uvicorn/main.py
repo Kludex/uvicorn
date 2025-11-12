@@ -243,9 +243,9 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     "--forwarded-allow-ips",
     type=str,
     default=None,
-    help="Comma separated list of IP Addresses, IP Networks, or literals "
-    "(e.g. UNIX Socket path) to trust with proxy headers. Defaults to the "
-    "$FORWARDED_ALLOW_IPS environment variable if available, or '127.0.0.1'. "
+    help="Comma separated list of IP Addresses, IP Networks, or literals to trust with proxy headers. "
+    "The literal 'unix:' represents a Unix domain socket. "
+    "Defaults to the $FORWARDED_ALLOW_IPS environment variable if available, or '127.0.0.1'. "
     "The literal '*' means trust everything.",
 )
 @click.option(
