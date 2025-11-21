@@ -251,10 +251,9 @@ class H11Protocol(asyncio.Protocol):
                 # For the asyncio loop, we need to explicitly start with an empty context
                 # as it can be polluted from previous ASGI runs.
                 # See https://github.com/python/cpython/issues/140947 for details.
-                # TODO: This can be replaced by
-                #  task = self.loop.create_task(self.cycle.run_asgi(app), context=contextvars.Context())
-                #  for Python >= 3.11
                 task = contextvars.Context().run(self.loop.create_task, self.cycle.run_asgi(app))
+                # TODO: Replace the line above with the line below for Python >= 3.11
+                # task = self.loop.create_task(self.cycle.run_asgi(app), context=contextvars.Context())
                 task.add_done_callback(self.tasks.discard)
                 self.tasks.add(task)
 

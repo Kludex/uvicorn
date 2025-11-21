@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
+import json
 import logging
 import socket
 import threading
@@ -15,6 +17,7 @@ from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallabl
 from uvicorn.config import WS_PROTOCOLS, Config
 from uvicorn.lifespan.off import LifespanOff
 from uvicorn.lifespan.on import LifespanOn
+from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT
 from uvicorn.protocols.http.h11_impl import H11Protocol
 from uvicorn.server import ServerState
 
@@ -1124,3 +1127,73 @@ async def test_header_upgrade_is_websocket_depend_not_installed(
     assert msg in caplog.text
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
     assert b"Hello, world" in protocol.transport.buffer
+
+
+async def test_no_contextvars_pollution(http_protocol_cls: type[HTTPProtocol]):
+    # non-regression test for https://github.com/encode/uvicorn/issues/2167
+
+    default_contextvars = {c.name for c in contextvars.copy_context().keys()}
+    cvar: contextvars.ContextVar[str] = contextvars.ContextVar("cvar")
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert scope["type"] == "http"
+
+        # initial context should be empty
+        initial_context = {
+            n: v for c, v in contextvars.copy_context().items() if (n := c.name) not in default_contextvars
+        }
+        # set any contextvar before the body is read
+        cvar.set(scope["path"])
+
+        while True:
+            message = await receive()
+            assert message["type"] == "http.request"
+            if not message["more_body"]:
+                break
+
+        # return the initial context for empty assertion
+        body = json.dumps(initial_context).encode("utf-8")
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"content-length", str(len(body)).encode("utf-8")),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": body})
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+
+    async def assert_empty_initial_context(request: bytes):
+        try:
+            protocol.data_received(request)
+            await protocol.loop.run_one()
+
+            assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+            response_body = protocol.transport.buffer.split(b"\r\n\r\n", 1)[1]
+            assert json.loads(response_body) == {}
+        finally:
+            protocol.transport.clear_buffer()
+
+    # body has to be larger than HIGH_WATER_LIMIT to trigger a reading pause on the main thread
+    # and a resumption inside the ASGI task
+    large_body = b"a" * (HIGH_WATER_LIMIT + 1)
+    large_request = (
+        b"\r\n".join(
+            [
+                b"POST /large-body HTTP/1.1",
+                b"Host: example.org",
+                b"Content-Type: application/octet-stream",
+                f"Content-Length: {len(large_body)}".encode(),
+                b"",
+                b"",
+            ]
+        )
+        + large_body
+    )
+
+    await assert_empty_initial_context(large_request)
+    await assert_empty_initial_context(SIMPLE_GET_REQUEST)
