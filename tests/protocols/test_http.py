@@ -1181,18 +1181,15 @@ async def test_no_contextvars_pollution(http_protocol_cls: type[HTTPProtocol]):
     # body has to be larger than HIGH_WATER_LIMIT to trigger a reading pause on the main thread
     # and a resumption inside the ASGI task
     large_body = b"a" * (HIGH_WATER_LIMIT + 1)
-    large_request = (
-        b"\r\n".join(
-            [
-                b"POST /large-body HTTP/1.1",
-                b"Host: example.org",
-                b"Content-Type: application/octet-stream",
-                f"Content-Length: {len(large_body)}".encode(),
-                b"",
-                b"",
-            ]
-        )
-        + large_body
+    large_request = b"\r\n".join(
+        [
+            b"POST /large-body HTTP/1.1",
+            b"Host: example.org",
+            b"Content-Type: application/octet-stream",
+            f"Content-Length: {len(large_body)}".encode(),
+            b"",
+            large_body,
+        ]
     )
 
     await assert_empty_initial_context(large_request)
