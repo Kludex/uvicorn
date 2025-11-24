@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextvars
 import http
 import logging
 import re
@@ -288,12 +287,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         )
         if existing_cycle is None or existing_cycle.response_complete:
             # Standard case - start processing the request.
-            # For the asyncio loop, we need to explicitly start with an empty context
-            # as it can be polluted from previous ASGI runs.
-            # See https://github.com/python/cpython/issues/140947 for details.
-            task = contextvars.Context().run(self.loop.create_task, self.cycle.run_asgi(app))
-            # TODO: Replace the line above with the line below for Python >= 3.11
-            # task = self.loop.create_task(self.cycle.run_asgi(app), context=contextvars.Context())
+            task = self.loop.create_task(self.cycle.run_asgi(app))
             task.add_done_callback(self.tasks.discard)
             self.tasks.add(task)
         else:
