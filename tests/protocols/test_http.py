@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import contextvars
 import json
 import logging
@@ -1129,7 +1130,37 @@ async def test_header_upgrade_is_websocket_depend_not_installed(
     assert b"Hello, world" in protocol.transport.buffer
 
 
-async def test_no_contextvars_pollution(http_protocol_cls: type[HTTPProtocol]):
+@contextlib.asynccontextmanager
+async def server(*, app, port, http_protocol_cls):
+    config = Config(app=app, port=port, loop="asyncio", http=http_protocol_cls)
+    server = Server(config=config)
+    task = asyncio.create_task(server.serve())
+
+    while not server.started:
+        await asyncio.sleep(0.01)
+
+    reader, writer = await asyncio.open_connection("127.0.0.1", port)
+
+    async def extract_json_body(request: bytes):
+        writer.write(request)
+        await writer.drain()
+
+        status, *headers = (await reader.readuntil(b"\r\n\r\n")).split(b"\r\n")[:-2]
+        assert status == b"HTTP/1.1 200 OK"
+
+        content_length = next(int(h.split(b":", 1)[1]) for h in headers if h.lower().startswith(b"content-length:"))
+        return json.loads(await reader.readexactly(content_length))
+
+    try:
+        yield extract_json_body
+    finally:
+        writer.close()
+        await writer.wait_closed()
+        server.should_exit = True
+        await task
+
+
+async def test_no_contextvars_pollution(http_protocol_cls: type[HTTPProtocol], unused_tcp_port: int):
     # non-regression test for https://github.com/encode/uvicorn/issues/2167
 
     default_contextvars = {c.name for c in contextvars.copy_context().keys()}
@@ -1165,19 +1196,6 @@ async def test_no_contextvars_pollution(http_protocol_cls: type[HTTPProtocol]):
         )
         await send({"type": "http.response.body", "body": body})
 
-    protocol = get_connected_protocol(app, http_protocol_cls)
-
-    async def assert_empty_initial_context(request: bytes):
-        try:
-            protocol.data_received(request)
-            await protocol.loop.run_one()
-
-            assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
-            response_body = protocol.transport.buffer.split(b"\r\n\r\n", 1)[1]
-            assert json.loads(response_body) == {}
-        finally:
-            protocol.transport.clear_buffer()
-
     # body has to be larger than HIGH_WATER_LIMIT to trigger a reading pause on the main thread
     # and a resumption inside the ASGI task
     large_body = b"a" * (HIGH_WATER_LIMIT + 1)
@@ -1192,5 +1210,6 @@ async def test_no_contextvars_pollution(http_protocol_cls: type[HTTPProtocol]):
         ]
     )
 
-    await assert_empty_initial_context(large_request)
-    await assert_empty_initial_context(SIMPLE_GET_REQUEST)
+    async with server(app=app, http_protocol_cls=http_protocol_cls, port=unused_tcp_port) as extract_json_body:
+        assert await extract_json_body(large_request) == {}
+        assert await extract_json_body(SIMPLE_GET_REQUEST) == {}
