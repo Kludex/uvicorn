@@ -226,7 +226,7 @@ class WebSocketProtocol(WebSocketServerProtocol):
         # itself (see https://github.com/Kludex/uvicorn/issues/920)
         self.handshake_started_event.set()
 
-    async def ws_handler(self, protocol: WebSocketServerProtocol, path: str) -> Any:  # type: ignore[override]
+    async def ws_handler(self, protocol: WebSocketServerProtocol) -> Any:  # type: ignore[override]
         """
         This is the main handler function for the 'websockets' implementation
         to call into. We just wait for close then return, and instead allow
