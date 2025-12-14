@@ -88,6 +88,111 @@ Using Uvicorn with watchfiles will enable the following options (which are other
 * `--no-access-log` - Disable access log only, without changing log level.
 * `--use-colors / --no-use-colors` - Enable / disable colorized formatting of the log records. If not set, colors will be auto-detected. This option is ignored if the `--log-config` CLI option is used.
 
+### Logging Configuration File Examples
+
+Below are example logging configuration files that replicate Uvicorn's default logging setup. You can use these as a starting point and customize them for your needs.
+
+#### JSON Format (`log_config.json`)
+
+```json
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+  "formatters": {
+    "default": {
+      "()": "uvicorn.logging.DefaultFormatter",
+      "fmt": "%(levelprefix)s %(message)s",
+      "use_colors": null
+    },
+    "access": {
+      "()": "uvicorn.logging.AccessFormatter",
+      "fmt": "%(levelprefix)s %(client_addr)s - \"%(request_line)s\" %(status_code)s"
+    }
+  },
+  "handlers": {
+    "default": {
+      "formatter": "default",
+      "class": "logging.StreamHandler",
+      "stream": "ext://sys.stderr"
+    },
+    "access": {
+      "formatter": "access",
+      "class": "logging.StreamHandler",
+      "stream": "ext://sys.stdout"
+    }
+  },
+  "loggers": {
+    "uvicorn": {
+      "handlers": ["default"],
+      "level": "INFO",
+      "propagate": false
+    },
+    "uvicorn.error": {
+      "level": "INFO"
+    },
+    "uvicorn.access": {
+      "handlers": ["access"],
+      "level": "INFO",
+      "propagate": false
+    }
+  }
+}
+```
+
+#### YAML Format (`log_config.yaml`)
+
+```yaml
+version: 1
+disable_existing_loggers: false
+formatters:
+  default:
+    (): uvicorn.logging.DefaultFormatter
+    fmt: "%(levelprefix)s %(message)s"
+    use_colors: null
+  access:
+    (): uvicorn.logging.AccessFormatter
+    fmt: '%(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s'
+handlers:
+  default:
+    formatter: default
+    class: logging.StreamHandler
+    stream: ext://sys.stderr
+  access:
+    formatter: access
+    class: logging.StreamHandler
+    stream: ext://sys.stdout
+loggers:
+  uvicorn:
+    handlers:
+      - default
+    level: INFO
+    propagate: false
+  uvicorn.error:
+    level: INFO
+  uvicorn.access:
+    handlers:
+      - access
+    level: INFO
+    propagate: false
+```
+
+#### Usage
+
+```bash
+# Using JSON config
+uvicorn main:app --log-config log_config.json
+
+# Using YAML config (requires PyYAML or uvicorn[standard])
+uvicorn main:app --log-config log_config.yaml
+```
+
+#### Customization Tips
+
+* **Disable colors**: Set `"use_colors": false` in both formatters.
+* **Change log level**: Modify the `"level"` value in the loggers section (e.g., `"DEBUG"`, `"WARNING"`).
+* **Log to file**: Replace `"stream": "ext://sys.stderr"` with `"filename": "/path/to/uvicorn.log"` and change the handler class to `"logging.FileHandler"`.
+* **Custom format**: Modify the `"fmt"` string. Available fields for the access formatter include `%(client_addr)s`, `%(request_line)s`, and `%(status_code)s`.
+
 ## Implementation
 
 * `--loop <str>` - Set the event loop implementation. The uvloop implementation provides greater performance, but is not compatible with Windows or PyPy. **Options:** *'auto', 'asyncio', 'uvloop'.* **Default:** *'auto'*.
