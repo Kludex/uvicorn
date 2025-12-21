@@ -2,6 +2,13 @@
 toc_depth: 2
 ---
 
+## 0.39.0 (December 21, 2025)
+
+### Fixed
+
+* Send close frame on ASGI return for WebSockets (#2769)
+* Explicitly start ASGI run with empty context (#2742)
+
 ## 0.38.0 (October 18, 2025)
 
 ### Added
