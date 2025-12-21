@@ -458,6 +458,27 @@ async def test_asgi_return_value(ws_protocol_cls: WSProtocol, http_protocol_cls:
         assert websocket.close_code == 1006
 
 
+async def test_close_transport_on_asgi_return(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+):
+    """The ASGI callable should call the `websocket.close` event.
+
+    If it doesn't, the server should still send a close frame to the client.
+    """
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        message = await receive()
+        if message["type"] == "websocket.connect":
+            await send({"type": "websocket.accept"})
+
+    config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
+    async with run_server(config):
+        async with websockets.client.connect(f"ws://127.0.0.1:{unused_tcp_port}") as websocket:
+            with pytest.raises(websockets.exceptions.ConnectionClosed):
+                await websocket.recv()
+        assert websocket.close_code == 1006
+
+
 @pytest.mark.parametrize("code", [None, 1000, 1001])
 @pytest.mark.parametrize("reason", [None, "test", False], ids=["none_as_reason", "normal_reason", "without_reason"])
 async def test_app_close(
