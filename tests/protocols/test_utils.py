@@ -41,8 +41,11 @@ def test_get_local_addr_with_socket():
     assert get_local_addr(transport) == ("123.45.6.7", 123)
 
     if hasattr(socket, "AF_UNIX"):  # pragma: no cover
-        transport = MockTransport({"socket": MockSocket(family=socket.AF_UNIX, sockname=("127.0.0.1", 8000))})
-        assert get_local_addr(transport) == ("127.0.0.1", 8000)
+        transport = MockTransport({"socket": MockSocket(family=socket.AF_UNIX, sockname="path/to/unix-domain-socket")})
+        assert get_local_addr(transport) == ("path/to/unix-domain-socket", None)
+
+        transport = MockTransport({"socket": MockSocket(family=socket.AF_UNIX, sockname=b"\0abstract-socket")})
+        assert get_local_addr(transport) == ("\0abstract-socket", None)
 
 
 def test_get_remote_addr_with_socket():
@@ -56,13 +59,16 @@ def test_get_remote_addr_with_socket():
     assert get_remote_addr(transport) == ("123.45.6.7", 123)
 
     if hasattr(socket, "AF_UNIX"):  # pragma: no cover
-        transport = MockTransport({"socket": MockSocket(family=socket.AF_UNIX, peername=("127.0.0.1", 8000))})
-        assert get_remote_addr(transport) == ("127.0.0.1", 8000)
+        transport = MockTransport({"socket": MockSocket(family=socket.AF_UNIX, peername="")})
+        assert get_remote_addr(transport) is None
 
 
 def test_get_local_addr():
     transport = MockTransport({"sockname": "path/to/unix-domain-socket"})
-    assert get_local_addr(transport) is None
+    assert get_local_addr(transport) == ("path/to/unix-domain-socket", None)
+
+    transport = MockTransport({"sockname": b"\0abstract-socket"})
+    assert get_local_addr(transport) == ("\0abstract-socket", None)
 
     transport = MockTransport({"sockname": ("123.45.6.7", 123)})
     assert get_local_addr(transport) == ("123.45.6.7", 123)
