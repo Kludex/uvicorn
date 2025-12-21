@@ -29,12 +29,8 @@ def new_console_in_windows(test_function: Callable[[], Any]) -> Callable[[], Any
         name = test_function.__name__
 
         subprocess.check_call(
-            [
-                sys.executable,
-                "-c",
-                f"from {module} import {name}; {name}.__wrapped__()",
-            ],
-            creationflags=subprocess.CREATE_NO_WINDOW,  # type: ignore[attr-defined]
+            [sys.executable, "-c", f"from {module} import {name}; {name}.__wrapped__()"],
+            creationflags=subprocess.CREATE_NO_WINDOW,
         )
 
     return new_function

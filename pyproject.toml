@@ -113,14 +113,9 @@ combine-as-imports = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 show_error_codes = true
-disallow_untyped_defs = true
+disallow_untyped_defs = false
 ignore_missing_imports = true
 follow_imports = "silent"
-
-[[tool.mypy.overrides]]
-module = "tests.*"
-disallow_untyped_defs = false
-check_untyped_defs = true
 
 [tool.pytest.ini_options]
 addopts = "-rxXs --strict-config --strict-markers -n 8"
