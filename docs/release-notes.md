@@ -2,6 +2,12 @@
 toc_depth: 2
 ---
 
+## 0.40.0 (December 21, 2025)
+
+### Remove
+
+* Drop support for Python 3.9 (#2772)
+
 ## 0.39.0 (December 21, 2025)
 
 ### Fixed
