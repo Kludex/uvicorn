@@ -4,9 +4,10 @@ import logging
 import os
 import signal
 import threading
+from collections.abc import Callable
 from multiprocessing import Pipe
 from socket import socket
-from typing import Any, Callable
+from typing import Any
 
 import click
 

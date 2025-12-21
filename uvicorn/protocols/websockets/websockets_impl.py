@@ -4,7 +4,7 @@ import asyncio
 import http
 import logging
 from collections.abc import Sequence
-from typing import Any, Literal, Optional, cast
+from typing import Any, Literal, cast
 from urllib.parse import unquote
 
 import websockets
@@ -273,7 +273,7 @@ class WebSocketProtocol(WebSocketServerProtocol):
                     get_path_with_query_string(self.scope),
                 )
                 self.initial_response = None
-                self.accepted_subprotocol = cast(Optional[Subprotocol], message.get("subprotocol"))
+                self.accepted_subprotocol = cast(Subprotocol | None, message.get("subprotocol"))
                 if "headers" in message:
                     self.extra_headers.extend(
                         # ASGI spec requires bytes

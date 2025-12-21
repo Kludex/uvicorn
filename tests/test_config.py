@@ -7,10 +7,10 @@ import logging
 import os
 import socket
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import closing
 from pathlib import Path
-from typing import IO, Any, Callable, Literal
+from typing import IO, Any, Literal
 from unittest.mock import MagicMock
 
 import pytest

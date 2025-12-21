@@ -5,7 +5,8 @@ import logging
 import socket
 import threading
 import time
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 import pytest
 
@@ -26,19 +27,12 @@ except ModuleNotFoundError:  # pragma: no cover
     skip_if_no_httptools = pytest.mark.skipif(True, reason="httptools is not installed")
 
 if TYPE_CHECKING:
-    import sys
-
     from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
     from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol as _WSProtocol
 
-    if sys.version_info >= (3, 10):  # pragma: no cover
-        from typing import TypeAlias
-    else:  # pragma: no cover
-        from typing_extensions import TypeAlias
-
-    WSProtocol: TypeAlias = "WebSocketProtocol | _WSProtocol"
-    HTTPProtocol: TypeAlias = "H11Protocol | HttpToolsProtocol"
+    WSProtocol: TypeAlias = WebSocketProtocol | _WSProtocol
+    HTTPProtocol: TypeAlias = H11Protocol | HttpToolsProtocol
 
 pytestmark = pytest.mark.anyio
 

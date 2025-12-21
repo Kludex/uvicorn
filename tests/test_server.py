@@ -7,9 +7,8 @@ import json
 import logging
 import signal
 import sys
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
-from typing import Callable
 
 import httpx
 import pytest

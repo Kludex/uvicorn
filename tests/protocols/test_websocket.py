@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict
 
 import httpx
 import pytest
@@ -36,16 +36,9 @@ except ModuleNotFoundError:  # pragma: no cover
     skip_if_no_wsproto = pytest.mark.skipif(True, reason="wsproto is not installed.")
 
 if TYPE_CHECKING:
-    import sys
-
     from uvicorn.protocols.http.h11_impl import H11Protocol
     from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol as _WSProtocol
-
-    if sys.version_info >= (3, 10):  # pragma: no cover
-        from typing import TypeAlias
-    else:  # pragma: no cover
-        from typing_extensions import TypeAlias
 
     HTTPProtocol: TypeAlias = "type[H11Protocol | HttpToolsProtocol]"
     WSProtocol: TypeAlias = "type[_WSProtocol | WebSocketProtocol]"

@@ -4,7 +4,8 @@ import asyncio
 import contextvars
 import http
 import logging
-from typing import Any, Callable, Literal, cast
+from collections.abc import Callable
+from typing import Any, Literal, cast
 from urllib.parse import unquote
 
 import h11

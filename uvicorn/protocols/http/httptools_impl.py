@@ -8,7 +8,8 @@ import re
 import urllib
 from asyncio.events import TimerHandle
 from collections import deque
-from typing import Any, Callable, Literal, cast
+from collections.abc import Callable
+from typing import Any, Literal, cast
 
 import httptools
 

@@ -7,8 +7,9 @@ import platform
 import ssl
 import sys
 import warnings
+from collections.abc import Callable
 from configparser import RawConfigParser
-from typing import IO, Any, Callable, get_args
+from typing import IO, Any, get_args
 
 import click
 
