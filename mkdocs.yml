@@ -33,7 +33,6 @@ theme:
     - content.tabs.link
     - navigation.footer # https://squidfunk.github.io/mkdocs-material/upgrade/?h=content+copy#navigationfooter
     - navigation.path
-    - navigation.sections # https://squidfunk.github.io/mkdocs-material/setup/setting-up-navigation
     - navigation.top # https://squidfunk.github.io/mkdocs-material/setup/setting-up-navigation/#back-to-top-button
     - navigation.tracking
     - search.suggest
