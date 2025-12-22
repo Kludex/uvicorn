@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import http
 import logging
-from typing import Any, Callable, Literal, cast
+from collections.abc import Callable
+from typing import Any, Literal, cast
 from urllib.parse import unquote
 
 import h11
@@ -247,7 +249,12 @@ class H11Protocol(asyncio.Protocol):
                     message_event=asyncio.Event(),
                     on_response=self.on_response_complete,
                 )
-                task = self.loop.create_task(self.cycle.run_asgi(app))
+                # For the asyncio loop, we need to explicitly start with an empty context
+                # as it can be polluted from previous ASGI runs.
+                # See https://github.com/python/cpython/issues/140947 for details.
+                task = contextvars.Context().run(self.loop.create_task, self.cycle.run_asgi(app))
+                # TODO: Replace the line above with the line below for Python >= 3.11
+                # task = self.loop.create_task(self.cycle.run_asgi(app), context=contextvars.Context())
                 task.add_done_callback(self.tasks.discard)
                 self.tasks.add(task)
 

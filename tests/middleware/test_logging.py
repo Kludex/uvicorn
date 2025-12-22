@@ -5,7 +5,7 @@ import logging
 import socket
 import sys
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 import httpx
 import pytest
@@ -21,11 +21,6 @@ if TYPE_CHECKING:
 
     from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol as _WSProtocol
-
-    if sys.version_info >= (3, 10):  # pragma: no cover
-        from typing import TypeAlias
-    else:  # pragma: no cover
-        from typing_extensions import TypeAlias
 
     WSProtocol: TypeAlias = "type[WebSocketProtocol | _WSProtocol]"
 

@@ -8,9 +8,9 @@ from __future__ import annotations
 import multiprocessing
 import os
 import sys
+from collections.abc import Callable
 from multiprocessing.context import SpawnProcess
 from socket import socket
-from typing import Callable
 
 from uvicorn.config import Config
 

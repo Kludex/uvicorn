@@ -3,11 +3,10 @@ from __future__ import annotations
 import signal
 import socket
 import sys
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from pathlib import Path
 from threading import Thread
 from time import sleep
-from typing import Callable
 
 import pytest
 from pytest_mock import MockerFixture

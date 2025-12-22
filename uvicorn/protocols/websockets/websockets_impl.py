@@ -4,7 +4,7 @@ import asyncio
 import http
 import logging
 from collections.abc import Sequence
-from typing import Any, Literal, Optional, cast
+from typing import Any, Literal, cast
 from urllib.parse import unquote
 
 import websockets
@@ -244,7 +244,6 @@ class WebSocketProtocol(WebSocketServerProtocol):
             result = await self.app(self.scope, self.asgi_receive, self.asgi_send)  # type: ignore[func-returns-value]
         except ClientDisconnected:  # pragma: full coverage
             self.closed_event.set()
-            self.transport.close()
         except BaseException:
             self.closed_event.set()
             self.logger.exception("Exception in ASGI application\n")
@@ -252,17 +251,15 @@ class WebSocketProtocol(WebSocketServerProtocol):
                 self.send_500_response()
             else:
                 await self.handshake_completed_event.wait()
-            self.transport.close()
         else:
             self.closed_event.set()
             if not self.handshake_started_event.is_set():
                 self.logger.error("ASGI callable returned without sending handshake.")
                 self.send_500_response()
-                self.transport.close()
             elif result is not None:
                 self.logger.error("ASGI callable should return None, but returned '%s'.", result)
-                await self.handshake_completed_event.wait()
-                self.transport.close()
+            await self.handshake_completed_event.wait()
+        self.transport.close()
 
     async def asgi_send(self, message: ASGISendEvent) -> None:
         message_type = message["type"]
@@ -276,7 +273,7 @@ class WebSocketProtocol(WebSocketServerProtocol):
                     get_path_with_query_string(self.scope),
                 )
                 self.initial_response = None
-                self.accepted_subprotocol = cast(Optional[Subprotocol], message.get("subprotocol"))
+                self.accepted_subprotocol = cast(Subprotocol | None, message.get("subprotocol"))
                 if "headers" in message:
                     self.extra_headers.extend(
                         # ASGI spec requires bytes

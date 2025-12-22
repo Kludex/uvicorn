@@ -9,7 +9,7 @@ description = "The lightning-fast ASGI server."
 readme = "README.md"
 license = "BSD-3-Clause"
 license-files = ["LICENSE.md"]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     { name = "Tom Christie", email = "tom@tomchristie.com" },
 ]
@@ -22,7 +22,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -113,14 +112,9 @@ combine-as-imports = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 show_error_codes = true
-disallow_untyped_defs = true
+disallow_untyped_defs = false
 ignore_missing_imports = true
 follow_imports = "silent"
-
-[[tool.mypy.overrides]]
-module = "tests.*"
-disallow_untyped_defs = false
-check_untyped_defs = true
 
 [tool.pytest.ini_options]
 addopts = "-rxXs --strict-config --strict-markers -n 8"

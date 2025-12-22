@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from asyncio import Queue
-from typing import Any, Union
+from typing import Any
 
 from uvicorn import Config
 from uvicorn._types import (
@@ -16,13 +16,13 @@ from uvicorn._types import (
     LifespanStartupFailedEvent,
 )
 
-LifespanReceiveMessage = Union[LifespanStartupEvent, LifespanShutdownEvent]
-LifespanSendMessage = Union[
-    LifespanStartupFailedEvent,
-    LifespanShutdownFailedEvent,
-    LifespanStartupCompleteEvent,
-    LifespanShutdownCompleteEvent,
-]
+LifespanReceiveMessage = LifespanStartupEvent | LifespanShutdownEvent
+LifespanSendMessage = (
+    LifespanStartupFailedEvent
+    | LifespanShutdownFailedEvent
+    | LifespanStartupCompleteEvent
+    | LifespanShutdownCompleteEvent
+)
 
 
 STATE_TRANSITION_ERROR = "Got invalid state transition on lifespan protocol."

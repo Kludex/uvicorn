@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict
 
 import httpx
 import pytest
@@ -36,16 +36,9 @@ except ModuleNotFoundError:  # pragma: no cover
     skip_if_no_wsproto = pytest.mark.skipif(True, reason="wsproto is not installed.")
 
 if TYPE_CHECKING:
-    import sys
-
     from uvicorn.protocols.http.h11_impl import H11Protocol
     from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol as _WSProtocol
-
-    if sys.version_info >= (3, 10):  # pragma: no cover
-        from typing import TypeAlias
-    else:  # pragma: no cover
-        from typing_extensions import TypeAlias
 
     HTTPProtocol: TypeAlias = "type[H11Protocol | HttpToolsProtocol]"
     WSProtocol: TypeAlias = "type[_WSProtocol | WebSocketProtocol]"
@@ -455,6 +448,27 @@ async def test_asgi_return_value(ws_protocol_cls: WSProtocol, http_protocol_cls:
         async with websockets.client.connect(f"ws://127.0.0.1:{unused_tcp_port}") as websocket:
             with pytest.raises(websockets.exceptions.ConnectionClosed):
                 _ = await websocket.recv()
+        assert websocket.close_code == 1006
+
+
+async def test_close_transport_on_asgi_return(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+):
+    """The ASGI callable should call the `websocket.close` event.
+
+    If it doesn't, the server should still send a close frame to the client.
+    """
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        message = await receive()
+        if message["type"] == "websocket.connect":
+            await send({"type": "websocket.accept"})
+
+    config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
+    async with run_server(config):
+        async with websockets.client.connect(f"ws://127.0.0.1:{unused_tcp_port}") as websocket:
+            with pytest.raises(websockets.exceptions.ConnectionClosed):
+                await websocket.recv()
         assert websocket.close_code == 1006
 
 
