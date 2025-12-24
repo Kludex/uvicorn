@@ -185,7 +185,6 @@ class H11Protocol(asyncio.Protocol):
 
             if event is h11.NEED_DATA:
                 break
-
             elif event is h11.PAUSED:
                 # This case can occur in HTTP pipelining, so we need to
                 # stop reading any more data, and ensure that at the end
@@ -194,87 +193,92 @@ class H11Protocol(asyncio.Protocol):
                 self.flow.pause_reading()
                 break
 
-            elif isinstance(event, h11.Request):
-                self.headers = [(key.lower(), value) for key, value in event.headers]
-                raw_path, _, query_string = event.target.partition(b"?")
-                path = unquote(raw_path.decode("ascii"))
-                full_path = self.root_path + path
-                full_raw_path = self.root_path.encode("ascii") + raw_path
-                self.scope = {
-                    "type": "http",
-                    "asgi": {"version": self.config.asgi_version, "spec_version": "2.3"},
-                    "http_version": event.http_version.decode("ascii"),
-                    "server": self.server,
-                    "client": self.client,
-                    "scheme": self.scheme,  # type: ignore[typeddict-item]
-                    "method": event.method.decode("ascii"),
-                    "root_path": self.root_path,
-                    "path": full_path,
-                    "raw_path": full_raw_path,
-                    "query_string": query_string,
-                    "headers": self.headers,
-                    "state": self.app_state.copy(),
-                }
-                if self._should_upgrade():
-                    self.handle_websocket_upgrade(event)
-                    return
+            match event:
+                case h11.Request():
+                    self.headers = [(key.lower(), value) for key, value in event.headers]
+                    raw_path, _, query_string = event.target.partition(b"?")
+                    path = unquote(raw_path.decode("ascii"))
+                    full_path = self.root_path + path
+                    full_raw_path = self.root_path.encode("ascii") + raw_path
+                    self.scope = {
+                        "type": "http",
+                        "asgi": {"version": self.config.asgi_version, "spec_version": "2.3"},
+                        "http_version": event.http_version.decode("ascii"),
+                        "server": self.server,
+                        "client": self.client,
+                        "scheme": self.scheme,  # type: ignore[typeddict-item]
+                        "method": event.method.decode("ascii"),
+                        "root_path": self.root_path,
+                        "path": full_path,
+                        "raw_path": full_raw_path,
+                        "query_string": query_string,
+                        "headers": self.headers,
+                        "state": self.app_state.copy(),
+                    }
+                    if self._should_upgrade():
+                        self.handle_websocket_upgrade(event)
+                        return
 
-                # Handle 503 responses when 'limit_concurrency' is exceeded.
-                if self.limit_concurrency is not None and (
-                    len(self.connections) >= self.limit_concurrency or len(self.tasks) >= self.limit_concurrency
-                ):
-                    app = service_unavailable
-                    message = "Exceeded concurrency limit."
-                    self.logger.warning(message)
-                else:
-                    app = self.app
+                    # Handle 503 responses when 'limit_concurrency' is exceeded.
+                    if self.limit_concurrency is not None and (
+                        len(self.connections) >= self.limit_concurrency or len(self.tasks) >= self.limit_concurrency
+                    ):
+                        app = service_unavailable
+                        message = "Exceeded concurrency limit."
+                        self.logger.warning(message)
+                    else:
+                        app = self.app
 
-                # When starting to process a request, disable the keep-alive
-                # timeout. Normally we disable this when receiving data from
-                # client and set back when finishing processing its request.
-                # However, for pipelined requests processing finishes after
-                # already receiving the next request and thus the timer may
-                # be set here, which we don't want.
-                self._unset_keepalive_if_required()
+                    # When starting to process a request, disable the keep-alive
+                    # timeout. Normally we disable this when receiving data from
+                    # client and set back when finishing processing its request.
+                    # However, for pipelined requests processing finishes after
+                    # already receiving the next request and thus the timer may
+                    # be set here, which we don't want.
+                    self._unset_keepalive_if_required()
 
-                self.cycle = RequestResponseCycle(
-                    scope=self.scope,
-                    conn=self.conn,
-                    transport=self.transport,
-                    flow=self.flow,
-                    logger=self.logger,
-                    access_logger=self.access_logger,
-                    access_log=self.access_log,
-                    default_headers=self.server_state.default_headers,
-                    message_event=asyncio.Event(),
-                    on_response=self.on_response_complete,
-                )
-                # For the asyncio loop, we need to explicitly start with an empty context
-                # as it can be polluted from previous ASGI runs.
-                # See https://github.com/python/cpython/issues/140947 for details.
-                task = contextvars.Context().run(self.loop.create_task, self.cycle.run_asgi(app))
-                # TODO: Replace the line above with the line below for Python >= 3.11
-                # task = self.loop.create_task(self.cycle.run_asgi(app), context=contextvars.Context())
-                task.add_done_callback(self.tasks.discard)
-                self.tasks.add(task)
+                    self.cycle = RequestResponseCycle(
+                        scope=self.scope,
+                        conn=self.conn,
+                        transport=self.transport,
+                        flow=self.flow,
+                        logger=self.logger,
+                        access_logger=self.access_logger,
+                        access_log=self.access_log,
+                        default_headers=self.server_state.default_headers,
+                        message_event=asyncio.Event(),
+                        on_response=self.on_response_complete,
+                    )
+                    # For the asyncio loop, we need to explicitly start with an empty context
+                    # as it can be polluted from previous ASGI runs.
+                    # See https://github.com/python/cpython/issues/140947 for details.
+                    task = contextvars.Context().run(self.loop.create_task, self.cycle.run_asgi(app))
+                    # TODO: Replace the line above with the line below for Python >= 3.11
+                    # task = self.loop.create_task(self.cycle.run_asgi(app), context=contextvars.Context())
+                    task.add_done_callback(self.tasks.discard)
+                    self.tasks.add(task)
 
-            elif isinstance(event, h11.Data):
-                if self.conn.our_state is h11.DONE:
-                    continue
-                self.cycle.body += event.data
-                if len(self.cycle.body) > HIGH_WATER_LIMIT:
-                    self.flow.pause_reading()
-                self.cycle.message_event.set()
+                case h11.Data():
+                    if self.conn.our_state is h11.DONE:
+                        continue
+                    self.cycle.body += event.data
+                    if len(self.cycle.body) > HIGH_WATER_LIMIT:
+                        self.flow.pause_reading()
+                    self.cycle.message_event.set()
 
-            elif isinstance(event, h11.EndOfMessage):
-                if self.conn.our_state is h11.DONE:
-                    self.transport.resume_reading()
-                    self.conn.start_next_cycle()
-                    continue
-                self.cycle.more_body = False
-                self.cycle.message_event.set()
-                if self.conn.their_state == h11.MUST_CLOSE:
-                    break
+                case h11.EndOfMessage():
+                    if self.conn.our_state is h11.DONE:
+                        self.transport.resume_reading()
+                        self.conn.start_next_cycle()
+                        continue
+                    self.cycle.more_body = False
+                    self.cycle.message_event.set()
+                    if self.conn.their_state == h11.MUST_CLOSE:
+                        break
+
+                case _:
+                    # Shouldn't reach here, but catch any unexpected events
+                    pass
 
     def handle_websocket_upgrade(self, event: h11.Request) -> None:
         if self.logger.level <= TRACE_LOG_LEVEL:  # pragma: full coverage

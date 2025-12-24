@@ -107,31 +107,32 @@ class LifespanOn:
             "lifespan.shutdown.failed",
         )
 
-        if message["type"] == "lifespan.startup.complete":
-            assert not self.startup_event.is_set(), STATE_TRANSITION_ERROR
-            assert not self.shutdown_event.is_set(), STATE_TRANSITION_ERROR
-            self.startup_event.set()
+        match message["type"]:
+            case "lifespan.startup.complete":
+                assert not self.startup_event.is_set(), STATE_TRANSITION_ERROR
+                assert not self.shutdown_event.is_set(), STATE_TRANSITION_ERROR
+                self.startup_event.set()
 
-        elif message["type"] == "lifespan.startup.failed":
-            assert not self.startup_event.is_set(), STATE_TRANSITION_ERROR
-            assert not self.shutdown_event.is_set(), STATE_TRANSITION_ERROR
-            self.startup_event.set()
-            self.startup_failed = True
-            if message.get("message"):
-                self.logger.error(message["message"])
+            case "lifespan.startup.failed":
+                assert not self.startup_event.is_set(), STATE_TRANSITION_ERROR
+                assert not self.shutdown_event.is_set(), STATE_TRANSITION_ERROR
+                self.startup_event.set()
+                self.startup_failed = True
+                if message.get("message"):
+                    self.logger.error(message["message"])
 
-        elif message["type"] == "lifespan.shutdown.complete":
-            assert self.startup_event.is_set(), STATE_TRANSITION_ERROR
-            assert not self.shutdown_event.is_set(), STATE_TRANSITION_ERROR
-            self.shutdown_event.set()
+            case "lifespan.shutdown.complete":
+                assert self.startup_event.is_set(), STATE_TRANSITION_ERROR
+                assert not self.shutdown_event.is_set(), STATE_TRANSITION_ERROR
+                self.shutdown_event.set()
 
-        elif message["type"] == "lifespan.shutdown.failed":
-            assert self.startup_event.is_set(), STATE_TRANSITION_ERROR
-            assert not self.shutdown_event.is_set(), STATE_TRANSITION_ERROR
-            self.shutdown_event.set()
-            self.shutdown_failed = True
-            if message.get("message"):
-                self.logger.error(message["message"])
+            case "lifespan.shutdown.failed":
+                assert self.startup_event.is_set(), STATE_TRANSITION_ERROR
+                assert not self.shutdown_event.is_set(), STATE_TRANSITION_ERROR
+                self.shutdown_event.set()
+                self.shutdown_failed = True
+                if message.get("message"):
+                    self.logger.error(message["message"])
 
     async def receive(self) -> LifespanReceiveMessage:
         return await self.receive_queue.get()
