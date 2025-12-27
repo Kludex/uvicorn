@@ -81,8 +81,13 @@ class BaseReload:
         for sig in HANDLED_SIGNALS:
             signal.signal(sig, self.signal_handler)
 
-        self.process = get_subprocess(config=self.config, target=self.target, sockets=self.sockets)
+        process, event = get_subprocess(config=self.config, target=self.target, sockets=self.sockets)
+
+        self.process = process
         self.process.start()
+
+        if event is not None:  # pragma: py-not-win32
+            event.wait()
 
     def restart(self) -> None:
         if sys.platform == "win32":  # pragma: py-not-win32
@@ -97,8 +102,13 @@ class BaseReload:
             self.process.terminate()
         self.process.join()
 
-        self.process = get_subprocess(config=self.config, target=self.target, sockets=self.sockets)
+        process, event = get_subprocess(config=self.config, target=self.target, sockets=self.sockets)
+
+        self.process = process
         self.process.start()
+
+        if event is not None:  # pragma: py-not-win32
+            event.wait()
 
     def shutdown(self) -> None:
         if sys.platform == "win32":

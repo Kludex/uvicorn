@@ -32,8 +32,11 @@ class Process:
     ) -> None:
         self.real_target = target
 
+        process, start_event = get_subprocess(config, self.target, sockets)
+
         self.parent_conn, self.child_conn = Pipe()
-        self.process = get_subprocess(config, self.target, sockets)
+        self.process = process
+        self.start_event = start_event
 
     def ping(self, timeout: float = 5) -> bool:
         self.parent_conn.send(b"ping")
@@ -71,6 +74,9 @@ class Process:
 
     def start(self) -> None:
         self.process.start()
+
+        if self.start_event is not None:  # pragma: py-not-win32
+            self.start_event.wait()
 
     def terminate(self) -> None:
         if self.process.exitcode is None:  # Process is still running
