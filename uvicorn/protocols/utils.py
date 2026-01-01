@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import ssl
 import urllib.parse
 
-from uvicorn._types import WWWScope
+from uvicorn._types import TLSExtensionInfo, WWWScope
+from uvicorn.config import Config
 
 
 class ClientDisconnected(OSError): ...
@@ -54,3 +56,37 @@ def get_path_with_query_string(scope: WWWScope) -> str:
     if scope["query_string"]:
         path_with_query_string = "{}?{}".format(path_with_query_string, scope["query_string"].decode("ascii"))
     return path_with_query_string
+
+
+def get_tls_info(transport: asyncio.Transport, config: Config) -> TLSExtensionInfo:
+    ###
+    # server_cert: Unable to set from transport information, need to set from server_config
+    # client_cert_chain:
+    # tls_version:
+    # cipher_suite:
+    ###
+
+    ssl_info: TLSExtensionInfo = {
+        "server_cert": None,
+        "client_cert_chain": [],
+        "tls_version": None,
+        "cipher_suite": None,
+    }
+
+    ssl_info["server_cert"] = config.ssl_cert_pem
+
+    ssl_object = transport.get_extra_info("ssl_object")
+    if ssl_object is not None:
+        client_chain = (
+            ssl_object.get_verified_chain()
+            if hasattr(ssl_object, "get_verified_chain")
+            else [ssl_object.getpeercert(binary_form=True)]
+        )
+        for cert in client_chain:
+            if cert is not None:
+                ssl_info["client_cert_chain"].append(ssl.DER_cert_to_PEM_cert(cert))
+
+        ssl_info["tls_version"] = ssl_object.version()
+        ssl_info["cipher_suite"] = ssl_object.cipher()[0] if ssl_object.cipher() else None
+
+    return ssl_info
