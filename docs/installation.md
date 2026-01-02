@@ -38,9 +38,9 @@ If you just want to install all of them at once, you can use the `standard` extr
 
 The `standard` extra installs the following dependencies:
 
-- **[`uvloop`](https://github.com/MagicStack/uvloop) — Fast, drop-in replacement of the built-in asyncio event loop.**
+- **[`uvloop`](https://github.com/MagicStack/uvloop) / [`winloop`](https://github.com/Vizonex/Winloop) — Fast, drop-in replacement of the built-in asyncio event loop.**
 
-    When `uvloop` is installed, Uvicorn will use it by default.
+    When `uvloop` is installed, Uvicorn will use it by default on Unix platforms. When `winloop` is installed, Uvicorn will use it by default on Windows.
 
 - **[`httptools`](https://github.com/MagicStack/httptools) — Python binding for the Node.js HTTP parser.**
 

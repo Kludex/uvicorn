@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import importlib
+import sys
 
 import pytest
 
@@ -11,9 +12,13 @@ from uvicorn.protocols.websockets.auto import AutoWebSocketsProtocol
 from uvicorn.server import ServerState
 
 try:
-    importlib.import_module("uvloop")
-    expected_loop = "uvloop"  # pragma: py-win32
-except ImportError:  # pragma: py-not-win32
+    if sys.platform == "win32":  # pragma: py-not-win32
+        importlib.import_module("winloop")
+        expected_loop = "winloop"
+    else:  # pragma: py-win32
+        importlib.import_module("uvloop")
+        expected_loop = "uvloop"
+except ImportError:  # pragma: no cover
     expected_loop = "asyncio"
 
 try:
