@@ -22,7 +22,7 @@ def get_subprocess(
     config: Config,
     target: Callable[..., None],
     sockets: list[socket],
-) -> SpawnProcess:
+) -> tuple[SpawnProcess, multiprocessing.synchronize.Event | None]:
     """
     Called in the parent process, to instantiate a new child process instance.
     The child is not yet started at this point.
@@ -41,20 +41,29 @@ def get_subprocess(
     except (AttributeError, OSError):
         stdin_fileno = None
 
+    start_event: multiprocessing.synchronize.Event | None = None
+
+    if sys.platform == "win32":  # pragma: py-not-win32
+        # Create an event that will be waited on right after starting the process. This is
+        # done to ensure that the child process has time to properly initialize its sockets
+        start_event = spawn.Event()
+
     kwargs = {
         "config": config,
         "target": target,
         "sockets": sockets,
+        "start_event": start_event,
         "stdin_fileno": stdin_fileno,
     }
 
-    return spawn.Process(target=subprocess_started, kwargs=kwargs)
+    return spawn.Process(target=subprocess_started, kwargs=kwargs), start_event
 
 
 def subprocess_started(
     config: Config,
     target: Callable[..., None],
     sockets: list[socket],
+    start_event: multiprocessing.synchronize.Event | None,
     stdin_fileno: int | None,
 ) -> None:
     """
@@ -74,6 +83,19 @@ def subprocess_started(
 
     # Logging needs to be setup again for each child.
     config.configure_logging()
+
+    if sys.platform == "win32":  # pragma: py-not-win32
+        assert start_event is not None
+
+        # Windows requires that sockets are explicitly shared between processes
+        from socket import fromshare
+
+        sockets = [fromshare(sock.share(os.getpid())) for sock in sockets]
+
+        # There seems to be a bug with `WSASocket` (which is used by `socket.share`) where when multiple
+        # processes attempt to share the same socket at the same time, one of them might fail.
+        # So, we can use an event to make sure that only one process will be creating sockets at a time.
+        start_event.set()
 
     try:
         # Now we can call into `Server.run(sockets=sockets)`

@@ -4,7 +4,6 @@ import asyncio
 import contextlib
 import logging
 import os
-import platform
 import signal
 import socket
 import sys
@@ -117,22 +116,8 @@ class Server:
         if sockets is not None:  # pragma: full coverage
             # Explicitly passed a list of open sockets.
             # We use this when the server is run from a Gunicorn worker.
-
-            def _share_socket(
-                sock: socket.SocketType,
-            ) -> socket.SocketType:  # pragma py-not-win32
-                # Windows requires the socket be explicitly shared across
-                # multiple workers (processes).
-                from socket import fromshare  # type: ignore[attr-defined]
-
-                sock_data = sock.share(os.getpid())  # type: ignore[attr-defined]
-                return fromshare(sock_data)
-
             self.servers: list[asyncio.base_events.Server] = []
             for sock in sockets:
-                is_windows = platform.system() == "Windows"
-                if config.workers > 1 and is_windows:  # pragma: py-not-win32
-                    sock = _share_socket(sock)  # type: ignore[assignment]
                 server = await loop.create_server(create_protocol, sock=sock, ssl=config.ssl, backlog=config.backlog)
                 self.servers.append(server)
             listeners = sockets
