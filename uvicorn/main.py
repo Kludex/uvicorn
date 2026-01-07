@@ -371,6 +371,13 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     help="Treat APP as an application factory, i.e. a () -> <ASGI app> callable.",
     show_default=True,
 )
+@click.option(
+    "--socket-load-balance",
+    is_flag=True,
+    default=False,
+    help="Use kernel support for socket load balancing",
+    show_default=True,
+)
 def main(
     app: str,
     host: str,
@@ -420,6 +427,7 @@ def main(
     app_dir: str,
     h11_max_incomplete_event_size: int | None,
     factory: bool,
+    socket_load_balance: bool = False,
 ) -> None:
     run(
         app,
@@ -470,6 +478,7 @@ def main(
         factory=factory,
         app_dir=app_dir,
         h11_max_incomplete_event_size=h11_max_incomplete_event_size,
+        socket_load_balance=socket_load_balance,
     )
 
 
@@ -523,6 +532,7 @@ def run(
     app_dir: str | None = None,
     factory: bool = False,
     h11_max_incomplete_event_size: int | None = None,
+    socket_load_balance: bool = False,
 ) -> None:
     if app_dir is not None:
         sys.path.insert(0, app_dir)
@@ -575,6 +585,7 @@ def run(
         use_colors=use_colors,
         factory=factory,
         h11_max_incomplete_event_size=h11_max_incomplete_event_size,
+        socket_load_balance=socket_load_balance,
     )
     server = Server(config=config)
 
@@ -588,7 +599,11 @@ def run(
             sock = config.bind_socket()
             ChangeReload(config, target=server.run, sockets=[sock]).run()
         elif config.workers > 1:
-            sock = config.bind_socket()
+            if config.socket_load_balance:
+                config.check_socket_lb()
+                sock = config.bind_socket  # type: ignore[assignment]
+            else:
+                sock = config.bind_socket()
             Multiprocess(config, target=server.run, sockets=[sock]).run()
         else:
             server.run()
