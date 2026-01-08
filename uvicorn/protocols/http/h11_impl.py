@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import enum
 import http
 import logging
 from collections.abc import Callable
@@ -18,6 +19,7 @@ from uvicorn._types import (
     HTTPRequestEvent,
     HTTPResponseBodyEvent,
     HTTPResponseStartEvent,
+    HTTPResponseTrailersEvent,
     HTTPScope,
 )
 from uvicorn.config import Config
@@ -214,6 +216,7 @@ class H11Protocol(asyncio.Protocol):
                     "query_string": query_string,
                     "headers": self.headers,
                     "state": self.app_state.copy(),
+                    "extensions": {"http.response.trailers": {}},
                 }
                 if self._should_upgrade():
                     self.handle_websocket_upgrade(event)
@@ -366,6 +369,30 @@ class H11Protocol(asyncio.Protocol):
             self.transport.close()
 
 
+class _RequestResponseState(enum.Enum):
+    """Response state machine to track progress of response sending."""
+
+    # This appears to dupliate the implemenation of h11, but is intentional to
+    # allow for different underlying implementations.
+
+    RESPONSE_NOT_STARTED = enum.auto()
+    """Response has not yet started, no headers sent."""
+    RESPONSE_BODY = enum.auto()
+    """Response has sent headers and is now sending body."""
+    RESPONSE_TRAILERS = enum.auto()
+    """Response indicated trailers are expected before completion."""
+    RESPONSE_COMPLETED = enum.auto()
+    """Response is complete, inclusive of headers, body, and/or trailers."""
+
+    def started(self) -> bool:
+        """Indicates if the response has started (headers sent)."""
+        return self != self.RESPONSE_NOT_STARTED
+
+    def completed(self) -> bool:
+        """Indicates if the response has completed."""
+        return self == self.RESPONSE_COMPLETED
+
+
 class RequestResponseCycle:
     def __init__(
         self,
@@ -399,10 +426,25 @@ class RequestResponseCycle:
         # Request state
         self.body = b""
         self.more_body = True
+        self._has_trailers = False
+        self._trailers: list[tuple[bytes, bytes]] = []
 
-        # Response state
-        self.response_started = False
-        self.response_complete = False
+        # Response state.
+        self._response_state = _RequestResponseState.RESPONSE_NOT_STARTED
+
+    # Maintained for backwards compatibilty for any callers that might depend
+    # upon the state properties.
+    @property
+    def response_started(self) -> bool:
+        # return self._response_started
+        return self._response_state.started()
+
+    # Maintained for backwards compatibilty for any callers that might depend
+    # upon the state properties.
+    @property
+    def response_complete(self) -> bool:
+        # return self._response_complete
+        return self._response_state.completed()
 
     # ASGI exception wrapper
     async def run_asgi(self, app: ASGI3Application) -> None:
@@ -460,21 +502,25 @@ class RequestResponseCycle:
         if self.disconnected:
             return  # pragma: full coverage
 
-        if not self.response_started:
+        if self._response_state == _RequestResponseState.RESPONSE_NOT_STARTED:
             # Sending response status line and headers
             if message_type != "http.response.start":
                 msg = "Expected ASGI message 'http.response.start', but got '%s'."
                 raise RuntimeError(msg % message_type)
             message = cast("HTTPResponseStartEvent", message)
 
-            self.response_started = True
+            self._response_state = _RequestResponseState.RESPONSE_BODY
             self.waiting_for_100_continue = False
 
             status = message["status"]
             headers = self.default_headers + list(message.get("headers", []))
+            has_trailers = message.get("trailers", False)
 
             if CLOSE_HEADER in self.scope["headers"] and CLOSE_HEADER not in headers:
                 headers = headers + [CLOSE_HEADER]
+
+            if has_trailers:
+                self._has_trailers = True
 
             if self.access_log:
                 self.access_logger.info(
@@ -492,7 +538,7 @@ class RequestResponseCycle:
             output = self.conn.send(event=response)
             self.transport.write(output)
 
-        elif not self.response_complete:
+        elif self._response_state == _RequestResponseState.RESPONSE_BODY:
             # Sending response body
             if message_type != "http.response.body":
                 msg = "Expected ASGI message 'http.response.body', but got '%s'."
@@ -509,17 +555,38 @@ class RequestResponseCycle:
 
             # Handle response completion
             if not more_body:
-                self.response_complete = True
-                self.message_event.set()
-                output = self.conn.send(event=h11.EndOfMessage())
-                self.transport.write(output)
+                if self._has_trailers:
+                    self._response_state = _RequestResponseState.RESPONSE_TRAILERS
+                else:
+                    self._response_state = _RequestResponseState.RESPONSE_COMPLETED
+
+        elif self._response_state == _RequestResponseState.RESPONSE_TRAILERS:
+            # Sending response body
+            if message_type != "http.response.trailers":
+                msg = "Expected ASGI message 'http.response.trailers', but got '%s'."
+                raise RuntimeError(msg % message_type)
+            message = cast("HTTPResponseTrailersEvent", message)
+
+            trailers = list(message.get("headers", []))
+            more_trailers = message.get("more_trailers", False)
+
+            # Trailers must be accumulated to be emitted into the EndOfMessage
+            # event as the response is closed.
+            self._trailers += trailers
+
+            if not more_trailers:
+                self._response_state = _RequestResponseState.RESPONSE_COMPLETED
 
         else:
             # Response already sent
             msg = "Unexpected ASGI message '%s' sent, after response already completed."
             raise RuntimeError(msg % message_type)
 
-        if self.response_complete:
+        if self._response_state == _RequestResponseState.RESPONSE_COMPLETED:
+            self.message_event.set()
+            output = self.conn.send(event=h11.EndOfMessage(headers=self._trailers))
+            self.transport.write(output)
+
             if self.conn.our_state is h11.MUST_CLOSE or not self.keep_alive:
                 self.conn.send(event=h11.ConnectionClosed())
                 self.transport.close()
