@@ -55,7 +55,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.config = config
         self.app = config.loaded_app
         self.loop = _loop or asyncio.get_event_loop()
-        self.logger = logging.getLogger("uvicorn.error")
+        self.logger = logging.getLogger("uvicorn.access")
         self.root_path = config.root_path
         self.app_state = app_state
 
