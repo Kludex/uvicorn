@@ -193,7 +193,7 @@ class Config:
         ws_per_message_deflate: bool = True,
         lifespan: LifespanType = "auto",
         env_file: str | os.PathLike[str] | None = None,
-        log_config: dict[str, Any] | str | RawConfigParser | IO[Any] | None = LOGGING_CONFIG,
+        log_config: dict[str, Any] | str | os.PathLike[str] | RawConfigParser | IO[Any] | None = LOGGING_CONFIG,
         log_level: str | int | None = None,
         access_log: bool = True,
         use_colors: bool | None = None,
@@ -363,6 +363,9 @@ class Config:
         logging.addLevelName(TRACE_LOG_LEVEL, "TRACE")
 
         if self.log_config is not None:
+            if isinstance(self.log_config, os.PathLike):  # pragma: no cover
+                self.log_config = os.fspath(self.log_config)
+
             if isinstance(self.log_config, dict):
                 if self.use_colors in (True, False):
                     self.log_config["formatters"]["default"]["use_colors"] = self.use_colors
@@ -373,9 +376,13 @@ class Config:
                     loaded_config = json.load(file)
                     logging.config.dictConfig(loaded_config)
             elif isinstance(self.log_config, str) and self.log_config.endswith((".yaml", ".yml")):
-                # Install the PyYAML package or the uvicorn[standard] optional
-                # dependencies to enable this functionality.
-                import yaml
+                try:
+                    import yaml
+                except ImportError as e:  # pragma: no cover
+                    raise ImportError(
+                        "Install the PyYAML package or the uvicorn[standard] optional "
+                        "dependencies to enable this functionality."
+                    ) from e
 
                 with open(self.log_config) as file:
                     loaded_config = yaml.safe_load(file)
@@ -387,7 +394,7 @@ class Config:
 
         if self.log_level is not None:
             if isinstance(self.log_level, str):
-                log_level = LOG_LEVELS[self.log_level]
+                log_level = LOG_LEVELS[self.log_level.lower()]
             else:
                 log_level = self.log_level
             logging.getLogger("uvicorn.error").setLevel(log_level)
