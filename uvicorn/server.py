@@ -255,7 +255,7 @@ class Server:
 
         max_requests = self.config.limit_max_requests
         if max_requests is not None and self.server_state.total_requests >= max_requests:
-            logger.warning(f"Maximum request limit of {max_requests} exceeded. Terminating process.")
+            logger.info("Maximum request limit of %d exceeded. Terminating process.", max_requests)
             return True
 
         return False
