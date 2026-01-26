@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from ssl import SSLObject
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
 from tests.response import Response
-from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
+from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope, WWWScope
 from uvicorn.config import Config
 from uvicorn.lifespan.off import LifespanOff
 from uvicorn.lifespan.on import LifespanOn
@@ -16,6 +17,7 @@ from uvicorn.server import ServerState
 try:
     from h2.config import H2Configuration
     from h2.connection import H2Connection
+    from h2.errors import ErrorCodes
 
     from uvicorn.protocols.http.h2_impl import H2Protocol
 
@@ -26,6 +28,7 @@ except ModuleNotFoundError:  # pragma: no cover
 if TYPE_CHECKING:
     from h2.config import H2Configuration
     from h2.connection import H2Connection
+    from h2.errors import ErrorCodes
 
 
 pytestmark = [pytest.mark.anyio, skip_if_no_h2]
@@ -37,7 +40,7 @@ class MockTransport:
         sockname: tuple[str, int] | None = None,
         peername: tuple[str, int] | None = None,
         sslcontext: bool = True,
-        ssl_object: Any | None = None,
+        ssl_object: SSLObject | None = None,
     ):
         self.sockname = ("127.0.0.1", 8000) if sockname is None else sockname
         self.peername = ("127.0.0.1", 8001) if peername is None else peername
@@ -75,13 +78,16 @@ class MockTransport:
     def clear_buffer(self):
         self.buffer = b""
 
-    def set_protocol(self, protocol: asyncio.Protocol):  # pragma: no cover
-        pass
+    def set_protocol(self, protocol: asyncio.Protocol): ...
 
 
 class MockTimerHandle:
     def __init__(
-        self, loop_later_list: list[MockTimerHandle], delay: float, callback: Callable[[], None], args: tuple[Any, ...]
+        self,
+        loop_later_list: list[MockTimerHandle],
+        delay: float,
+        callback: Callable[[], None],
+        args: tuple[Any, ...],
     ):
         self.loop_later_list = loop_later_list
         self.delay = delay
@@ -95,21 +101,21 @@ class MockTimerHandle:
             self.loop_later_list.remove(self)
 
 
-class MockLoop:
-    def __init__(self):
+class MockLoop(asyncio.AbstractEventLoop):
+    def __init__(self) -> None:
         self._tasks: list[asyncio.Task[Any]] = []
         self._later: list[MockTimerHandle] = []
 
-    def create_task(self, coroutine: Any) -> Any:
+    def create_task(self, coroutine: Any) -> MockTask:  # type: ignore[override]
         self._tasks.insert(0, coroutine)
         return MockTask()
 
-    def call_later(self, delay: float, callback: Callable[[], None], *args: Any) -> MockTimerHandle:
+    def call_later(self, delay: float, callback: Callable[[], None], *args: Any) -> MockTimerHandle:  # type: ignore[override]
         handle = MockTimerHandle(self._later, delay, callback, args)
         self._later.insert(0, handle)
         return handle
 
-    async def run_one(self):
+    async def run_one(self) -> Any:
         return await self._tasks.pop()
 
     def run_later(self, with_delay: float) -> None:
@@ -143,12 +149,12 @@ def get_connected_protocol(
     lifespan: LifespanOff | LifespanOn | None = None,
     **kwargs: Any,
 ) -> MockProtocol:
-    loop = MockLoop()
+    loop = MockLoop()  # type: ignore[abstract]
     transport = MockTransport()
     config = Config(app=app, **kwargs)
     lifespan = lifespan or LifespanOff(config)
     server_state = ServerState()
-    protocol = H2Protocol(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)  # type: ignore[arg-type]
+    protocol = H2Protocol(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)
     protocol.connection_made(transport)  # type: ignore[arg-type]
     return protocol  # type: ignore[return-value]
 
@@ -193,21 +199,52 @@ def create_h2_request(
     return conn.data_to_send()
 
 
+def parse_h2_response(data: bytes) -> tuple[int, dict[str, str], bytes]:
+    """Parse HTTP/2 response data and return (status, headers, body)."""
+    from h2.events import DataReceived, ResponseReceived
+
+    config = H2Configuration(client_side=True)
+    conn = H2Connection(config=config)
+    conn.initiate_connection()
+    # Simulate that we sent a request on stream 1
+    request_headers = [(":method", "GET"), (":path", "/"), (":scheme", "https"), (":authority", "localhost")]
+    conn.send_headers(1, request_headers, end_stream=True)
+    conn.clear_outbound_data_buffer()
+
+    # Now parse the response
+    events = conn.receive_data(data)
+
+    status = 0
+    headers: dict[str, str] = {}
+    body = b""
+
+    for event in events:
+        if isinstance(event, ResponseReceived):
+            for name, value in event.headers:
+                if name == b":status":
+                    status = int(value)
+                else:
+                    headers[name.decode("utf-8")] = value.decode("utf-8")
+        elif isinstance(event, DataReceived):
+            body += event.data
+
+    return status, headers, body
+
+
 async def test_get_request():
     app = Response("Hello, world", media_type="text/plain")
 
     protocol = get_connected_protocol(app)
-    # Clear initial connection setup data
     protocol.transport.clear_buffer()
 
-    # Send HTTP/2 GET request
     request_data = create_h2_request("GET", "/")
     protocol.data_received(request_data)
     await protocol.loop.run_one()
 
-    # The response should contain data - h2 sends binary frames
-    # We just verify that the protocol wrote something back
-    assert len(protocol.transport.buffer) > 0
+    status, headers, body = parse_h2_response(protocol.transport.buffer)
+    assert status == 200
+    assert headers["content-type"] == "text/plain; charset=utf-8"
+    assert body == b"Hello, world"
 
 
 async def test_post_request():
@@ -294,13 +331,14 @@ async def test_head_request():
     protocol.data_received(request_data)
     await protocol.loop.run_one()
 
-    # Response should not contain body for HEAD request
-    # The protocol should have written something (headers at least)
-    assert len(protocol.transport.buffer) > 0
+    status, headers, body = parse_h2_response(protocol.transport.buffer)
+    assert status == 200
+    assert headers["content-type"] == "text/plain; charset=utf-8"
+    assert not body
 
 
 async def test_app_exception():
-    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+    async def app(_scope: Scope, _receive: ASGIReceiveCallable, _send: ASGISendCallable):
         raise Exception("Test exception")
 
     protocol = get_connected_protocol(app)
@@ -310,12 +348,13 @@ async def test_app_exception():
     protocol.data_received(request_data)
     await protocol.loop.run_one()
 
-    # Protocol should send 500 response
-    assert len(protocol.transport.buffer) > 0
+    status, _, body = parse_h2_response(protocol.transport.buffer)
+    assert status == 500
+    assert body == b"Internal Server Error"
 
 
 async def test_no_response_returned():
-    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+    async def app(_scope: Scope, _receive: ASGIReceiveCallable, _send: ASGISendCallable):
         pass  # App returns without sending response
 
     protocol = get_connected_protocol(app)
@@ -325,8 +364,9 @@ async def test_no_response_returned():
     protocol.data_received(request_data)
     await protocol.loop.run_one()
 
-    # Protocol should send 500 response
-    assert len(protocol.transport.buffer) > 0
+    status, _, body = parse_h2_response(protocol.transport.buffer)
+    assert status == 500
+    assert body == b"Internal Server Error"
 
 
 async def test_max_concurrency():
@@ -339,8 +379,9 @@ async def test_max_concurrency():
     protocol.data_received(request_data)
     await protocol.loop.run_one()
 
-    # Protocol should send 503 response due to concurrency limit
-    assert len(protocol.transport.buffer) > 0
+    status, _, body = parse_h2_response(protocol.transport.buffer)
+    assert status == 503
+    assert body == b"Service Unavailable"
 
 
 async def test_shutdown_during_idle():
@@ -353,10 +394,10 @@ async def test_shutdown_during_idle():
     assert protocol.transport.is_closing()
 
 
-async def test_root_path():
-    received_scope = None
+async def test_root_path() -> None:
+    received_scope: WWWScope | None = None
 
-    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+    async def app(scope: WWWScope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         nonlocal received_scope
         received_scope = scope
         response = Response("OK", media_type="text/plain")
@@ -374,7 +415,7 @@ async def test_root_path():
     assert received_scope["path"] == "/api/test"
 
 
-async def test_lifespan_state():
+async def test_lifespan_state() -> None:
     expected_state = {"key": "value"}
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
@@ -392,14 +433,16 @@ async def test_lifespan_state():
     protocol.data_received(request_data)
     await protocol.loop.run_one()
 
-    assert len(protocol.transport.buffer) > 0
+    status, _, body = parse_h2_response(protocol.transport.buffer)
+    assert status == 200
+    assert body == b"Hi!"
 
 
-async def test_scope_extensions():
+async def test_scope_extensions() -> None:
     """Test that HTTP/2 scope includes http.response.push extension."""
-    received_scope = None
+    received_scope: WWWScope | None = None
 
-    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+    async def app(scope: WWWScope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         nonlocal received_scope
         received_scope = scope
         response = Response("OK", media_type="text/plain")
@@ -417,11 +460,11 @@ async def test_scope_extensions():
     assert "http.response.push" in received_scope["extensions"]
 
 
-async def test_host_header_from_authority():
+async def test_host_header_from_authority() -> None:
     """Test that :authority pseudo-header is converted to host header."""
     host_header: bytes | None = None
 
-    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
         nonlocal host_header
         assert scope["type"] == "http"
         headers: dict[bytes, bytes] = dict(scope["headers"])
@@ -480,13 +523,15 @@ async def test_server_push():
     await protocol.loop.run_one()
 
     # Run the pushed request task as well
-    if protocol.loop._tasks:
-        await protocol.loop.run_one()
+    await protocol.loop.run_one()
 
     assert push_received
     assert push_request_received
-    # Protocol should have written push promise and response
-    assert len(protocol.transport.buffer) > 0
+
+    status, headers, body = parse_h2_response(protocol.transport.buffer)
+    assert status == 200
+    assert headers["content-type"] == "text/html"
+    assert body == b"<html>Hello</html>pushed content"
 
 
 async def test_large_body():
@@ -523,12 +568,12 @@ async def test_large_body():
     assert received_body == large_body
 
 
-async def test_multiple_requests_sequential():
+async def test_multiple_requests_sequential() -> None:
     """Test multiple sequential requests on same connection."""
     request_count = 0
     paths_received: list[str] = []
 
-    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
         nonlocal request_count
         request_count += 1
         if scope["type"] == "http":
@@ -606,18 +651,12 @@ async def test_connection_lost():
     app = Response("Hello", media_type="text/plain")
 
     protocol = get_connected_protocol(app)
-
-    # Simulate connection lost
     protocol.connection_lost(None)
-
-    # Protocol should be removed from connections
     assert protocol not in protocol.connections
 
 
 async def test_stream_reset():
     """Test handling of client-initiated stream reset (RST_STREAM)."""
-    from h2.errors import ErrorCodes
-
     disconnect_received = False
     app_completed = False
 
@@ -661,5 +700,5 @@ async def test_stream_reset():
     assert disconnect_received
     assert app_completed
     # Stream should be removed from protocol
-    h2_protocol = cast("H2Protocol", protocol)
+    h2_protocol = cast(H2Protocol, protocol)
     assert 1 not in h2_protocol.streams

@@ -253,7 +253,7 @@ class MockTimerHandle:
 
 
 class MockLoop:
-    def __init__(self):
+    def __init__(self) -> None:
         self._tasks: list[asyncio.Task[Any]] = []
         self._later: list[MockTimerHandle] = []
 
@@ -266,7 +266,7 @@ class MockLoop:
         self._later.insert(0, handle)
         return handle
 
-    async def run_one(self):
+    async def run_one(self) -> Any:
         return await self._tasks.pop()
 
     def run_later(self, with_delay: float) -> None:
@@ -296,10 +296,15 @@ def get_connected_protocol(
     app: ASGIApplication,
     http_protocol_cls: type[HTTPProtocol],
     lifespan: LifespanOff | LifespanOn | None = None,
+    alpn_protocol: str | None = None,
     **kwargs: Any,
 ) -> MockProtocol:
     loop = MockLoop()
-    transport = MockTransport()
+    if alpn_protocol is not None:
+        ssl_object = MockSSLObject(alpn_protocol=alpn_protocol)
+        transport = MockTransport(sslcontext=True, ssl_object=ssl_object)
+    else:
+        transport = MockTransport()
     config = Config(app=app, **kwargs)
     lifespan = lifespan or LifespanOff(config)
     server_state = ServerState()
@@ -1152,96 +1157,53 @@ H2C_UPGRADE_REQUEST = b"\r\n".join(
 
 @skip_if_no_h2
 async def test_alpn_h2_upgrade(http_protocol_cls: type[HTTPProtocol]):
+    """Test that ALPN h2 negotiation switches to H2Protocol."""
     app = Response("Hello, world", media_type="text/plain")
-
-    # Create transport with ssl_object that returns "h2" for ALPN
-    loop = MockLoop()
-    ssl_object = MockSSLObject(alpn_protocol="h2")
-    transport = MockTransport(sslcontext=True, ssl_object=ssl_object)
-    config = Config(app=app, http2=True)
-    lifespan = LifespanOff(config)
-    server_state = ServerState()
-
-    protocol = http_protocol_cls(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)  # type: ignore[arg-type]
-    protocol.connection_made(transport)  # type: ignore[arg-type]
-
-    # Verify that the transport's protocol was switched to H2Protocol.
-    assert isinstance(transport.get_protocol(), H2Protocol)
+    protocol = get_connected_protocol(app, http_protocol_cls, alpn_protocol="h2", http2=True)
+    assert isinstance(protocol.transport.get_protocol(), H2Protocol)
 
 
 @skip_if_no_h2
 async def test_alpn_h2_upgrade_not_triggered_without_h2_negotiation(http_protocol_cls: type[HTTPProtocol]):
-    """Test that ALPN upgrade doesn't happen when h2 wasn't negotiated."""
+    """Test that ALPN upgrade doesn't happen when http/1.1 was negotiated."""
     app = Response("Hello, world", media_type="text/plain")
+    protocol = get_connected_protocol(app, http_protocol_cls, alpn_protocol="http/1.1", http2=True)
+    assert protocol.transport.get_protocol() is None
 
-    # Create transport with ssl_object that returns "http/1.1" for ALPN
-    loop = MockLoop()
-    ssl_object = MockSSLObject(alpn_protocol="http/1.1")
-    transport = MockTransport(sslcontext=True, ssl_object=ssl_object)
-    config = Config(app=app, http2=True)
-    lifespan = LifespanOff(config)
-    server_state = ServerState()
 
-    protocol = http_protocol_cls(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)  # type: ignore[arg-type]
-    protocol.connection_made(transport)  # type: ignore[arg-type]
-
-    # Verify that the protocol was NOT switched (still HTTP/1.1)
-    assert transport.get_protocol() is None
+@skip_if_no_h2
+async def test_alpn_h2_upgrade_disabled_with_http2_false(http_protocol_cls: type[HTTPProtocol]):
+    """Test that ALPN h2 upgrade is disabled when http2=False."""
+    app = Response("Hello, world", media_type="text/plain")
+    protocol = get_connected_protocol(app, http_protocol_cls, alpn_protocol="h2", http2=False)
+    assert protocol.transport.get_protocol() is None
 
 
 @skip_if_no_h2
 async def test_h2c_upgrade(http_protocol_cls: type[HTTPProtocol]):
     """Test HTTP/2 cleartext (h2c) upgrade via Upgrade header."""
     app = Response("Hello, world", media_type="text/plain")
-
     protocol = get_connected_protocol(app, http_protocol_cls, http2=True)
     protocol.data_received(H2C_UPGRADE_REQUEST)
 
-    # Verify 101 Switching Protocols response was sent
     assert b"HTTP/1.1 101 Switching Protocols" in protocol.transport.buffer
     assert b"Upgrade: h2c" in protocol.transport.buffer
-
-    # Verify that the transport's protocol was switched to H2Protocol
     assert isinstance(protocol.transport.get_protocol(), H2Protocol)
 
-    # Run the request task created by the h2c upgrade
-    # The H2Protocol uses the same loop, so we can run its tasks
-    if protocol.loop._tasks:
-        await protocol.loop.run_one()
+    # Consume the H2 request task to avoid unawaited coroutine warning
+    h2_protocol = protocol.transport.get_protocol()
+    await h2_protocol.loop.run_one()  # type: ignore[union-attr]
 
 
-async def test_alpn_h2_upgrade_disabled_with_http2_false(http_protocol_cls: type[HTTPProtocol]):
-    """Test that ALPN h2 upgrade is disabled when http2=False."""
-    app = Response("Hello, world", media_type="text/plain")
-
-    # Create transport with ssl_object that returns "h2" for ALPN
-    loop = MockLoop()
-    ssl_object = MockSSLObject(alpn_protocol="h2")
-    transport = MockTransport(sslcontext=True, ssl_object=ssl_object)
-    config = Config(app=app, http2=False)
-    lifespan = LifespanOff(config)
-    server_state = ServerState()
-
-    protocol = http_protocol_cls(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)  # type: ignore[arg-type]
-    protocol.connection_made(transport)  # type: ignore[arg-type]
-
-    # Verify that the protocol was NOT switched (http2 is disabled)
-    assert not isinstance(transport.get_protocol(), H2Protocol)
-
-
+@skip_if_no_h2
 async def test_h2c_upgrade_disabled_with_http2_false(http_protocol_cls: type[HTTPProtocol]):
     """Test that h2c upgrade is disabled when http2=False."""
     app = Response("Hello, world", media_type="text/plain")
-
     protocol = get_connected_protocol(app, http_protocol_cls, http2=False)
     protocol.data_received(H2C_UPGRADE_REQUEST)
     await protocol.loop.run_one()
 
-    # Verify that 101 Switching Protocols was NOT sent (http2 is disabled)
     assert b"HTTP/1.1 101 Switching Protocols" not in protocol.transport.buffer
-
-    # The request should have been handled as a normal HTTP/1.1 request
-    # (the upgrade was ignored)
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
 
 
