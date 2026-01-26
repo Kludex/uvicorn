@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 from __future__ import annotations
 
+import asyncio
 import sys
 import types
 from collections.abc import Awaitable, Callable, Iterable, MutableMapping
@@ -272,3 +273,38 @@ class ASGI2Protocol(Protocol):
 ASGI2Application = type[ASGI2Protocol]
 ASGI3Application = Callable[[Scope, ASGIReceiveCallable, ASGISendCallable], Awaitable[None]]
 ASGIApplication = ASGI2Application | ASGI3Application
+
+
+class HTTP2Protocol(asyncio.Protocol):
+    """Abstract base class for HTTP/2 protocol implementations.
+
+    This defines the interface that HTTP/2 protocol classes must implement
+    to be used with uvicorn's http2 configuration option.
+    """
+
+    def __init__(
+        self,
+        config: Any,
+        server_state: Any,
+        app_state: dict[str, Any],
+        _loop: Any = None,
+    ) -> None:
+        pass  # pragma: no cover
+
+    def initiate_h2c_upgrade(
+        self,
+        transport: asyncio.Transport,
+        method: str,
+        path: str,
+        headers: list[tuple[bytes, bytes]],
+        http2_settings: bytes | None,
+    ) -> None:
+        """Initialize an HTTP/2 connection from an h2c upgrade request.
+
+        This method is called by HTTP/1.1 protocols when they receive an
+        h2c upgrade request. The implementation should:
+        1. Set up the HTTP/2 connection state
+        2. Process the original request as stream 1
+        3. Start handling HTTP/2 frames
+        """
+        raise NotImplementedError  # pragma: no cover

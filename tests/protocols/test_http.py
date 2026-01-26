@@ -26,6 +26,13 @@ try:
 except ModuleNotFoundError:  # pragma: no cover
     skip_if_no_httptools = pytest.mark.skipif(True, reason="httptools is not installed")
 
+try:
+    from uvicorn.protocols.http.h2_impl import H2Protocol  # noqa: F401
+
+    skip_if_no_h2 = pytest.mark.skipif(False, reason="h2 is installed")
+except ModuleNotFoundError:  # pragma: no cover
+    skip_if_no_h2 = pytest.mark.skipif(True, reason="h2 is not installed")
+
 if TYPE_CHECKING:
     from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
     from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
@@ -167,19 +174,38 @@ UPGRADE_REQUEST_ERROR_FIELD = b"\r\n".join(
 )
 
 
+class MockSSLObject:
+    def __init__(self, alpn_protocol: str | None = None):
+        self._alpn_protocol = alpn_protocol
+
+    def selected_alpn_protocol(self) -> str | None:
+        return self._alpn_protocol
+
+
 class MockTransport:
     def __init__(
-        self, sockname: tuple[str, int] | None = None, peername: tuple[str, int] | None = None, sslcontext: bool = False
+        self,
+        sockname: tuple[str, int] | None = None,
+        peername: tuple[str, int] | None = None,
+        sslcontext: bool = False,
+        ssl_object: MockSSLObject | None = None,
     ):
         self.sockname = ("127.0.0.1", 8000) if sockname is None else sockname
         self.peername = ("127.0.0.1", 8001) if peername is None else peername
         self.sslcontext = sslcontext
+        self._ssl_object = ssl_object
         self.closed = False
         self.buffer = b""
         self.read_paused = False
+        self._protocol: asyncio.Protocol | None = None
 
     def get_extra_info(self, key: Any):
-        return {"sockname": self.sockname, "peername": self.peername, "sslcontext": self.sslcontext}.get(key)
+        return {
+            "sockname": self.sockname,
+            "peername": self.peername,
+            "sslcontext": self.sslcontext,
+            "ssl_object": self._ssl_object,
+        }.get(key)
 
     def write(self, data: bytes):
         assert not self.closed
@@ -202,7 +228,7 @@ class MockTransport:
         self.buffer = b""
 
     def set_protocol(self, protocol: asyncio.Protocol):
-        pass
+        self._protocol = protocol
 
 
 class MockTimerHandle:
@@ -833,10 +859,12 @@ async def test_unsupported_ws_upgrade_request_warn_on_auto(
 async def test_http2_upgrade_request(http_protocol_cls: type[HTTPProtocol], ws_protocol_cls: type[WSProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
-    protocol = get_connected_protocol(app, http_protocol_cls, ws=ws_protocol_cls)
+    protocol = get_connected_protocol(app, http_protocol_cls, ws=ws_protocol_cls, http2=True)
     protocol.data_received(UPGRADE_HTTP2_REQUEST)
     await protocol.loop.run_one()
-    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    # HTTP/2 upgrade is now supported - expect 101 Switching Protocols and HTTP/2 response
+    assert b"HTTP/1.1 101 Switching Protocols" in protocol.transport.buffer
+    assert b"Upgrade: h2c" in protocol.transport.buffer
     assert b"Hello, world" in protocol.transport.buffer
 
 
@@ -1102,6 +1130,124 @@ async def test_header_upgrade_is_not_websocket_depend_installed(
     assert msg not in caplog.text
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
     assert b"Hello, world" in protocol.transport.buffer
+
+
+# HTTP/2 upgrade tests
+
+
+H2C_UPGRADE_REQUEST = b"\r\n".join(
+    [
+        b"GET / HTTP/1.1",
+        b"Host: example.org",
+        b"Connection: Upgrade, HTTP2-Settings",
+        b"Upgrade: h2c",
+        b"HTTP2-Settings: AAMAAABkAAQBAAAAAAIAAAAA",
+        b"",
+        b"",
+    ]
+)
+
+
+@skip_if_no_h2
+async def test_alpn_h2_upgrade(http_protocol_cls: type[HTTPProtocol]):
+    """Test that ALPN-negotiated h2 connections are upgraded to H2Protocol."""
+    from uvicorn.protocols.http.h2_impl import H2Protocol
+
+    app = Response("Hello, world", media_type="text/plain")
+
+    # Create transport with ssl_object that returns "h2" for ALPN
+    loop = MockLoop()
+    ssl_object = MockSSLObject(alpn_protocol="h2")
+    transport = MockTransport(sslcontext=True, ssl_object=ssl_object)
+    config = Config(app=app, http2=True)
+    lifespan = LifespanOff(config)
+    server_state = ServerState()
+
+    protocol = http_protocol_cls(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)  # type: ignore[arg-type]
+    protocol.connection_made(transport)  # type: ignore[arg-type]
+
+    # Verify that the transport's protocol was switched to H2Protocol
+    assert transport._protocol is not None
+    assert isinstance(transport._protocol, H2Protocol)
+
+
+@skip_if_no_h2
+async def test_alpn_h2_upgrade_not_triggered_without_h2_negotiation(http_protocol_cls: type[HTTPProtocol]):
+    """Test that ALPN upgrade doesn't happen when h2 wasn't negotiated."""
+    app = Response("Hello, world", media_type="text/plain")
+
+    # Create transport with ssl_object that returns "http/1.1" for ALPN
+    loop = MockLoop()
+    ssl_object = MockSSLObject(alpn_protocol="http/1.1")
+    transport = MockTransport(sslcontext=True, ssl_object=ssl_object)
+    config = Config(app=app, http2=True)
+    lifespan = LifespanOff(config)
+    server_state = ServerState()
+
+    protocol = http_protocol_cls(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)  # type: ignore[arg-type]
+    protocol.connection_made(transport)  # type: ignore[arg-type]
+
+    # Verify that the protocol was NOT switched (still HTTP/1.1)
+    assert transport._protocol is None
+
+
+@skip_if_no_h2
+async def test_h2c_upgrade(http_protocol_cls: type[HTTPProtocol]):
+    """Test HTTP/2 cleartext (h2c) upgrade via Upgrade header."""
+    from uvicorn.protocols.http.h2_impl import H2Protocol
+
+    app = Response("Hello, world", media_type="text/plain")
+
+    protocol = get_connected_protocol(app, http_protocol_cls, http2=True)
+    protocol.data_received(H2C_UPGRADE_REQUEST)
+
+    # Verify 101 Switching Protocols response was sent
+    assert b"HTTP/1.1 101 Switching Protocols" in protocol.transport.buffer
+    assert b"Upgrade: h2c" in protocol.transport.buffer
+
+    # Verify that the transport's protocol was switched to H2Protocol
+    assert protocol.transport._protocol is not None
+    assert isinstance(protocol.transport._protocol, H2Protocol)
+
+    # Run the request task created by the h2c upgrade
+    # The H2Protocol uses the same loop, so we can run its tasks
+    if protocol.loop._tasks:
+        await protocol.loop.run_one()
+
+
+async def test_alpn_h2_upgrade_disabled_with_http2_false(http_protocol_cls: type[HTTPProtocol]):
+    """Test that ALPN h2 upgrade is disabled when http2=False."""
+    app = Response("Hello, world", media_type="text/plain")
+
+    # Create transport with ssl_object that returns "h2" for ALPN
+    loop = MockLoop()
+    ssl_object = MockSSLObject(alpn_protocol="h2")
+    transport = MockTransport(sslcontext=True, ssl_object=ssl_object)
+    config = Config(app=app, http2=False)
+    lifespan = LifespanOff(config)
+    server_state = ServerState()
+
+    protocol = http_protocol_cls(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)  # type: ignore[arg-type]
+    protocol.connection_made(transport)  # type: ignore[arg-type]
+
+    # Verify that the protocol was NOT switched (http2 is disabled)
+    assert transport._protocol is None
+
+
+async def test_h2c_upgrade_disabled_with_http2_false(http_protocol_cls: type[HTTPProtocol]):
+    """Test that h2c upgrade is disabled when http2=False."""
+    app = Response("Hello, world", media_type="text/plain")
+
+    protocol = get_connected_protocol(app, http_protocol_cls, http2=False)
+    protocol.data_received(H2C_UPGRADE_REQUEST)
+    await protocol.loop.run_one()
+
+    # Verify that 101 Switching Protocols was NOT sent (http2 is disabled)
+    assert b"HTTP/1.1 101 Switching Protocols" not in protocol.transport.buffer
+
+    # The request should have been handled as a normal HTTP/1.1 request
+    # (the upgrade was ignored)
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
 
 
 async def test_header_upgrade_is_websocket_depend_not_installed(

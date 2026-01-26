@@ -17,7 +17,7 @@ from typing import IO, Any, Literal
 import click
 
 from uvicorn._compat import iscoroutinefunction
-from uvicorn._types import ASGIApplication
+from uvicorn._types import ASGIApplication, HTTP2Protocol
 from uvicorn.importer import ImportFromStringError, import_from_string
 from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.middleware.asgi2 import ASGI2Middleware
@@ -110,6 +110,7 @@ def create_ssl_context(
     cert_reqs: int,
     ca_certs: str | os.PathLike[str] | None,
     ciphers: str | None,
+    alpn_protocols: list[str] | None = None,
 ) -> ssl.SSLContext:
     ctx = ssl.SSLContext(ssl_version)
     get_password = (lambda: password) if password else None
@@ -119,6 +120,8 @@ def create_ssl_context(
         ctx.load_verify_locations(ca_certs)
     if ciphers:
         ctx.set_ciphers(ciphers)
+    if alpn_protocols:
+        ctx.set_alpn_protocols(alpn_protocols)
     return ctx
 
 
@@ -154,7 +157,7 @@ def resolve_reload_patterns(patterns_list: list[str], directories_list: list[str
     directories = list(map(lambda x: x.resolve(), directories))
     directories = list({reload_path for reload_path in directories if is_dir(reload_path)})
 
-    children = []
+    children: list[Path] = []
     for j in range(len(directories)):
         for k in range(j + 1, len(directories)):  # pragma: full coverage
             if directories[j] in directories[k].parents:
@@ -185,6 +188,7 @@ class Config:
         fd: int | None = None,
         loop: LoopFactoryType | str = "auto",
         http: type[asyncio.Protocol] | HTTPProtocolType | str = "auto",
+        http2: bool | type[HTTP2Protocol] | str = False,
         ws: type[asyncio.Protocol] | WSProtocolType | str = "auto",
         ws_max_size: int = 16 * 1024 * 1024,
         ws_max_queue: int = 32,
@@ -235,6 +239,7 @@ class Config:
         self.fd = fd
         self.loop = loop
         self.http = http
+        self.http2 = http2
         self.ws = ws
         self.ws_max_size = ws_max_size
         self.ws_max_queue = ws_max_queue
@@ -402,6 +407,9 @@ class Config:
 
         if self.is_ssl:
             assert self.ssl_certfile
+            alpn_protocols: list[str] | None = None
+            if self.http2:
+                alpn_protocols = ["h2", "http/1.1"]
             self.ssl: ssl.SSLContext | None = create_ssl_context(
                 keyfile=self.ssl_keyfile,
                 certfile=self.ssl_certfile,
@@ -410,6 +418,7 @@ class Config:
                 cert_reqs=self.ssl_cert_reqs,
                 ca_certs=self.ssl_ca_certs,
                 ciphers=self.ssl_ciphers,
+                alpn_protocols=alpn_protocols,
             )
         else:
             self.ssl = None
@@ -426,6 +435,15 @@ class Config:
             self.http_protocol_class: type[asyncio.Protocol] = http_protocol_class
         else:
             self.http_protocol_class = self.http
+
+        if self.http2 is False:
+            self.h2_protocol_class: type[HTTP2Protocol] | None = None
+        elif self.http2 is True:
+            self.h2_protocol_class = import_from_string("uvicorn.protocols.http.h2_impl:H2Protocol")
+        elif isinstance(self.http2, str):
+            self.h2_protocol_class = import_from_string(self.http2)
+        else:
+            self.h2_protocol_class = self.http2
 
         if isinstance(self.ws, str):
             ws_protocol_class = import_from_string(WS_PROTOCOLS.get(self.ws, self.ws))

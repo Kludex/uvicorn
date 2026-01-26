@@ -5,6 +5,7 @@ import contextvars
 import http
 import logging
 from collections.abc import Callable
+from ssl import SSLObject
 from typing import Any, Literal, cast
 from urllib.parse import unquote
 
@@ -61,6 +62,7 @@ class H11Protocol(asyncio.Protocol):
             else DEFAULT_MAX_INCOMPLETE_EVENT_SIZE,
         )
         self.ws_protocol_class = config.ws_protocol_class
+        self.h2_protocol_class = config.h2_protocol_class
         self.root_path = config.root_path
         self.limit_concurrency = config.limit_concurrency
         self.app_state = app_state
@@ -98,9 +100,36 @@ class H11Protocol(asyncio.Protocol):
         self.client = get_remote_addr(transport)
         self.scheme = "https" if is_ssl(transport) else "http"
 
+        # Check for ALPN negotiation - if h2 was negotiated, switch to HTTP/2 protocol
+        if self._should_upgrade_to_h2(transport):
+            self._upgrade_to_h2(transport)
+            return
+
         if self.logger.level <= TRACE_LOG_LEVEL:
             prefix = "%s:%d - " % self.client if self.client else ""
             self.logger.log(TRACE_LOG_LEVEL, "%sHTTP connection made", prefix)
+
+    def _should_upgrade_to_h2(self, transport: asyncio.Transport) -> bool:
+        """Check if the connection should be upgraded to HTTP/2 based on ALPN."""
+        if self.h2_protocol_class is None:
+            return False
+        ssl_object: SSLObject | None = transport.get_extra_info("ssl_object")
+        selected_protocol = ssl_object and ssl_object.selected_alpn_protocol()
+        return selected_protocol == "h2"
+
+    def _upgrade_to_h2(self, transport: asyncio.Transport) -> None:
+        """Upgrade the connection to HTTP/2 protocol."""
+        assert self.h2_protocol_class is not None
+        self.connections.discard(self)
+
+        h2_protocol = self.h2_protocol_class(
+            config=self.config,
+            server_state=self.server_state,
+            app_state=self.app_state,
+            _loop=self.loop,
+        )
+        transport.set_protocol(h2_protocol)
+        h2_protocol.connection_made(transport)
 
     def connection_lost(self, exc: Exception | None) -> None:
         self.connections.discard(self)
@@ -152,6 +181,10 @@ class H11Protocol(asyncio.Protocol):
             return False
         return True
 
+    def _should_upgrade_to_h2c(self) -> bool:
+        """Check if h2 support is enabled for h2c upgrade."""
+        return self.h2_protocol_class is not None
+
     def _unsupported_upgrade_warning(self) -> None:
         msg = "Unsupported upgrade request."
         self.logger.warning(msg)
@@ -159,13 +192,16 @@ class H11Protocol(asyncio.Protocol):
             msg = "No supported WebSocket library detected. Please use \"pip install 'uvicorn[standard]'\", or install 'websockets' or 'wsproto' manually."  # noqa: E501
             self.logger.warning(msg)
 
-    def _should_upgrade(self) -> bool:
+    def _get_upgrade_type(self) -> str | None:
+        """Determine the type of upgrade request: 'websocket', 'h2c', or None."""
         upgrade = self._get_upgrade()
         if upgrade == b"websocket" and self._should_upgrade_to_ws():
-            return True
+            return "websocket"
+        if upgrade == b"h2c" and self._should_upgrade_to_h2c():
+            return "h2c"
         if upgrade is not None:
             self._unsupported_upgrade_warning()
-        return False
+        return None
 
     def data_received(self, data: bytes) -> None:
         self._unset_keepalive_if_required()
@@ -215,8 +251,12 @@ class H11Protocol(asyncio.Protocol):
                     "headers": self.headers,
                     "state": self.app_state.copy(),
                 }
-                if self._should_upgrade():
+                upgrade_type = self._get_upgrade_type()
+                if upgrade_type == "websocket":
                     self.handle_websocket_upgrade(event)
+                    return
+                elif upgrade_type == "h2c":
+                    self.handle_h2c_upgrade(event)
                     return
 
                 # Handle 503 responses when 'limit_concurrency' is exceeded.
@@ -294,6 +334,45 @@ class H11Protocol(asyncio.Protocol):
         protocol.connection_made(self.transport)
         protocol.data_received(b"".join(output))
         self.transport.set_protocol(protocol)
+
+    def handle_h2c_upgrade(self, event: h11.Request) -> None:
+        """Handle HTTP/2 cleartext (h2c) upgrade request."""
+        assert self.h2_protocol_class is not None
+        if self.logger.level <= TRACE_LOG_LEVEL:  # pragma: full coverage
+            prefix = "%s:%d - " % self.client if self.client else ""
+            self.logger.log(TRACE_LOG_LEVEL, "%sUpgrading to HTTP/2 (h2c)", prefix)
+
+        self.connections.discard(self)
+
+        # Send 101 Switching Protocols response
+        response = b"HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: h2c\r\n\r\n"
+        self.transport.write(response)
+
+        # Get HTTP2-Settings header if present (base64-encoded HTTP/2 SETTINGS payload)
+        http2_settings: bytes | None = None
+        for name, value in self.headers:
+            if name == b"http2-settings":
+                http2_settings = value
+                break
+
+        # Create and switch to H2Protocol
+        h2_protocol = self.h2_protocol_class(
+            config=self.config,
+            server_state=self.server_state,
+            app_state=self.app_state,
+            _loop=self.loop,
+        )
+
+        # Initialize the H2 connection for upgrade
+        h2_protocol.initiate_h2c_upgrade(
+            self.transport,
+            event.method.decode("ascii"),
+            event.target.decode("ascii"),
+            self.headers,
+            http2_settings,
+        )
+
+        self.transport.set_protocol(h2_protocol)
 
     def send_400_response(self, msg: str) -> None:
         reason = STATUS_PHRASES[400]

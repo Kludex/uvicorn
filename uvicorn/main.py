@@ -14,7 +14,7 @@ from typing import IO, Any, get_args
 import click
 
 import uvicorn
-from uvicorn._types import ASGIApplication
+from uvicorn._types import ASGIApplication, HTTP2Protocol
 from uvicorn.config import (
     INTERFACES,
     LIFESPAN,
@@ -131,6 +131,12 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     default="auto",
     help="HTTP protocol implementation.",
     show_default=True,
+)
+@click.option(
+    "--http2",
+    is_flag=True,
+    default=False,
+    help="Enable HTTP/2 support.",
 )
 @click.option(
     "--ws",
@@ -379,6 +385,7 @@ def main(
     fd: int,
     loop: LoopFactoryType | str,
     http: HTTPProtocolType | str,
+    http2: bool,
     ws: WSProtocolType | str,
     ws_max_size: int,
     ws_max_queue: int,
@@ -429,6 +436,7 @@ def main(
         fd=fd,
         loop=loop,
         http=http,
+        http2=http2,
         ws=ws,
         ws_max_size=ws_max_size,
         ws_max_queue=ws_max_queue,
@@ -482,6 +490,7 @@ def run(
     fd: int | None = None,
     loop: LoopFactoryType | str = "auto",
     http: type[asyncio.Protocol] | HTTPProtocolType | str = "auto",
+    http2: bool | type[HTTP2Protocol] | str = False,
     ws: type[asyncio.Protocol] | WSProtocolType | str = "auto",
     ws_max_size: int = 16777216,
     ws_max_queue: int = 32,
@@ -535,6 +544,7 @@ def run(
         fd=fd,
         loop=loop,
         http=http,
+        http2=http2,
         ws=ws,
         ws_max_size=ws_max_size,
         ws_max_queue=ws_max_queue,
