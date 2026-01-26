@@ -27,19 +27,21 @@ except ModuleNotFoundError:  # pragma: no cover
     skip_if_no_httptools = pytest.mark.skipif(True, reason="httptools is not installed")
 
 try:
-    from uvicorn.protocols.http.h2_impl import H2Protocol  # noqa: F401
+    from uvicorn.protocols.http.h2_impl import H2Protocol
 
     skip_if_no_h2 = pytest.mark.skipif(False, reason="h2 is installed")
 except ModuleNotFoundError:  # pragma: no cover
     skip_if_no_h2 = pytest.mark.skipif(True, reason="h2 is not installed")
 
 if TYPE_CHECKING:
+    from uvicorn.protocols.http.h2_impl import H2Protocol
     from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
     from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol as _WSProtocol
 
     WSProtocol: TypeAlias = WebSocketProtocol | _WSProtocol
     HTTPProtocol: TypeAlias = H11Protocol | HttpToolsProtocol
+
 
 pytestmark = pytest.mark.anyio
 
@@ -229,6 +231,9 @@ class MockTransport:
 
     def set_protocol(self, protocol: asyncio.Protocol):
         self._protocol = protocol
+
+    def get_protocol(self) -> asyncio.Protocol | None:
+        return self._protocol
 
 
 class MockTimerHandle:
@@ -1132,9 +1137,6 @@ async def test_header_upgrade_is_not_websocket_depend_installed(
     assert b"Hello, world" in protocol.transport.buffer
 
 
-# HTTP/2 upgrade tests
-
-
 H2C_UPGRADE_REQUEST = b"\r\n".join(
     [
         b"GET / HTTP/1.1",
@@ -1150,9 +1152,6 @@ H2C_UPGRADE_REQUEST = b"\r\n".join(
 
 @skip_if_no_h2
 async def test_alpn_h2_upgrade(http_protocol_cls: type[HTTPProtocol]):
-    """Test that ALPN-negotiated h2 connections are upgraded to H2Protocol."""
-    from uvicorn.protocols.http.h2_impl import H2Protocol
-
     app = Response("Hello, world", media_type="text/plain")
 
     # Create transport with ssl_object that returns "h2" for ALPN
@@ -1166,9 +1165,8 @@ async def test_alpn_h2_upgrade(http_protocol_cls: type[HTTPProtocol]):
     protocol = http_protocol_cls(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)  # type: ignore[arg-type]
     protocol.connection_made(transport)  # type: ignore[arg-type]
 
-    # Verify that the transport's protocol was switched to H2Protocol
-    assert transport._protocol is not None
-    assert isinstance(transport._protocol, H2Protocol)
+    # Verify that the transport's protocol was switched to H2Protocol.
+    assert isinstance(transport.get_protocol(), H2Protocol)
 
 
 @skip_if_no_h2
@@ -1188,14 +1186,12 @@ async def test_alpn_h2_upgrade_not_triggered_without_h2_negotiation(http_protoco
     protocol.connection_made(transport)  # type: ignore[arg-type]
 
     # Verify that the protocol was NOT switched (still HTTP/1.1)
-    assert transport._protocol is None
+    assert transport.get_protocol() is None
 
 
 @skip_if_no_h2
 async def test_h2c_upgrade(http_protocol_cls: type[HTTPProtocol]):
     """Test HTTP/2 cleartext (h2c) upgrade via Upgrade header."""
-    from uvicorn.protocols.http.h2_impl import H2Protocol
-
     app = Response("Hello, world", media_type="text/plain")
 
     protocol = get_connected_protocol(app, http_protocol_cls, http2=True)
@@ -1206,8 +1202,7 @@ async def test_h2c_upgrade(http_protocol_cls: type[HTTPProtocol]):
     assert b"Upgrade: h2c" in protocol.transport.buffer
 
     # Verify that the transport's protocol was switched to H2Protocol
-    assert protocol.transport._protocol is not None
-    assert isinstance(protocol.transport._protocol, H2Protocol)
+    assert isinstance(protocol.transport.get_protocol(), H2Protocol)
 
     # Run the request task created by the h2c upgrade
     # The H2Protocol uses the same loop, so we can run its tasks
@@ -1231,7 +1226,7 @@ async def test_alpn_h2_upgrade_disabled_with_http2_false(http_protocol_cls: type
     protocol.connection_made(transport)  # type: ignore[arg-type]
 
     # Verify that the protocol was NOT switched (http2 is disabled)
-    assert transport._protocol is None
+    assert not isinstance(transport.get_protocol(), H2Protocol)
 
 
 async def test_h2c_upgrade_disabled_with_http2_false(http_protocol_cls: type[HTTPProtocol]):
