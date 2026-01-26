@@ -9,12 +9,15 @@ import sys
 import warnings
 from collections.abc import Callable
 from configparser import RawConfigParser
-from typing import IO, Any, get_args
+from typing import IO, TYPE_CHECKING, Any, get_args
 
 import click
 
 import uvicorn
-from uvicorn._types import ASGIApplication, HTTP2Protocol
+from uvicorn._types import ASGIApplication
+
+if TYPE_CHECKING:
+    from uvicorn.protocols.http.h2_impl import HTTP2Protocol
 from uvicorn.config import (
     INTERFACES,
     LIFESPAN,

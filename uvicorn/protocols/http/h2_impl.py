@@ -33,7 +33,6 @@ from uvicorn._types import (
     ASGI3Application,
     ASGIReceiveEvent,
     ASGISendEvent,
-    HTTP2Protocol,
     HTTPResponseBodyEvent,
     HTTPResponseStartEvent,
     HTTPScope,
@@ -43,6 +42,38 @@ from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT, FlowControl, service_unavailable
 from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
 from uvicorn.server import ServerState
+
+
+class HTTP2Protocol(asyncio.Protocol):
+    """Abstract base class for HTTP/2 protocol implementations.
+
+    This defines the interface that HTTP/2 protocol classes must implement
+    to be used with uvicorn's http2 configuration option.
+    """
+
+    def __init__(
+        self,
+        config: Any,
+        server_state: Any,
+        app_state: dict[str, Any],
+        _loop: Any = None,
+    ) -> None: ...
+
+    def initiate_h2c_upgrade(
+        self,
+        transport: asyncio.Transport,
+        method: str,
+        path: str,
+        headers: list[tuple[bytes, bytes]],
+        http2_settings: bytes | None,
+    ) -> None:
+        """Initialize an HTTP/2 connection from an h2c upgrade request.
+
+        This method is called by HTTP/1.1 protocols when they receive an h2c upgrade request. The implementation should:
+        1. Set up the HTTP/2 connection state
+        2. Process the original request as stream 1
+        3. Start handling HTTP/2 frames
+        """
 
 
 class H2Protocol(HTTP2Protocol):
