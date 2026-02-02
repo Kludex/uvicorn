@@ -124,7 +124,7 @@ Improve `ProxyHeadersMiddleware` (#2468) and (#2231):
 
 ### Fixed
 
-- Don't warn when upgrade is not WebSocket and depedencies are installed (#2360)
+- Don't warn when upgrade is not WebSocket and dependencies are installed (#2360)
 
 ## 0.30.5 (August 2, 2024)
 

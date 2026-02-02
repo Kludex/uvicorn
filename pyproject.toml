@@ -97,7 +97,7 @@ Source = "https://github.com/Kludex/uvicorn"
 path = "uvicorn/__init__.py"
 
 [tool.hatch.build.targets.sdist]
-include = ["/uvicorn", "/tests", "/requirements.txt"]
+include = ["/uvicorn", "/tests"]
 
 [tool.ruff]
 line-length = 120
