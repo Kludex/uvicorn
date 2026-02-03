@@ -380,6 +380,12 @@ class Config:
                 with open(self.log_config) as file:
                     loaded_config = yaml.safe_load(file)
                     logging.config.dictConfig(loaded_config)
+            elif isinstance(self.log_config, str) and self.log_config.endswith(".toml"):  # pragma: py-lt-311
+                import tomllib
+
+                with open(self.log_config, "rb") as file:
+                    loaded_config = tomllib.load(file)
+                    logging.config.dictConfig(loaded_config)
             else:
                 # See the note about fileConfig() here:
                 # https://docs.python.org/3/library/logging.config.html#configuration-file-format

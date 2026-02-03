@@ -200,7 +200,7 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     "--log-config",
     type=click.Path(exists=True),
     default=None,
-    help="Logging configuration file. Supported formats: .ini, .json, .yaml.",
+    help="Logging configuration file. Supported formats: .ini, .json, .toml, .yaml.",
     show_default=True,
 )
 @click.option(

@@ -71,6 +71,7 @@ dev = [
     "a2wsgi==1.10.8",
     "wsproto==1.2.0",
     "websockets==13.1",
+    "tomli-w>=1.2.0",
 ]
 docs = [
     "mkdocs==1.6.1",
