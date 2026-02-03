@@ -41,6 +41,28 @@ def yaml_logging_config(logging_config: dict) -> str:
     return yaml.dump(logging_config)
 
 
+@pytest.fixture
+def toml_logging_config(logging_config: dict) -> str:  # pragma: py-lt-311
+    import tomli_w
+
+    # Remove None values since tomli_w rejects them:
+    # https://github.com/hukkin/tomli-w/issues/39
+    def remove_nones(d):
+        if isinstance(d, dict):
+            keys = set(d)
+            for k in keys:
+                if d[k] is None:
+                    del d[k]
+                else:
+                    d[k] = remove_nones(d[k])
+        return d
+
+    # Modify the deep-copied logging config in place
+    remove_nones(logging_config)
+
+    return tomli_w.dumps(logging_config)
+
+
 async def asgi_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
     pass  # pragma: nocover
 
@@ -343,6 +365,25 @@ def test_log_config_json(
     config.load()
 
     mocked_open.assert_called_once_with("log_config.json")
+    mocked_logging_config_module.dictConfig.assert_called_once_with(logging_config)
+
+
+@pytest.mark.skipif(sys.version_info < (3, 11), reason="require Python 3.11+")
+def test_log_config_toml(
+    mocked_logging_config_module: MagicMock,
+    logging_config: dict[str, Any],
+    toml_logging_config: str,
+    mocker: MockerFixture,
+) -> None:  # pragma: py-lt-311
+    """
+    Test that one can load a toml config from disk.
+    """
+    mocked_open = mocker.patch("uvicorn.config.open", mocker.mock_open(read_data=toml_logging_config.encode()))
+
+    config = Config(app=asgi_app, log_config="log_config.toml")
+    config.load()
+
+    mocked_open.assert_called_once_with("log_config.toml", "rb")
     mocked_logging_config_module.dictConfig.assert_called_once_with(logging_config)
 
 
