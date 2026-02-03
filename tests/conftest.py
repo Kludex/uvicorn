@@ -55,6 +55,13 @@ def tls_certificate(tls_certificate_authority: trustme.CA) -> trustme.LeafCert:
 
 
 @pytest.fixture
+def tls_client_certificate(request, tls_certificate_authority: trustme.CA) -> trustme.LeafCert:
+    return tls_certificate_authority.issue_cert(
+        "client@example.com", common_name=getattr(request, "param", "uvicorn client")
+    )
+
+
+@pytest.fixture
 def tls_ca_certificate_pem_path(tls_certificate_authority: trustme.CA):
     with tls_certificate_authority.cert_pem.tempfile() as ca_cert_pem:
         yield ca_cert_pem
@@ -104,6 +111,20 @@ def tls_certificate_server_cert_path(tls_certificate: trustme.LeafCert):
 def tls_ca_ssl_context(tls_certificate_authority: trustme.CA) -> ssl.SSLContext:
     ssl_ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
     tls_certificate_authority.configure_trust(ssl_ctx)
+    return ssl_ctx
+
+
+@pytest.fixture
+def tls_client_ssl_context(
+    tls_certificate_authority: trustme.CA, tls_client_certificate: trustme.LeafCert
+) -> ssl.SSLContext:
+    ssl_ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+    tls_certificate_authority.configure_trust(ssl_ctx)
+
+    # Load the client certificate chain into the SSL context
+    with tls_client_certificate.private_key_and_cert_chain_pem.tempfile() as client_cert_pem:
+        ssl_ctx.load_cert_chain(certfile=client_cert_pem)
+
     return ssl_ctx
 
 
