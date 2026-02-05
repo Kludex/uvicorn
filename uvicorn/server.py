@@ -156,9 +156,9 @@ class Server:
             os.chmod(config.uds, uds_perms)
             assert server.sockets is not None  # mypy
             listeners = server.sockets
-            self.servers = [server]
+            self.servers.append(server)
 
-        else:
+        if config.host is not None:
             # Standard case. Create a socket from a host/port pair.
             try:
                 server = await loop.create_server(
@@ -175,7 +175,7 @@ class Server:
 
             assert server.sockets is not None
             listeners = server.sockets
-            self.servers = [server]
+            self.servers.append(server)
 
         if sockets is None:
             self._log_started_message(listeners)
