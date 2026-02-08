@@ -493,3 +493,74 @@ async def test_proxy_headers_empty_x_forwarded_for() -> None:
         response = await client.get("/", headers=headers)
     assert response.status_code == 200
     assert response.text == "https://127.0.0.1:123"
+
+
+# --- Tests for X-Forwarded-For port handling (issue #2789) ---
+
+from uvicorn.middleware.proxy_headers import _parse_host_port
+
+
+@pytest.mark.parametrize(
+    ("raw_entry", "expected_host", "expected_port"),
+    [
+        # Bare IPv4 address
+        ("1.2.3.4", "1.2.3.4", 0),
+        # IPv4 with port
+        ("1.2.3.4:1024", "1.2.3.4", 1024),
+        ("1.1.1.1:80", "1.1.1.1", 80),
+        ("10.0.0.1:0", "10.0.0.1", 0),
+        # Bare IPv6 address
+        ("::1", "::1", 0),
+        ("2001:db8::1", "2001:db8::1", 0),
+        ("a:b:c:d::", "a:b:c:d::", 0),
+        # Bracketed IPv6 with port
+        ("[::1]:8080", "::1", 8080),
+        ("[2001:db8::1]:443", "2001:db8::1", 443),
+        # Bracketed IPv6 without port
+        ("[::1]", "::1", 0),
+        # IPv4 with invalid port (non-numeric)
+        ("1.2.3.4:abc", "1.2.3.4:abc", 0),
+        # Empty string
+        ("", "", 0),
+        # Malformed bracket
+        ("[::1", "[::1", 0),
+    ],
+)
+def test_parse_host_port(raw_entry: str, expected_host: str, expected_port: int) -> None:
+    host, port = _parse_host_port(raw_entry)
+    assert host == expected_host
+    assert port == expected_port
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("trusted_hosts", "forwarded_for", "expected"),
+    [
+        # IPv4 with port - always trust
+        ("*", "1.2.3.4:1024", "https://1.2.3.4:1024"),
+        # IPv4 with port - trusted proxy
+        ("127.0.0.1", "1.2.3.4:1024", "https://1.2.3.4:1024"),
+        # IPv4 with port - untrusted proxy (no change)
+        ("192.168.0.1", "1.2.3.4:1024", "http://127.0.0.1:123"),
+        # IPv4 without port still works as before
+        ("127.0.0.1", "1.2.3.4", "https://1.2.3.4:0"),
+        # Bracketed IPv6 with port
+        ("*", "[::1]:8080", "https://::1:8080"),
+        # Multiple proxies, client has port
+        (["127.0.0.1", "10.0.2.1"], "1.2.3.4:5678, 10.0.2.1", "https://1.2.3.4:5678"),
+        # Multiple proxies, trusted proxy has port (still recognized as trusted)
+        (["127.0.0.1", "10.0.2.1"], "1.2.3.4, 10.0.2.1:9999", "https://1.2.3.4:0"),
+        # Trusted network, client has port
+        ("127.0.0.0/8", "5.6.7.8:4321", "https://5.6.7.8:4321"),
+    ],
+)
+async def test_proxy_headers_x_forwarded_for_with_port(
+    trusted_hosts: str | list[str],
+    forwarded_for: str,
+    expected: str,
+) -> None:
+    async with make_httpx_client(trusted_hosts) as client:
+        headers = {X_FORWARDED_FOR: forwarded_for, X_FORWARDED_PROTO: "https"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    assert response.text == expected
