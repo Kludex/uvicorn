@@ -11,7 +11,7 @@ from tests.response import Response
 from tests.utils import run_server
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.config import Config
-from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware, _TrustedHosts
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware, _parse_host_port, _TrustedHosts
 
 if TYPE_CHECKING:
     from uvicorn.protocols.http.h11_impl import H11Protocol
@@ -496,8 +496,6 @@ async def test_proxy_headers_empty_x_forwarded_for() -> None:
 
 
 # --- Tests for X-Forwarded-For port handling (issue #2789) ---
-
-from uvicorn.middleware.proxy_headers import _parse_host_port
 
 
 @pytest.mark.parametrize(
