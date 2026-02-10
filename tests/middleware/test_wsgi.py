@@ -136,3 +136,83 @@ def test_build_environ_encoding() -> None:
     assert environ["SCRIPT_NAME"] == "/文".encode().decode("latin-1")
     assert environ["PATH_INFO"] == b"/all".decode("latin-1")
     assert environ["HTTP_KEY"] == "value1,value2"
+
+
+def test_build_environ_server_port_is_string() -> None:
+    """SERVER_PORT must be a string per PEP 3333."""
+    scope: HTTPScope = {
+        "asgi": {"version": "3.0", "spec_version": "2.0"},
+        "scheme": "http",
+        "raw_path": b"/",
+        "type": "http",
+        "http_version": "1.1",
+        "method": "GET",
+        "path": "/",
+        "root_path": "",
+        "client": ("127.0.0.1", 12345),
+        "server": ("localhost", 8000),
+        "query_string": b"",
+        "headers": [],
+        "extensions": {},
+    }
+    message: HTTPRequestEvent = {
+        "type": "http.request",
+        "body": b"",
+        "more_body": False,
+    }
+    environ = wsgi.build_environ(scope, message, io.BytesIO(b""))
+    assert environ["SERVER_PORT"] == "8000"
+    assert isinstance(environ["SERVER_PORT"], str)
+
+
+def test_build_environ_server_port_default_is_string() -> None:
+    """SERVER_PORT must be a string even when using the default server."""
+    scope: HTTPScope = {
+        "asgi": {"version": "3.0", "spec_version": "2.0"},
+        "scheme": "http",
+        "raw_path": b"/",
+        "type": "http",
+        "http_version": "1.1",
+        "method": "GET",
+        "path": "/",
+        "root_path": "",
+        "client": None,
+        "server": None,
+        "query_string": b"",
+        "headers": [],
+        "extensions": {},
+    }
+    message: HTTPRequestEvent = {
+        "type": "http.request",
+        "body": b"",
+        "more_body": False,
+    }
+    environ = wsgi.build_environ(scope, message, io.BytesIO(b""))
+    assert environ["SERVER_PORT"] == "80"
+    assert isinstance(environ["SERVER_PORT"], str)
+
+
+def test_build_environ_wsgi_errors_is_stderr() -> None:
+    """wsgi.errors should be sys.stderr per PEP 3333."""
+    scope: HTTPScope = {
+        "asgi": {"version": "3.0", "spec_version": "2.0"},
+        "scheme": "http",
+        "raw_path": b"/",
+        "type": "http",
+        "http_version": "1.1",
+        "method": "GET",
+        "path": "/",
+        "root_path": "",
+        "client": None,
+        "server": None,
+        "query_string": b"",
+        "headers": [],
+        "extensions": {},
+    }
+    message: HTTPRequestEvent = {
+        "type": "http.request",
+        "body": b"",
+        "more_body": False,
+    }
+    environ = wsgi.build_environ(scope, message, io.BytesIO(b""))
+    assert environ["wsgi.errors"] is sys.stderr
