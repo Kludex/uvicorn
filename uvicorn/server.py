@@ -51,6 +51,10 @@ class ServerState:
         self.default_headers: list[tuple[bytes, bytes]] = []
 
 
+class ShutdownTrigger:
+    is_shutdown_triggered: bool = False
+
+
 class Server:
     def __init__(self, config: Config) -> None:
         self.config = config
@@ -261,8 +265,12 @@ class Server:
         return False
 
     async def shutdown(self, sockets: list[socket.socket] | None = None) -> None:
-        logger.info("Shutting down")
+        if self.config.shutdown_delay:
+            logger.info(f"Shutting down in {self.config.shutdown_delay} seconds")
+            ShutdownTrigger.is_shutdown_triggered = True
+            await asyncio.sleep(self.config.shutdown_delay)
 
+        logger.info("Shutting down")
         # Stop accepting new connections.
         for server in self.servers:
             server.close()
