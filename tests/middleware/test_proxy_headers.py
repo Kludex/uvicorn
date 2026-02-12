@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
 X_FORWARDED_FOR = "X-Forwarded-For"
 X_FORWARDED_PROTO = "X-Forwarded-Proto"
+X_FORWARDED_HOST = "X-Forwarded-Host"
 
 
 async def default_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
@@ -493,3 +494,99 @@ async def test_proxy_headers_empty_x_forwarded_for() -> None:
         response = await client.get("/", headers=headers)
     assert response.status_code == 200
     assert response.text == "https://127.0.0.1:123"
+
+
+async def app_with_host_header(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+    headers = dict(scope["headers"])  # type: ignore[typeddict-item]
+    host_header = headers.get(b"host", b"").decode("latin1")
+    server = scope.get("server")
+    if server:
+        host: str = server[0]  # type: ignore[index]
+        port: int | None = server[1]  # type: ignore[index]
+        server_str = f"{host}:{port}" if port else host
+    else:
+        server_str = "NONE"  # pragma: no cover
+
+    response = Response(f"host={host_header} server={server_str}", media_type="text/plain")
+    await response(scope, receive, send)
+
+
+@pytest.mark.anyio
+async def test_proxy_headers_x_forwarded_host_untrusted() -> None:
+    """X-Forwarded-Host should be ignored from untrusted proxies"""
+    app = ProxyHeadersMiddleware(app_with_host_header, trusted_hosts="192.168.0.1")
+    transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 123))  # type: ignore
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        headers = {X_FORWARDED_HOST: "malicious.com"}
+        response = await client.get("/", headers=headers)
+
+    assert response.status_code == 200
+    # Should use the original server, not the forwarded host
+    assert "malicious.com" not in response.text
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("forwarded_host", "expected_host", "expected_server"),
+    [
+        # Hostname without port
+        ("example.com", "example.com", "example.com:80"),
+        # Hostname with port
+        ("example.com:8080", "example.com:8080", "example.com:8080"),
+        # IPv4 without port
+        ("192.0.2.10", "192.0.2.10", "192.0.2.10:80"),
+        # IPv4 with port
+        ("192.0.2.10:8080", "192.0.2.10:8080", "192.0.2.10:8080"),
+        # IPv6 without port
+        ("[2001:db8::1]", "[2001:db8::1]", "[2001:db8::1]:80"),
+        # IPv6 with port
+        ("[2001:db8::1]:8080", "[2001:db8::1]:8080", "[2001:db8::1]:8080"),
+        # Empty values
+        ("", "testserver", "testserver"),
+        ("   ", "testserver", "testserver"),
+    ],
+)
+async def test_proxy_headers_x_forwarded_host(
+    forwarded_host: str,
+    expected_host: str,
+    expected_server: str,
+) -> None:
+    app = ProxyHeadersMiddleware(app_with_host_header, trusted_hosts="*")
+    transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 123))  # type: ignore
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        headers = {X_FORWARDED_HOST: forwarded_host}
+        response = await client.get("/", headers=headers)
+
+    assert response.status_code == 200
+    assert response.text == f"host={expected_host} server={expected_server}"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("forwarded_host", "scheme", "expected_host", "expected_server"),
+    [
+        # HTTPS defaults to port 443
+        ("example.com", "https", "example.com", "example.com:443"),
+        ("example.com:9000", "https", "example.com:9000", "example.com:9000"),
+        # WSS defaults to port 443
+        ("example.com", "wss", "example.com", "example.com:443"),
+        # HTTP defaults to port 80
+        ("example.com", "http", "example.com", "example.com:80"),
+        # WS defaults to port 80
+        ("example.com", "ws", "example.com", "example.com:80"),
+    ],
+)
+async def test_proxy_headers_x_forwarded_host_with_scheme(
+    forwarded_host: str,
+    scheme: str,
+    expected_host: str,
+    expected_server: str,
+) -> None:
+    app = ProxyHeadersMiddleware(app_with_host_header, trusted_hosts="*")
+    transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 123))  # type: ignore
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        headers = {X_FORWARDED_HOST: forwarded_host, X_FORWARDED_PROTO: scheme}
+        response = await client.get("/", headers=headers)
+
+    assert response.status_code == 200
+    assert response.text == f"host={expected_host} server={expected_server}"
