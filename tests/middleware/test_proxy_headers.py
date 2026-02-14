@@ -522,6 +522,8 @@ async def test_proxy_headers_empty_x_forwarded_for() -> None:
         ("", "", 0),
         # Malformed bracket
         ("[::1", "[::1", 0),
+        # Bracketed IPv6 with invalid port (non-numeric)
+        ("[::1]:abc", "::1", 0),
     ],
 )
 def test_parse_host_port(raw_entry: str, expected_host: str, expected_port: int) -> None:
