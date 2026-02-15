@@ -45,9 +45,8 @@ def test_get_local_addr_with_socket():
     transport = MockTransport({"socket": MockSocket(family=socket.AF_INET, sockname=("123.45.6.7", 123))})
     assert get_local_addr(transport) == ("123.45.6.7", 123)
 
-    if hasattr(socket, "AF_UNIX"):  # pragma: no cover
-        transport = MockTransport({"socket": MockSocket(family=socket.AF_UNIX, sockname="/tmp/test.sock")})
-        assert get_local_addr(transport) == ("/tmp/test.sock", None)
+    transport = MockTransport({"socket": MockSocket(family=socket.AF_INET, sockname="/tmp/test.sock")})
+    assert get_local_addr(transport) == ("/tmp/test.sock", None)
 
 
 def test_get_remote_addr_with_socket():
