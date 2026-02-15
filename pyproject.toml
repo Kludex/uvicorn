@@ -73,10 +73,9 @@ dev = [
     "websockets==13.1",
 ]
 docs = [
-    "mkdocs==1.6.1",
-    "mkdocs-material==9.6.21",
-    "mkdocstrings-python==1.18.2",
-    "mkdocs-llmstxt==0.4.0",
+    "zensical>=0.0.19",
+    "mkdocstrings-python>=1.18.2",
+    "mkdocs-llmstxt>=0.4.0",
 ]
 
 [tool.uv]

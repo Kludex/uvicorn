@@ -124,6 +124,3 @@ plugins:
           - server-behavior.md
         Concepts:
           - concepts/*.md
-
-hooks:
-  - docs/plugins/main.py
