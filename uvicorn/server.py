@@ -10,7 +10,7 @@ import socket
 import sys
 import threading
 import time
-from collections.abc import Generator, Sequence
+from collections.abc import AsyncIterator, Generator, Sequence
 from email.utils import formatdate
 from types import FrameType
 from typing import TYPE_CHECKING, TypeAlias
@@ -67,10 +67,12 @@ class Server:
         return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
 
     async def serve(self, sockets: list[socket.socket] | None = None) -> None:
-        with self.capture_signals():
-            await self._serve(sockets)
+        async with self.lifespan_context(sockets=sockets):
+            with self.capture_signals():
+                await self.main_loop()
 
-    async def _serve(self, sockets: list[socket.socket] | None = None) -> None:
+    @contextlib.asynccontextmanager
+    async def lifespan_context(self, sockets: list[socket.socket] | None = None) -> AsyncIterator[None]:
         process_id = os.getpid()
 
         config = self.config
@@ -82,16 +84,15 @@ class Server:
         message = "Started server process [%d]"
         color_message = "Started server process [" + click.style("%d", fg="cyan") + "]"
         logger.info(message, process_id, extra={"color_message": color_message})
-
         await self.startup(sockets=sockets)
         if self.should_exit:
-            return
-        await self.main_loop()
-        await self.shutdown(sockets=sockets)
-
-        message = "Finished server process [%d]"
-        color_message = "Finished server process [" + click.style("%d", fg="cyan") + "]"
-        logger.info(message, process_id, extra={"color_message": color_message})
+            yield
+        else:
+            yield
+            await self.shutdown(sockets=sockets)
+            message = "Finished server process [%d]"
+            color_message = "Finished server process [" + click.style("%d", fg="cyan") + "]"
+            logger.info(message, process_id, extra={"color_message": color_message})
 
     async def startup(self, sockets: list[socket.socket] | None = None) -> None:
         await self.lifespan.startup()
