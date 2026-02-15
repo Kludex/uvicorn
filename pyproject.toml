@@ -44,7 +44,7 @@ standard = [
     "python-dotenv>=0.13",
     "PyYAML>=5.1",
     "uvloop>=0.15.1; sys_platform != 'win32' and (sys_platform != 'cygwin' and platform_python_implementation != 'PyPy')",
-    "watchfiles>=0.13",
+    "watchfiles>=0.20",
     "websockets>=10.4",
 ]
 

@@ -61,7 +61,7 @@ class WatchFilesReload(BaseReload):
     ) -> None:
         super().__init__(config, target, sockets)
         self.reloader_name = "WatchFiles"
-        self.reload_dirs = []
+        self.reload_dirs: list[Path] = []
         for directory in config.reload_dirs:
             self.reload_dirs.append(directory)
 
@@ -73,6 +73,7 @@ class WatchFilesReload(BaseReload):
             # using yield_on_timeout here mostly to make sure tests don't
             # hang forever, won't affect the class's behavior
             yield_on_timeout=True,
+            ignore_permission_denied=True,
         )
 
     def should_restart(self) -> list[Path] | None:
