@@ -1,17 +1,14 @@
 #!/bin/sh
 
-export PREFIX=""
-if [ -d 'venv' ]; then
-    export PREFIX="venv/bin/"
-fi
-
 set -ex
 
 if [ -z $GITHUB_ACTIONS ]; then
     scripts/check
 fi
 
-${PREFIX}coverage run --debug config -m pytest "$@"
+export COVERAGE_PROCESS_START=$(pwd)/pyproject.toml
+
+uv run coverage run --debug config -m pytest "$@"
 
 if [ -z $GITHUB_ACTIONS ]; then
     scripts/coverage

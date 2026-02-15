@@ -7,25 +7,20 @@ import logging
 import os
 import socket
 import sys
-import typing
+from collections.abc import Callable, Iterator
+from contextlib import closing
 from pathlib import Path
-from typing import Any, Literal
+from typing import IO, Any, Literal
 from unittest.mock import MagicMock
 
 import pytest
 import yaml
 from pytest_mock import MockerFixture
 
-from tests.utils import as_cwd
-from uvicorn._types import (
-    ASGIApplication,
-    ASGIReceiveCallable,
-    ASGISendCallable,
-    Environ,
-    Scope,
-    StartResponse,
-)
-from uvicorn.config import Config
+from tests.custom_loop_utils import CustomLoop
+from tests.utils import as_cwd, get_asyncio_default_loop_per_os
+from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallable, Environ, Scope, StartResponse
+from uvicorn.config import Config, LoopFactoryType
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from uvicorn.middleware.wsgi import WSGIMiddleware
 from uvicorn.protocols.http.h11_impl import H11Protocol
@@ -291,7 +286,7 @@ def test_ssl_config_combined(tls_certificate_key_and_chain_path: str) -> None:
     assert config.is_ssl is True
 
 
-def asgi2_app(scope: Scope) -> typing.Callable:
+def asgi2_app(scope: Scope) -> Callable:
     async def asgi(receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:  # pragma: nocover
         pass
 
@@ -374,7 +369,7 @@ def test_log_config_yaml(
 @pytest.mark.parametrize("config_file", ["log_config.ini", configparser.ConfigParser(), io.StringIO()])
 def test_log_config_file(
     mocked_logging_config_module: MagicMock,
-    config_file: str | configparser.RawConfigParser | typing.IO[Any],
+    config_file: str | configparser.RawConfigParser | IO[Any],
 ) -> None:
     """
     Test that one can load a configparser config from disk.
@@ -386,14 +381,14 @@ def test_log_config_file(
 
 
 @pytest.fixture(params=[0, 1])
-def web_concurrency(request: pytest.FixtureRequest) -> typing.Iterator[int]:
+def web_concurrency(request: pytest.FixtureRequest) -> Iterator[int]:
     yield request.param
     if os.getenv("WEB_CONCURRENCY"):
         del os.environ["WEB_CONCURRENCY"]
 
 
 @pytest.fixture(params=["127.0.0.1", "127.0.0.2"])
-def forwarded_allow_ips(request: pytest.FixtureRequest) -> typing.Iterator[str]:
+def forwarded_allow_ips(request: pytest.FixtureRequest) -> Iterator[str]:
     yield request.param
     if os.getenv("FORWARDED_ALLOW_IPS"):
         del os.environ["FORWARDED_ALLOW_IPS"]
@@ -409,7 +404,7 @@ def test_env_file(
     Test that one can load environment variables using an env file.
     """
     fp = tmp_path / ".env"
-    content = f"WEB_CONCURRENCY={web_concurrency}\n" f"FORWARDED_ALLOW_IPS={forwarded_allow_ips}\n"
+    content = f"WEB_CONCURRENCY={web_concurrency}\nFORWARDED_ALLOW_IPS={forwarded_allow_ips}\n"
     fp.write_text(content)
     with caplog.at_level(logging.INFO):
         config = Config(app=asgi_app, env_file=fp)
@@ -545,3 +540,56 @@ def test_warn_when_using_reload_and_workers(caplog: pytest.LogCaptureFixture) ->
     Config(app=asgi_app, reload=True, workers=2)
     assert len(caplog.records) == 1
     assert '"workers" flag is ignored when reloading is enabled.' in caplog.records[0].message
+
+
+@pytest.mark.parametrize(
+    ("loop_type", "expected_loop_factory"),
+    [
+        ("none", None),
+        ("asyncio", get_asyncio_default_loop_per_os()),
+    ],
+)
+def test_get_loop_factory(loop_type: LoopFactoryType, expected_loop_factory: Any):
+    config = Config(app=asgi_app, loop=loop_type)
+    loop_factory = config.get_loop_factory()
+    if loop_factory is None:
+        assert expected_loop_factory is loop_factory
+    else:
+        loop = loop_factory()
+        with closing(loop):
+            assert loop is not None
+            assert isinstance(loop, expected_loop_factory)
+
+
+def test_custom_loop__importable_custom_loop_setup_function() -> None:
+    config = Config(app=asgi_app, loop="tests.custom_loop_utils:CustomLoop")
+    config.load()
+    loop_factory = config.get_loop_factory()
+    assert loop_factory, "Loop factory should be set"
+    event_loop = loop_factory()
+    with closing(event_loop):
+        assert event_loop is not None
+        assert isinstance(event_loop, CustomLoop)
+
+
+@pytest.mark.filterwarnings("ignore::pytest.PytestUnraisableExceptionWarning")
+def test_custom_loop__not_importable_custom_loop_setup_function(caplog: pytest.LogCaptureFixture) -> None:
+    config = Config(app=asgi_app, loop="tests.test_config:non_existing_setup_function")
+    config.load()
+    with pytest.raises(SystemExit):
+        config.get_loop_factory()
+    error_messages = [
+        record.message for record in caplog.records if record.name == "uvicorn.error" and record.levelname == "ERROR"
+    ]
+    assert (
+        'Error loading custom loop setup function. Attribute "non_existing_setup_function" not found in module "tests.test_config".'  # noqa: E501
+        == error_messages.pop(0)
+    )
+
+
+def test_setup_event_loop_is_removed(caplog: pytest.LogCaptureFixture) -> None:
+    config = Config(app=asgi_app)
+    with pytest.raises(
+        AttributeError, match="The `setup_event_loop` method was replaced by `get_loop_factory` in uvicorn 0.36.0."
+    ):
+        config.setup_event_loop()

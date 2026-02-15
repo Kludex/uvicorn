@@ -1,6 +1,12 @@
 site_name: Uvicorn
 site_description: The lightning-fast ASGI server.
-site_url: https://www.uvicorn.org
+site_url: https://uvicorn.dev
+
+repo_name: Kludex/uvicorn
+repo_url: https://github.com/Kludex/uvicorn
+edit_uri: edit/main/docs/
+
+strict: true
 
 theme:
   name: material
@@ -19,33 +25,105 @@ theme:
       toggle:
         icon: "material/lightbulb-outline"
         name: "Switch to light mode"
+  icon:
+    repo: fontawesome/brands/github
   features:
+    - content.code.annotate
     - content.code.copy # https://squidfunk.github.io/mkdocs-material/upgrade/?h=content+copy#contentcodecopy
-    - navigation.top # https://squidfunk.github.io/mkdocs-material/setup/setting-up-navigation/#back-to-top-button
+    - content.tabs.link
     - navigation.footer # https://squidfunk.github.io/mkdocs-material/upgrade/?h=content+copy#navigationfooter
+    - navigation.path
+    - navigation.sections # https://squidfunk.github.io/mkdocs-material/setup/setting-up-navigation
+    - navigation.top # https://squidfunk.github.io/mkdocs-material/setup/setting-up-navigation/#back-to-top-button
+    - navigation.tracking
+    - search.suggest
+    - search.highlight
     - toc.follow # https://squidfunk.github.io/mkdocs-material/setup/setting-up-navigation/#anchor-following
 
-repo_name: encode/uvicorn
-repo_url: https://github.com/encode/uvicorn
-edit_uri: edit/master/docs/
+# https://www.mkdocs.org/user-guide/configuration/#validation
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
 
 nav:
-  - Introduction: index.md
+  - Welcome: index.md
+  - Installation: installation.md
   - Settings: settings.md
-  - Deployment: deployment.md
   - Server Behavior: server-behavior.md
+  - Concepts:
+      - ASGI: concepts/asgi.md
+      - Lifespan: concepts/lifespan.md
+      - WebSockets: concepts/websockets.md
+      - Event Loop: concepts/event-loop.md
+  - Deployment:
+      - Deployment: deployment/index.md
+      - Docker: deployment/docker.md
   - Release Notes: release-notes.md
   - Contributing: contributing.md
+  - Sponsorship: sponsorship.md
+
+extra:
+  analytics:
+    provider: google
+    property: G-KTS6TXPD85
+  social:
+    - icon: fontawesome/brands/github-alt
+      link: https://github.com/Kludex/uvicorn
+    - icon: fontawesome/brands/discord
+      link: https://discord.com/invite/RxKUF5JuHs
+    - icon: fontawesome/brands/twitter
+      link: https://x.com/marcelotryle
+    - icon: fontawesome/brands/linkedin
+      link: https://www.linkedin.com/in/marcelotryle
+    - icon: fontawesome/solid/globe
+      link: https://fastapiexpert.com
 
 markdown_extensions:
+  - attr_list
   - admonition
   - codehilite:
       css_class: highlight
   - toc:
       permalink: true
+  - pymdownx.details
   - pymdownx.inlinehilite
   - pymdownx.snippets
   - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.extra:
+      pymdownx.superfences:
+        custom_fences:
+          - name: mermaid
+            class: mermaid
+            format: !!python/name:pymdownx.superfences.fence_code_format
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          inventories:
+            - https://docs.python.org/3/objects.inv
+  - llmstxt:
+      full_output: llms-full.txt
+      markdown_description: |-
+        Uvicorn is a lightning-fast ASGI server implementation, designed to run asynchronous web applications.
+        It supports the ASGI specification, which allows for both HTTP/1.1 and WebSocket protocols.
+      sections:
+        Sections:
+          - index.md
+          - settings.md
+          - deployment/*.md
+          - server-behavior.md
+        Concepts:
+          - concepts/*.md
 
 hooks:
   - docs/plugins/main.py

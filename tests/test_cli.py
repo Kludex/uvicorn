@@ -131,7 +131,7 @@ def test_cli_incomplete_app_parameter() -> None:
     result = runner.invoke(cli, ["tests.test_cli"])
 
     assert (
-        'Error loading ASGI app. Import string "tests.test_cli" ' 'must be in format "<module>:<attribute>".'
+        'Error loading ASGI app. Import string "tests.test_cli" must be in format "<module>:<attribute>".'
     ) in result.output
     assert result.exit_code == 1
 

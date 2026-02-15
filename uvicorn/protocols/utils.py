@@ -22,7 +22,7 @@ def get_remote_addr(transport: asyncio.Transport) -> tuple[str, int] | None:
             return None
 
     info = transport.get_extra_info("peername")
-    if info is not None and isinstance(info, (list, tuple)) and len(info) == 2:
+    if info is not None and isinstance(info, list | tuple) and len(info) == 2:
         return (str(info[0]), int(info[1]))
     return None
 
@@ -37,7 +37,7 @@ def get_local_addr(transport: asyncio.Transport) -> tuple[str, int | None] | Non
             return (info, None)
         return None
     info = transport.get_extra_info("sockname")
-    if info is not None and isinstance(info, (list, tuple)) and len(info) == 2:
+    if info is not None and isinstance(info, list | tuple) and len(info) == 2:
         return (str(info[0]), int(info[1]))
     elif isinstance(info, str):
         return (info, None)

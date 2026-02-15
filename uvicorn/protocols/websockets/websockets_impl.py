@@ -4,7 +4,7 @@ import asyncio
 import http
 import logging
 from collections.abc import Sequence
-from typing import Any, Literal, Optional, cast
+from typing import Any, Literal, cast
 from urllib.parse import unquote
 
 import websockets
@@ -34,6 +34,7 @@ from uvicorn.config import Config
 from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.protocols.utils import (
     ClientDisconnected,
+    get_client_addr,
     get_local_addr,
     get_path_with_query_string,
     get_remote_addr,
@@ -214,7 +215,7 @@ class WebSocketProtocol(WebSocketServerProtocol):
     def send_500_response(self) -> None:
         msg = b"Internal Server Error"
         content = [
-            b"HTTP/1.1 500 Internal Server Error\r\n" b"content-type: text/plain; charset=utf-8\r\n",
+            b"HTTP/1.1 500 Internal Server Error\r\ncontent-type: text/plain; charset=utf-8\r\n",
             b"content-length: " + str(len(msg)).encode("ascii") + b"\r\n",
             b"connection: close\r\n",
             b"\r\n",
@@ -222,7 +223,7 @@ class WebSocketProtocol(WebSocketServerProtocol):
         ]
         self.transport.write(b"".join(content))
         # Allow handler task to terminate cleanly, as websockets doesn't cancel it by
-        # itself (see https://github.com/encode/uvicorn/issues/920)
+        # itself (see https://github.com/Kludex/uvicorn/issues/920)
         self.handshake_started_event.set()
 
     async def ws_handler(self, protocol: WebSocketServerProtocol, path: str) -> Any:  # type: ignore[override]
@@ -243,7 +244,6 @@ class WebSocketProtocol(WebSocketServerProtocol):
             result = await self.app(self.scope, self.asgi_receive, self.asgi_send)  # type: ignore[func-returns-value]
         except ClientDisconnected:  # pragma: full coverage
             self.closed_event.set()
-            self.transport.close()
         except BaseException:
             self.closed_event.set()
             self.logger.exception("Exception in ASGI application\n")
@@ -251,17 +251,15 @@ class WebSocketProtocol(WebSocketServerProtocol):
                 self.send_500_response()
             else:
                 await self.handshake_completed_event.wait()
-            self.transport.close()
         else:
             self.closed_event.set()
             if not self.handshake_started_event.is_set():
                 self.logger.error("ASGI callable returned without sending handshake.")
                 self.send_500_response()
-                self.transport.close()
             elif result is not None:
                 self.logger.error("ASGI callable should return None, but returned '%s'.", result)
-                await self.handshake_completed_event.wait()
-                self.transport.close()
+            await self.handshake_completed_event.wait()
+        self.transport.close()
 
     async def asgi_send(self, message: ASGISendEvent) -> None:
         message_type = message["type"]
@@ -271,11 +269,11 @@ class WebSocketProtocol(WebSocketServerProtocol):
                 message = cast("WebSocketAcceptEvent", message)
                 self.logger.info(
                     '%s - "WebSocket %s" [accepted]',
-                    self.scope["client"],
+                    get_client_addr(self.scope),
                     get_path_with_query_string(self.scope),
                 )
                 self.initial_response = None
-                self.accepted_subprotocol = cast(Optional[Subprotocol], message.get("subprotocol"))
+                self.accepted_subprotocol = cast(Subprotocol | None, message.get("subprotocol"))
                 if "headers" in message:
                     self.extra_headers.extend(
                         # ASGI spec requires bytes
@@ -289,7 +287,7 @@ class WebSocketProtocol(WebSocketServerProtocol):
                 message = cast("WebSocketCloseEvent", message)
                 self.logger.info(
                     '%s - "WebSocket %s" 403',
-                    self.scope["client"],
+                    get_client_addr(self.scope),
                     get_path_with_query_string(self.scope),
                 )
                 self.initial_response = (http.HTTPStatus.FORBIDDEN, [], b"")
@@ -300,7 +298,7 @@ class WebSocketProtocol(WebSocketServerProtocol):
                 message = cast("WebSocketResponseStartEvent", message)
                 self.logger.info(
                     '%s - "WebSocket %s" %d',
-                    self.scope["client"],
+                    get_client_addr(self.scope),
                     get_path_with_query_string(self.scope),
                     message["status"],
                 )
@@ -338,7 +336,7 @@ class WebSocketProtocol(WebSocketServerProtocol):
                     self.closed_event.set()
 
                 else:
-                    msg = "Expected ASGI message 'websocket.send' or 'websocket.close'," " but got '%s'."
+                    msg = "Expected ASGI message 'websocket.send' or 'websocket.close', but got '%s'."
                     raise RuntimeError(msg % message_type)
             except ConnectionClosed as exc:
                 raise ClientDisconnected from exc
@@ -351,11 +349,11 @@ class WebSocketProtocol(WebSocketServerProtocol):
                 if not message.get("more_body", False):
                     self.closed_event.set()
             else:
-                msg = "Expected ASGI message 'websocket.http.response.body' " "but got '%s'."
+                msg = "Expected ASGI message 'websocket.http.response.body' but got '%s'."
                 raise RuntimeError(msg % message_type)
 
         else:
-            msg = "Unexpected ASGI message '%s', after sending 'websocket.close' " "or response already completed."
+            msg = "Unexpected ASGI message '%s', after sending 'websocket.close' or response already completed."
             raise RuntimeError(msg % message_type)
 
     async def asgi_receive(self) -> WebSocketDisconnectEvent | WebSocketConnectEvent | WebSocketReceiveEvent:

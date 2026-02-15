@@ -6,38 +6,39 @@ import os
 import platform
 import ssl
 import sys
+import warnings
+from collections.abc import Callable
 from configparser import RawConfigParser
-from typing import IO, Any, Callable
+from typing import IO, Any, get_args
 
 import click
 
 import uvicorn
 from uvicorn._types import ASGIApplication
 from uvicorn.config import (
-    HTTP_PROTOCOLS,
     INTERFACES,
     LIFESPAN,
     LOG_LEVELS,
     LOGGING_CONFIG,
-    LOOP_SETUPS,
     SSL_PROTOCOL_VERSION,
-    WS_PROTOCOLS,
     Config,
     HTTPProtocolType,
     InterfaceType,
     LifespanType,
-    LoopSetupType,
+    LoopFactoryType,
     WSProtocolType,
 )
-from uvicorn.server import Server, ServerState  # noqa: F401  # Used to be defined here.
+from uvicorn.server import Server
 from uvicorn.supervisors import ChangeReload, Multiprocess
 
 LEVEL_CHOICES = click.Choice(list(LOG_LEVELS.keys()))
-HTTP_CHOICES = click.Choice(list(HTTP_PROTOCOLS.keys()))
-WS_CHOICES = click.Choice(list(WS_PROTOCOLS.keys()))
 LIFESPAN_CHOICES = click.Choice(list(LIFESPAN.keys()))
-LOOP_CHOICES = click.Choice([key for key in LOOP_SETUPS.keys() if key != "none"])
 INTERFACE_CHOICES = click.Choice(INTERFACES)
+
+
+def _metavar_from_type(_type: Any) -> str:
+    return f"[{'|'.join(key for key in get_args(_type) if key != 'none')}]"
+
 
 STARTUP_FAILURE = 3
 
@@ -81,7 +82,7 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     "--reload-dir",
     "reload_dirs",
     multiple=True,
-    help="Set reload directories explicitly, instead of using the current working" " directory.",
+    help="Set reload directories explicitly, instead of using the current working directory.",
     type=click.Path(exists=True),
 )
 @click.option(
@@ -106,7 +107,7 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     type=float,
     default=0.25,
     show_default=True,
-    help="Delay between previous and next check if application needs to be." " Defaults to 0.25s.",
+    help="Delay between previous and next check if application needs to be. Defaults to 0.25s.",
 )
 @click.option(
     "--workers",
@@ -117,21 +118,24 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
 )
 @click.option(
     "--loop",
-    type=LOOP_CHOICES,
+    type=str,
+    metavar=_metavar_from_type(LoopFactoryType),
     default="auto",
-    help="Event loop implementation.",
+    help="Event loop factory implementation.",
     show_default=True,
 )
 @click.option(
     "--http",
-    type=HTTP_CHOICES,
+    type=str,
+    metavar=_metavar_from_type(HTTPProtocolType),
     default="auto",
     help="HTTP protocol implementation.",
     show_default=True,
 )
 @click.option(
     "--ws",
-    type=WS_CHOICES,
+    type=str,
+    metavar=_metavar_from_type(WSProtocolType),
     default="auto",
     help="WebSocket protocol implementation.",
     show_default=True,
@@ -222,7 +226,7 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     "--proxy-headers/--no-proxy-headers",
     is_flag=True,
     default=True,
-    help="Enable/Disable X-Forwarded-Proto, X-Forwarded-For, X-Forwarded-Port to " "populate remote address info.",
+    help="Enable/Disable X-Forwarded-Proto, X-Forwarded-For to populate url scheme and remote address info.",
 )
 @click.option(
     "--server-header/--no-server-header",
@@ -255,7 +259,7 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     "--limit-concurrency",
     type=int,
     default=None,
-    help="Maximum number of concurrent connections or tasks to allow, before issuing" " HTTP 503 responses.",
+    help="Maximum number of concurrent connections or tasks to allow, before issuing HTTP 503 responses.",
 )
 @click.option(
     "--backlog",
@@ -273,7 +277,7 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     "--timeout-keep-alive",
     type=int,
     default=5,
-    help="Close Keep-Alive connections if no new data is received within this timeout.",
+    help="Close Keep-Alive connections if no new data is received within this timeout (in seconds).",
     show_default=True,
 )
 @click.option(
@@ -281,6 +285,13 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     type=int,
     default=None,
     help="Maximum number of seconds to wait for graceful shutdown.",
+)
+@click.option(
+    "--timeout-worker-healthcheck",
+    type=int,
+    default=5,
+    help="Maximum number of seconds to wait for a worker to respond to a healthcheck.",
+    show_default=True,
 )
 @click.option("--ssl-keyfile", type=str, default=None, help="SSL key file", show_default=True)
 @click.option(
@@ -366,9 +377,9 @@ def main(
     port: int,
     uds: str,
     fd: int,
-    loop: LoopSetupType,
-    http: HTTPProtocolType,
-    ws: WSProtocolType,
+    loop: LoopFactoryType | str,
+    http: HTTPProtocolType | str,
+    ws: WSProtocolType | str,
     ws_max_size: int,
     ws_max_queue: int,
     ws_ping_interval: float,
@@ -396,6 +407,7 @@ def main(
     limit_max_requests: int,
     timeout_keep_alive: int,
     timeout_graceful_shutdown: int | None,
+    timeout_worker_healthcheck: int,
     ssl_keyfile: str,
     ssl_certfile: str,
     ssl_keyfile_password: str,
@@ -445,6 +457,7 @@ def main(
         limit_max_requests=limit_max_requests,
         timeout_keep_alive=timeout_keep_alive,
         timeout_graceful_shutdown=timeout_graceful_shutdown,
+        timeout_worker_healthcheck=timeout_worker_healthcheck,
         ssl_keyfile=ssl_keyfile,
         ssl_certfile=ssl_certfile,
         ssl_keyfile_password=ssl_keyfile_password,
@@ -467,9 +480,9 @@ def run(
     port: int = 8000,
     uds: str | None = None,
     fd: int | None = None,
-    loop: LoopSetupType = "auto",
-    http: type[asyncio.Protocol] | HTTPProtocolType = "auto",
-    ws: type[asyncio.Protocol] | WSProtocolType = "auto",
+    loop: LoopFactoryType | str = "auto",
+    http: type[asyncio.Protocol] | HTTPProtocolType | str = "auto",
+    ws: type[asyncio.Protocol] | WSProtocolType | str = "auto",
     ws_max_size: int = 16777216,
     ws_max_queue: int = 32,
     ws_ping_interval: float | None = 20.0,
@@ -497,12 +510,13 @@ def run(
     limit_max_requests: int | None = None,
     timeout_keep_alive: int = 5,
     timeout_graceful_shutdown: int | None = None,
+    timeout_worker_healthcheck: int = 5,
     ssl_keyfile: str | os.PathLike[str] | None = None,
     ssl_certfile: str | os.PathLike[str] | None = None,
     ssl_keyfile_password: str | None = None,
     ssl_version: int = SSL_PROTOCOL_VERSION,
     ssl_cert_reqs: int = ssl.CERT_NONE,
-    ssl_ca_certs: str | None = None,
+    ssl_ca_certs: str | os.PathLike[str] | None = None,
     ssl_ciphers: str = "TLSv1",
     headers: list[tuple[str, str]] | None = None,
     use_colors: bool | None = None,
@@ -549,6 +563,7 @@ def run(
         limit_max_requests=limit_max_requests,
         timeout_keep_alive=timeout_keep_alive,
         timeout_graceful_shutdown=timeout_graceful_shutdown,
+        timeout_worker_healthcheck=timeout_worker_healthcheck,
         ssl_keyfile=ssl_keyfile,
         ssl_certfile=ssl_certfile,
         ssl_keyfile_password=ssl_keyfile_password,
@@ -565,7 +580,7 @@ def run(
 
     if (config.reload or config.workers > 1) and not isinstance(app, str):
         logger = logging.getLogger("uvicorn.error")
-        logger.warning("You must pass the application as an import string to enable 'reload' or " "'workers'.")
+        logger.warning("You must pass the application as an import string to enable 'reload' or 'workers'.")
         sys.exit(1)
 
     try:
@@ -585,6 +600,18 @@ def run(
 
     if not server.started and not config.should_reload and config.workers == 1:
         sys.exit(STARTUP_FAILURE)
+
+
+def __getattr__(name: str) -> Any:
+    if name == "ServerState":
+        warnings.warn(
+            "uvicorn.main.ServerState is deprecated, use uvicorn.server.ServerState instead.",
+            DeprecationWarning,
+        )
+        from uvicorn.server import ServerState
+
+        return ServerState
+    raise AttributeError(f"module {__name__} has no attribute {name}")
 
 
 if __name__ == "__main__":

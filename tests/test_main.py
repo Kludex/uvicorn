@@ -1,3 +1,4 @@
+import importlib
 import inspect
 import socket
 from logging import WARNING
@@ -5,6 +6,7 @@ from logging import WARNING
 import httpx
 import pytest
 
+import uvicorn.server
 from tests.utils import run_server
 from uvicorn import Server
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
@@ -79,7 +81,7 @@ def test_run_invalid_app_config_combination(caplog: pytest.LogCaptureFixture) ->
     assert caplog.records[-1].name == "uvicorn.error"
     assert caplog.records[-1].levelno == WARNING
     assert caplog.records[-1].message == (
-        "You must pass the application as an import string to enable " "'reload' or 'workers'."
+        "You must pass the application as an import string to enable 'reload' or 'workers'."
     )
 
 
@@ -113,3 +115,12 @@ async def test_exit_on_create_server_with_invalid_host() -> None:
         server = Server(config=config)
         await server.serve()
     assert exc_info.value.code == 1
+
+
+def test_deprecated_server_state_from_main() -> None:
+    with pytest.deprecated_call(
+        match="uvicorn.main.ServerState is deprecated, use uvicorn.server.ServerState instead."
+    ):
+        main = importlib.import_module("uvicorn.main")
+        server_state_cls = getattr(main, "ServerState")
+    assert server_state_cls is uvicorn.server.ServerState

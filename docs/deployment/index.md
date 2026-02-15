@@ -27,7 +27,7 @@ To see the complete set of available options, use `uvicorn --help`:
 {{ uvicorn_help }}
 ```
 
-See the [settings documentation](settings.md) for more details on the supported options for running uvicorn.
+See the [settings documentation](../settings.md) for more details on the supported options for running uvicorn.
 
 ## Running programmatically
 
@@ -141,28 +141,6 @@ stdout_logfile_maxbytes=0
 
 Then run with `supervisord -n`.
 
-### Circus
-
-To use `circus` as a process manager, you should either:
-
-* Hand over the socket to uvicorn using its file descriptor, which circus makes available as `$(circus.sockets.web)`.
-* Or use a UNIX domain socket for each `uvicorn` process.
-
-A simple circus configuration might look something like this:
-
-```ini title="circus.ini"
-[watcher:web]
-cmd = venv/bin/uvicorn --fd $(circus.sockets.web) main:App
-use_sockets = True
-numprocesses = 4
-
-[socket:web]
-host = 0.0.0.0
-port = 8000
-```
-
-Then run `circusd circus.ini`.
-
 ## Running behind Nginx
 
 Using Nginx as a proxy in front of your Uvicorn processes may not be necessary, but is recommended for additional resilience. Nginx can deal with serving your static media and buffering slow requests, leaving your application servers free from load as much as possible.
@@ -171,11 +149,12 @@ In managed environments such as `Heroku`, you won't typically need to configure 
 
 The recommended configuration for proxying from Nginx is to use a UNIX domain socket between Nginx and whatever the process manager that is being used to run Uvicorn. If using Uvicorn directly you can bind it to a UNIX domain socket using `uvicorn --uds /path/to/socket.sock <...>`.
 
-When running your application behind one or more proxies you will want to make sure that each proxy sets appropriate headers to ensure that your application can properly determine the client address of the incoming connection, and if the connection was over `http` or `https`. For more information see [Proxies and Forwarded Headers][#proxies-and-forwarded-headers] below.
+When running your application behind one or more proxies you will want to make sure that each proxy sets appropriate headers to ensure that your application can properly determine the client address of the incoming connection, and if the connection was over `http` or `https`. For more information see [Proxies and Forwarded Headers](#proxies-and-forwarded-headers) below.
 
 Here's how a simple Nginx configuration might look. This example includes setting proxy headers, and using a UNIX domain socket to communicate with the application server.
 
-It also includes some basic configuration to forward websocket connections. For more info on this, check [Nginx recommendations][nginx_websocket].
+It also includes some basic configuration to forward websocket connections.
+For more info on this, check [Nginx recommendations](https://nginx.org/en/docs/http/websocket.html).
 
 ```conf
 http {
@@ -229,9 +208,9 @@ Content Delivery Networks can also be a low-effort way to provide HTTPS terminat
 ## Running with HTTPS
 
 To run uvicorn with https, a certificate and a private key are required.
-The recommended way to get them is using [Let's Encrypt][letsencrypt].
+The recommended way to get them is using [Let's Encrypt](https://letsencrypt.org/).
 
-For local development with https, it's possible to use [mkcert][mkcert]
+For local development with https, it's possible to use [mkcert](https://github.com/FiloSottile/mkcert)
 to generate a valid certificate and private key.
 
 ```bash
@@ -245,10 +224,6 @@ It's also possible to use certificates with uvicorn's worker for gunicorn.
 ```bash
 $ gunicorn --keyfile=./key.pem --certfile=./cert.pem -k uvicorn.workers.UvicornWorker main:app
 ```
-
-[nginx_websocket]: https://nginx.org/en/docs/http/websocket.html
-[letsencrypt]: https://letsencrypt.org/
-[mkcert]: https://github.com/FiloSottile/mkcert
 
 ## Proxies and Forwarded Headers
 
@@ -269,7 +244,7 @@ or Literals (e.g. `/path/to/socket.sock`). When running from CLI these are confi
 !!! Warning "Only trust clients you can actually trust!"
     Incorrectly trusting other clients can lead to malicious actors spoofing their apparent client address to your application.
 
-For more information, check [`ProxyHeadersMiddleware`](https://github.com/encode/uvicorn/blob/master/uvicorn/middleware/proxy_headers.py).
+For more information, check [`ProxyHeadersMiddleware`](https://github.com/Kludex/uvicorn/blob/main/uvicorn/middleware/proxy_headers.py).
 
 ### Client Port
 

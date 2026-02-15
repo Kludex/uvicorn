@@ -8,23 +8,25 @@ dynamic = ["version"]
 description = "The lightning-fast ASGI server."
 readme = "README.md"
 license = "BSD-3-Clause"
-requires-python = ">=3.9"
+license-files = ["LICENSE.md"]
+requires-python = ">=3.10"
 authors = [
     { name = "Tom Christie", email = "tom@tomchristie.com" },
+]
+maintainers = [
     { name = "Marcelo Trylesinski", email = "marcelotryle@gmail.com" },
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Web Environment",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
     "Topic :: Internet :: WWW/HTTP",
@@ -41,25 +43,60 @@ standard = [
     "httptools>=0.6.3",
     "python-dotenv>=0.13",
     "PyYAML>=5.1",
-    "uvloop>=0.14.0,!=0.15.0,!=0.15.1; sys_platform != 'win32' and (sys_platform != 'cygwin' and platform_python_implementation != 'PyPy')",
+    "uvloop>=0.15.1; sys_platform != 'win32' and (sys_platform != 'cygwin' and platform_python_implementation != 'PyPy')",
     "watchfiles>=0.13",
     "websockets>=10.4",
 ]
+
+[dependency-groups]
+dev = [
+    # We add uvicorn[standard] so `uv sync` considers the extras.
+    "uvicorn[standard]",
+    "ruff==0.15.1",
+    "pytest==9.0.2",
+    "pytest-mock==3.15.1",
+    "pytest-xdist[psutil]==3.8.0",
+    "mypy==1.19.1",
+    "types-click==7.1.8",
+    "types-pyyaml==6.0.12.20250915",
+    "trustme==1.2.1",
+    "cryptography>=44.0.3",
+    "coverage==7.13.4",
+    "coverage-conditional-plugin==0.9.0",
+    "coverage-enable-subprocess==1.0",
+    "httpx==0.28.1",
+    # check dist
+    "twine==6.2.0",
+    # Explicit optionals,
+    "a2wsgi==1.10.10",
+    "wsproto==1.3.2",
+    "websockets==13.1",
+]
+docs = [
+    "mkdocs==1.6.1",
+    "mkdocs-material==9.7.1",
+    "mkdocstrings-python==2.0.2",
+    "mkdocs-llmstxt==0.5.0",
+]
+
+[tool.uv]
+default-groups = ["dev", "docs"]
+required-version = ">=0.8.6"
 
 [project.scripts]
 uvicorn = "uvicorn.main:main"
 
 [project.urls]
-Changelog = "https://www.uvicorn.org/release-notes"
+Changelog = "https://uvicorn.dev/release-notes"
 Funding = "https://github.com/sponsors/encode"
-Homepage = "https://www.uvicorn.org/"
-Source = "https://github.com/encode/uvicorn"
+Homepage = "https://uvicorn.dev/"
+Source = "https://github.com/Kludex/uvicorn"
 
 [tool.hatch.version]
 path = "uvicorn/__init__.py"
 
 [tool.hatch.build.targets.sdist]
-include = ["/uvicorn", "/tests", "/requirements.txt"]
+include = ["/uvicorn", "/tests"]
 
 [tool.ruff]
 line-length = 120
@@ -75,29 +112,30 @@ combine-as-imports = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 show_error_codes = true
-disallow_untyped_defs = true
+disallow_untyped_defs = false
 ignore_missing_imports = true
 follow_imports = "silent"
 
-[[tool.mypy.overrides]]
-module = "tests.*"
-disallow_untyped_defs = false
-check_untyped_defs = true
-
 [tool.pytest.ini_options]
-addopts = "-rxXs --strict-config --strict-markers"
+addopts = "-rxXs --strict-config --strict-markers -n 8"
 xfail_strict = true
 filterwarnings = [
     "error",
     "ignore:Uvicorn's native WSGI implementation is deprecated.*:DeprecationWarning",
     "ignore: 'cgi' is deprecated and slated for removal in Python 3.13:DeprecationWarning",
     "ignore: remove second argument of ws_handler:DeprecationWarning:websockets",
+    "ignore: websockets.legacy is deprecated.*:DeprecationWarning",
+    "ignore: websockets.server.WebSocketServerProtocol is deprecated.*:DeprecationWarning",
+    "ignore: websockets.client.connect is deprecated.*:DeprecationWarning",
+    # httptools in Python 3.14t needs the `PYTHON_GIL=0` environment variable, or raises a RuntimeWarning.
+    "ignore: The global interpreter lock (GIL)*:RuntimeWarning"
 ]
 
 [tool.coverage.run]
+parallel = true
 source_pkgs = ["uvicorn", "tests"]
 plugins = ["coverage_conditional_plugin"]
-omit = ["uvicorn/workers.py", "uvicorn/__main__.py"]
+omit = ["uvicorn/workers.py", "uvicorn/__main__.py", "uvicorn/_compat.py"]
 
 [tool.coverage.report]
 precision = 2
@@ -125,6 +163,7 @@ exclude_lines = [
 py-win32 = "sys_platform == 'win32'"
 py-not-win32 = "sys_platform != 'win32'"
 py-linux = "sys_platform == 'linux'"
+py-not-linux = "sys_platform != 'linux'"
 py-darwin = "sys_platform == 'darwin'"
 py-gte-39 = "sys_version_info >= (3, 9)"
 py-lt-39 = "sys_version_info < (3, 9)"
