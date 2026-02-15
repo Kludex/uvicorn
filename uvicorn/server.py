@@ -101,6 +101,9 @@ class Server:
 
         config = self.config
 
+        if sockets is None and config.bind is not None:
+            sockets = config.bind_sockets()
+
         def create_protocol(
             _loop: asyncio.AbstractEventLoop | None = None,
         ) -> asyncio.Protocol:
@@ -191,10 +194,7 @@ class Server:
 
         if config.fd is not None:  # pragma: py-win32
             sock = listeners[0]
-            logger.info(
-                "Uvicorn running on socket %s (Press CTRL+C to quit)",
-                sock.getsockname(),
-            )
+            logger.info("Uvicorn running on socket %s (Press CTRL+C to quit)", sock.getsockname())
 
         elif config.uds is not None:  # pragma: py-win32
             logger.info("Uvicorn running on unix socket %s (Press CTRL+C to quit)", config.uds)

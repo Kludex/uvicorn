@@ -77,6 +77,15 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
 )
 @click.option("--uds", type=str, default=None, help="Bind to a UNIX domain socket.")
 @click.option("--fd", type=int, default=None, help="Bind to socket from this file descriptor.")
+@click.option(
+    "--bind",
+    "-b",
+    "bind",
+    multiple=True,
+    help="Bind to a socket with this address. May be used multiple times. "
+    "Formats: HOST:PORT, [HOST]:PORT (IPv6), unix:PATH, fd://NUM. "
+    "Mutually exclusive with --host, --port, --uds, and --fd.",
+)
 @click.option("--reload", is_flag=True, default=False, help="Enable auto-reload.")
 @click.option(
     "--reload-dir",
@@ -377,6 +386,7 @@ def main(
     port: int,
     uds: str,
     fd: int,
+    bind: tuple[str, ...],
     loop: LoopFactoryType | str,
     http: HTTPProtocolType | str,
     ws: WSProtocolType | str,
@@ -427,6 +437,7 @@ def main(
         port=port,
         uds=uds,
         fd=fd,
+        bind=list(bind) or None,
         loop=loop,
         http=http,
         ws=ws,
@@ -480,6 +491,7 @@ def run(
     port: int = 8000,
     uds: str | None = None,
     fd: int | None = None,
+    bind: list[str] | None = None,
     loop: LoopFactoryType | str = "auto",
     http: type[asyncio.Protocol] | HTTPProtocolType | str = "auto",
     ws: type[asyncio.Protocol] | WSProtocolType | str = "auto",
@@ -533,6 +545,7 @@ def run(
         port=port,
         uds=uds,
         fd=fd,
+        bind=bind,
         loop=loop,
         http=http,
         ws=ws,
@@ -585,11 +598,11 @@ def run(
 
     try:
         if config.should_reload:
-            sock = config.bind_socket()
-            ChangeReload(config, target=server.run, sockets=[sock]).run()
+            socks = config.bind_sockets()
+            ChangeReload(config, target=server.run, sockets=socks).run()
         elif config.workers > 1:
-            sock = config.bind_socket()
-            Multiprocess(config, target=server.run, sockets=[sock]).run()
+            socks = config.bind_sockets()
+            Multiprocess(config, target=server.run, sockets=socks).run()
         else:
             server.run()
     except KeyboardInterrupt:
@@ -597,6 +610,11 @@ def run(
     finally:
         if config.uds and os.path.exists(config.uds):
             os.remove(config.uds)  # pragma: py-win32
+        for bind_str in config.bind or []:
+            if bind_str.startswith("unix:"):
+                path = bind_str[5:]
+                if os.path.exists(path):
+                    os.remove(path)  # pragma: py-win32
 
     if not server.started and not config.should_reload and config.workers == 1:
         sys.exit(STARTUP_FAILURE)

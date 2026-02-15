@@ -117,6 +117,20 @@ async def test_exit_on_create_server_with_invalid_host() -> None:
     assert exc_info.value.code == 1
 
 
+async def test_run_with_bind(unused_tcp_port: int) -> None:
+    config = Config(app=app, bind=[f"127.0.0.1:{unused_tcp_port}"], loop="asyncio", limit_max_requests=1)
+    async with run_server(config):
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"http://127.0.0.1:{unused_tcp_port}")
+    assert response.status_code == 204
+
+
+async def test_run_with_bind_multiple() -> None:
+    config = Config(app=app, bind=["127.0.0.1:0", "127.0.0.1:0"], loop="asyncio", limit_max_requests=1)
+    async with run_server(config):
+        pass  # Startup itself validates multiple sockets work
+
+
 def test_deprecated_server_state_from_main() -> None:
     with pytest.deprecated_call(
         match="uvicorn.main.ServerState is deprecated, use uvicorn.server.ServerState instead."
