@@ -45,7 +45,7 @@ standard = [
     "python-dotenv>=0.13",
     "PyYAML>=5.1",
     "uvloop>=0.15.1; sys_platform != 'win32' and (sys_platform != 'cygwin' and platform_python_implementation != 'PyPy')",
-    "watchfiles>=0.13",
+    "watchfiles>=0.20",
     "websockets>=10.4",
 ]
 
@@ -53,31 +53,31 @@ standard = [
 dev = [
     # We add uvicorn[standard] so `uv sync` considers the extras.
     "uvicorn[standard]",
-    "ruff==0.11.9",
-    "pytest==8.3.5",
-    "pytest-mock==3.14.0",
-    "pytest-xdist[psutil]==3.6.1",
-    "mypy==1.15.0",
+    "ruff==0.15.1",
+    "pytest==9.0.2",
+    "pytest-mock==3.15.1",
+    "pytest-xdist[psutil]==3.8.0",
+    "mypy==1.19.1",
     "types-click==7.1.8",
-    "types-pyyaml==6.0.12.20250402",
+    "types-pyyaml==6.0.12.20250915",
     "trustme==1.2.1",
     "cryptography>=44.0.3",
-    "coverage==7.8.0",
+    "coverage==7.13.4",
     "coverage-conditional-plugin==0.9.0",
     "coverage-enable-subprocess==1.0",
     "httpx==0.28.1",
     # check dist
-    "twine==6.1.0",
+    "twine==6.2.0",
     # Explicit optionals,
-    "a2wsgi==1.10.8",
-    "wsproto==1.2.0",
+    "a2wsgi==1.10.10",
+    "wsproto==1.3.2",
     "websockets==13.1",
 ]
 docs = [
     "mkdocs==1.6.1",
-    "mkdocs-material==9.6.21",
-    "mkdocstrings-python==1.18.2",
-    "mkdocs-llmstxt==0.4.0",
+    "mkdocs-material==9.7.1",
+    "mkdocstrings-python==2.0.2",
+    "mkdocs-llmstxt==0.5.0",
 ]
 
 [tool.uv]
