@@ -610,7 +610,6 @@ async def test_large_response_exceeding_flow_control_window():
     await protocol.loop.run_one()
 
     # Server has sent data up to the flow control window limit.
-    # Feed server output to client, which will acknowledge data with WINDOW_UPDATE.
     received_body = b""
     server_data = protocol.transport.buffer
     protocol.transport.clear_buffer()
@@ -619,14 +618,18 @@ async def test_large_response_exceeding_flow_control_window():
     for event in events:
         if isinstance(event, DataReceived):
             received_body += event.data
-            client_conn.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
 
-    # Client sends WINDOW_UPDATE frames back to the server
-    window_update_data = client_conn.data_to_send()
-    if window_update_data:
-        protocol.data_received(window_update_data)
+    # Send stream-level and connection-level WINDOW_UPDATEs separately so that
+    # both branches in handle_window_updated are covered. If sent together, h2
+    # opens both windows before returning events, and the first handler's flush
+    # sends all data, leaving nothing for the second.
+    client_conn.increment_flow_control_window(65535, stream_id=1)
+    protocol.data_received(client_conn.data_to_send())
 
-    # Collect any additional data the server sends after the window update
+    client_conn.increment_flow_control_window(65535)
+    protocol.data_received(client_conn.data_to_send())
+
+    # Collect the remaining data the server flushed after the window updates
     if protocol.transport.buffer:
         events = client_conn.receive_data(protocol.transport.buffer)
         for event in events:
