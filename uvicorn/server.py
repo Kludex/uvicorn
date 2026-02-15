@@ -64,6 +64,7 @@ class Server:
 
         self._captured_signals: list[int] = []
 
+        self.limit_max_requests: int | None
         if self.config.limit_max_requests is not None:
             jitter = random.randint(0, self.config.limit_max_requests_jitter)
             self.limit_max_requests = self.config.limit_max_requests + jitter
