@@ -129,7 +129,13 @@ def test_multiprocess_sighup() -> None:
     time.sleep(1)
     pids = [p.pid for p in supervisor.processes]
     supervisor.signal_queue.append(signal.SIGHUP)
-    time.sleep(1)
+    # Poll instead of a fixed sleep — the supervisor loop runs on a 0.5s interval and `restart_all()` terminates/joins
+    # each worker sequentially, so the total time is non-deterministic.
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if [p.pid for p in supervisor.processes] != pids:
+            break
+        time.sleep(0.1)
     assert pids != [p.pid for p in supervisor.processes]
     supervisor.signal_queue.append(signal.SIGINT)
     supervisor.join_all()
