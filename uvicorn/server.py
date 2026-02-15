@@ -84,14 +84,14 @@ class Server:
         logger.info(message, process_id, extra={"color_message": color_message})
 
         await self.startup(sockets=sockets)
-        if self.should_exit:
-            return
-        await self.main_loop()
-        await self.shutdown(sockets=sockets)
+        if not self.should_exit:
+            await self.main_loop()
+        if self.started:
+            await self.shutdown(sockets=sockets)
 
-        message = "Finished server process [%d]"
-        color_message = "Finished server process [" + click.style("%d", fg="cyan") + "]"
-        logger.info(message, process_id, extra={"color_message": color_message})
+            message = "Finished server process [%d]"
+            color_message = "Finished server process [" + click.style("%d", fg="cyan") + "]"
+            logger.info(message, process_id, extra={"color_message": color_message})
 
     async def startup(self, sockets: list[socket.socket] | None = None) -> None:
         await self.lifespan.startup()

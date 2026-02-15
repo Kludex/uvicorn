@@ -87,6 +87,41 @@ async def test_server_interrupt(
     assert server.should_exit
 
 
+async def test_shutdown_on_early_exit_during_startup(unused_tcp_port: int):
+    """Test that lifespan.shutdown is called even when should_exit is set during startup."""
+    startup_complete = False
+    shutdown_complete = False
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        nonlocal startup_complete, shutdown_complete
+        if scope["type"] == "lifespan":
+            while True:
+                message = await receive()
+                if message["type"] == "lifespan.startup":
+                    await asyncio.sleep(0.5)
+                    await send({"type": "lifespan.startup.complete"})
+                    startup_complete = True
+                elif message["type"] == "lifespan.shutdown":
+                    await send({"type": "lifespan.shutdown.complete"})
+                    shutdown_complete = True
+                    return
+
+    config = Config(app=app, lifespan="on", port=unused_tcp_port)
+    server = Server(config=config)
+
+    # Simulate a reload signal arriving during startup:
+    # set should_exit before the 0.5s startup sleep finishes.
+    async def set_exit():
+        await asyncio.sleep(0.2)
+        server.should_exit = True
+
+    asyncio.create_task(set_exit())
+    await server.serve()
+
+    assert startup_complete
+    assert shutdown_complete, "lifespan.shutdown was not called despite startup completing"
+
+
 async def test_request_than_limit_max_requests_warn_log(
     unused_tcp_port: int, http_protocol_cls: type[H11Protocol | HttpToolsProtocol], caplog: pytest.LogCaptureFixture
 ):
