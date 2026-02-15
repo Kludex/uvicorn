@@ -15,9 +15,6 @@ import click
 
 import uvicorn
 from uvicorn._types import ASGIApplication
-
-if TYPE_CHECKING:
-    from uvicorn.protocols.http.h2_impl import HTTP2Protocol
 from uvicorn.config import (
     INTERFACES,
     LIFESPAN,
@@ -33,6 +30,9 @@ from uvicorn.config import (
 )
 from uvicorn.server import Server
 from uvicorn.supervisors import ChangeReload, Multiprocess
+
+if TYPE_CHECKING:
+    from uvicorn.protocols.http.h2_impl import HTTP2Protocol
 
 LEVEL_CHOICES = click.Choice(list(LOG_LEVELS.keys()))
 LIFESPAN_CHOICES = click.Choice(list(LIFESPAN.keys()))
