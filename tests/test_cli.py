@@ -247,6 +247,26 @@ def test_cli_bind_mutually_exclusive(extra_args: list[str]) -> None:
     assert "'bind' is mutually exclusive with" in str(result.exception)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
+def test_cli_bind_unix_cleanup() -> None:  # pragma: py-win32
+    sock_path = "/tmp/uvicorn_test_cleanup.sock"
+    runner = CliRunner()
+
+    try:
+        Path(sock_path).touch()
+        with mock.patch.object(Config, "bind_sockets") as mock_bind_sockets:
+            with mock.patch.object(Multiprocess, "run") as mock_run:
+                result = runner.invoke(cli, ["tests.test_cli:App", "--workers=2", "-b", f"unix:{sock_path}"])
+
+        assert result.exit_code == 0
+        mock_bind_sockets.assert_called_once()
+        mock_run.assert_called_once()
+        assert not Path(sock_path).exists()
+    finally:
+        if Path(sock_path).exists():
+            os.remove(sock_path)
+
+
 def test_cli_bind_without_value_passes_none() -> None:
     runner = CliRunner()
 

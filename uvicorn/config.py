@@ -565,9 +565,9 @@ class Config:
 
         sockets: list[socket.socket] = []
         for bind_str in self.bind:
-            if bind_str.startswith("unix:"):
+            if bind_str.startswith("unix:"):  # pragma: py-win32
                 sock = self._bind_one(uds=bind_str[5:])
-            elif bind_str.startswith("fd://"):
+            elif bind_str.startswith("fd://"):  # pragma: py-win32
                 sock = self._bind_one(fd=int(bind_str[5:]))
             else:
                 # Strip brackets for IPv6, then rsplit on last colon.

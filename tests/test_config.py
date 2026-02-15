@@ -651,3 +651,30 @@ def test_bind_sockets_fallback() -> None:
 def test_bind_mutually_exclusive_with_other_params(kwargs: dict[str, Any]) -> None:
     with pytest.raises(ValueError, match="'bind' is mutually exclusive with"):
         Config(app=asgi_app, bind=["127.0.0.1:0"], **kwargs)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="requires unix sockets")
+def test_bind_sockets_unix() -> None:  # pragma: py-win32
+    sock_path = "/tmp/uvicorn_test_bind.sock"
+    try:
+        config = Config(app=asgi_app, bind=[f"unix:{sock_path}"])
+        sockets = config.bind_sockets()
+        assert len(sockets) == 1
+        assert sockets[0].family == socket.AF_UNIX
+        sockets[0].close()
+    finally:
+        if os.path.exists(sock_path):
+            os.unlink(sock_path)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="requires unix sockets")
+def test_bind_sockets_fd(tmp_path: Path) -> None:  # pragma: py-win32
+    # Create a socket, then bind via its file descriptor.
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    fd = listener.fileno()
+    config = Config(app=asgi_app, bind=[f"fd://{fd}"])
+    sockets = config.bind_sockets()
+    assert len(sockets) == 1
+    sockets[0].close()
+    listener.close()
