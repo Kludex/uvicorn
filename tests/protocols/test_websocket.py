@@ -206,8 +206,8 @@ async def test_headers(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProto
         async def websocket_connect(self, message: WebSocketConnectEvent):
             headers = self.scope.get("headers")
             headers = dict(headers)  # type: ignore
-            assert headers[b"host"].startswith(b"127.0.0.1")  # type: ignore
-            assert headers[b"username"] == bytes("abraão", "utf-8")  # type: ignore
+            assert headers[b"host"].startswith(b"127.0.0.1")
+            assert headers[b"username"] == bytes("abraão", "utf-8")
             await self.send({"type": "websocket.accept"})
 
     async def open_connection(url: str):
