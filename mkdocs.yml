@@ -1,6 +1,11 @@
 site_name: Uvicorn
 site_description: The lightning-fast ASGI server.
 site_url: https://uvicorn.dev
+
+repo_name: Kludex/uvicorn
+repo_url: https://github.com/Kludex/uvicorn
+edit_uri: edit/main/docs/
+
 strict: true
 
 theme:
@@ -20,23 +25,20 @@ theme:
       toggle:
         icon: "material/lightbulb-outline"
         name: "Switch to light mode"
+  icon:
+    repo: fontawesome/brands/github
   features:
-    - search.suggest
-    - search.highlight
-    - content.tabs.link
     - content.code.annotate
     - content.code.copy # https://squidfunk.github.io/mkdocs-material/upgrade/?h=content+copy#contentcodecopy
+    - content.tabs.link
+    - navigation.footer # https://squidfunk.github.io/mkdocs-material/upgrade/?h=content+copy#navigationfooter
     - navigation.path
     - navigation.sections # https://squidfunk.github.io/mkdocs-material/setup/setting-up-navigation
     - navigation.top # https://squidfunk.github.io/mkdocs-material/setup/setting-up-navigation/#back-to-top-button
     - navigation.tracking
-    - navigation.footer # https://squidfunk.github.io/mkdocs-material/upgrade/?h=content+copy#navigationfooter
+    - search.suggest
+    - search.highlight
     - toc.follow # https://squidfunk.github.io/mkdocs-material/setup/setting-up-navigation/#anchor-following
-    - announce.dismiss # https://squidfunk.github.io/mkdocs-material/setup/setting-up-the-header/#mark-as-read
-
-repo_name: Kludex/uvicorn
-repo_url: https://github.com/Kludex/uvicorn
-edit_uri: edit/main/docs/
 
 # https://www.mkdocs.org/user-guide/configuration/#validation
 validation:
@@ -53,6 +55,7 @@ nav:
       - ASGI: concepts/asgi.md
       - Lifespan: concepts/lifespan.md
       - WebSockets: concepts/websockets.md
+      - Event Loop: concepts/event-loop.md
   - Deployment:
       - Deployment: deployment/index.md
       - Docker: deployment/docker.md
@@ -64,6 +67,17 @@ extra:
   analytics:
     provider: google
     property: G-KTS6TXPD85
+  social:
+    - icon: fontawesome/brands/github-alt
+      link: https://github.com/Kludex/uvicorn
+    - icon: fontawesome/brands/discord
+      link: https://discord.com/invite/RxKUF5JuHs
+    - icon: fontawesome/brands/twitter
+      link: https://x.com/marcelotryle
+    - icon: fontawesome/brands/linkedin
+      link: https://www.linkedin.com/in/marcelotryle
+    - icon: fontawesome/solid/globe
+      link: https://fastapiexpert.com
 
 markdown_extensions:
   - attr_list
@@ -95,11 +109,8 @@ plugins:
   - mkdocstrings:
       handlers:
         python:
-          import:
-            - url: https://docs.python.org/3/objects.inv
-
-plugins:
-  - search
+          inventories:
+            - https://docs.python.org/3/objects.inv
   - llmstxt:
       full_output: llms-full.txt
       markdown_description: |-

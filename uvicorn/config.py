@@ -9,13 +9,14 @@ import os
 import socket
 import ssl
 import sys
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from configparser import RawConfigParser
 from pathlib import Path
-from typing import IO, Any, Callable, Literal
+from typing import IO, Any, Literal
 
 import click
 
+from uvicorn._compat import iscoroutinefunction
 from uvicorn._types import ASGIApplication
 from uvicorn.importer import ImportFromStringError, import_from_string
 from uvicorn.logging import TRACE_LOG_LEVEL
@@ -210,7 +211,7 @@ class Config:
         root_path: str = "",
         limit_concurrency: int | None = None,
         limit_max_requests: int | None = None,
-        max_requests_jitter: int = 0,
+        limit_max_requests_jitter: int = 0,
         backlog: int = 2048,
         timeout_keep_alive: int = 5,
         timeout_notify: int = 30,
@@ -256,7 +257,7 @@ class Config:
         self.root_path = root_path
         self.limit_concurrency = limit_concurrency
         self.limit_max_requests = limit_max_requests
-        self.max_requests_jitter = max_requests_jitter
+        self.limit_max_requests_jitter = limit_max_requests_jitter
         self.backlog = backlog
         self.timeout_keep_alive = timeout_keep_alive
         self.timeout_notify = timeout_notify
@@ -458,10 +459,10 @@ class Config:
             if inspect.isclass(self.loaded_app):
                 use_asgi_3 = hasattr(self.loaded_app, "__await__")
             elif inspect.isfunction(self.loaded_app):
-                use_asgi_3 = inspect.iscoroutinefunction(self.loaded_app)
+                use_asgi_3 = iscoroutinefunction(self.loaded_app)
             else:
                 call = getattr(self.loaded_app, "__call__", None)
-                use_asgi_3 = inspect.iscoroutinefunction(call)
+                use_asgi_3 = iscoroutinefunction(call)
             self.interface = "asgi3" if use_asgi_3 else "asgi2"
 
         if self.interface == "wsgi":

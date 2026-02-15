@@ -2,6 +2,25 @@
 toc_depth: 2
 ---
 
+## 0.40.0 (December 21, 2025)
+
+### Remove
+
+* Drop support for Python 3.9 (#2772)
+
+## 0.39.0 (December 21, 2025)
+
+### Fixed
+
+* Send close frame on ASGI return for WebSockets (#2769)
+* Explicitly start ASGI run with empty context (#2742)
+
+## 0.38.0 (October 18, 2025)
+
+### Added
+
+* Support Python 3.14 (#2723)
+
 ## 0.37.0 (September 23, 2025)
 
 ### Added
@@ -105,7 +124,7 @@ Improve `ProxyHeadersMiddleware` (#2468) and (#2231):
 
 ### Fixed
 
-- Don't warn when upgrade is not WebSocket and depedencies are installed (#2360)
+- Don't warn when upgrade is not WebSocket and dependencies are installed (#2360)
 
 ## 0.30.5 (August 2, 2024)
 

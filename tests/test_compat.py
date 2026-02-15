@@ -23,8 +23,6 @@ def test_asyncio_run__custom_loop_factory() -> None:
 
 
 def test_asyncio_run__passing_a_non_awaitable_callback_should_throw_error() -> None:
-    with pytest.raises(ValueError):
-        asyncio_run(
-            lambda: None,  # type: ignore
-            loop_factory=CustomLoop,
-        )
+    # TypeError on Python >= 3.14
+    with pytest.raises((ValueError, TypeError)):
+        asyncio_run(lambda: None, loop_factory=CustomLoop)  # type: ignore

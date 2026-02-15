@@ -14,7 +14,7 @@ import time
 from collections.abc import Generator, Sequence
 from email.utils import formatdate
 from types import FrameType
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, TypeAlias
 
 import click
 
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol
 
-    Protocols = Union[H11Protocol, HttpToolsProtocol, WSProtocol, WebSocketProtocol, WebSocketsSansIOProtocol]
+    Protocols: TypeAlias = H11Protocol | HttpToolsProtocol | WSProtocol | WebSocketProtocol | WebSocketsSansIOProtocol
 
 HANDLED_SIGNALS = (
     signal.SIGINT,  # Unix signal 2. Sent by Ctrl+C.
@@ -64,12 +64,11 @@ class Server:
 
         self._captured_signals: list[int] = []
 
-        # Calculate jittered limit for max requests
-        if self.config.limit_max_requests is None:
-            self.jittered_limit_max_requests = None
+        if self.config.limit_max_requests is not None:
+            jitter = random.randint(0, self.config.limit_max_requests_jitter)
+            self.limit_max_requests = self.config.limit_max_requests + jitter
         else:
-            jitter = random.randint(0, self.config.max_requests_jitter)
-            self.jittered_limit_max_requests = self.config.limit_max_requests + jitter
+            self.limit_max_requests = None
 
     def run(self, sockets: list[socket.socket] | None = None) -> None:
         return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
@@ -92,14 +91,14 @@ class Server:
         logger.info(message, process_id, extra={"color_message": color_message})
 
         await self.startup(sockets=sockets)
-        if self.should_exit:
-            return
-        await self.main_loop()
-        await self.shutdown(sockets=sockets)
+        if not self.should_exit:
+            await self.main_loop()
+        if self.started:
+            await self.shutdown(sockets=sockets)
 
-        message = "Finished server process [%d]"
-        color_message = "Finished server process [" + click.style("%d", fg="cyan") + "]"
-        logger.info(message, process_id, extra={"color_message": color_message})
+            message = "Finished server process [%d]"
+            color_message = "Finished server process [" + click.style("%d", fg="cyan") + "]"
+            logger.info(message, process_id, extra={"color_message": color_message})
 
     async def startup(self, sockets: list[socket.socket] | None = None) -> None:
         await self.lifespan.startup()
@@ -261,9 +260,9 @@ class Server:
         if self.should_exit:
             return True
 
-        max_requests = self.jittered_limit_max_requests
+        max_requests = self.limit_max_requests
         if max_requests is not None and self.server_state.total_requests >= max_requests:
-            logger.warning(f"Maximum request limit of {max_requests} exceeded. Terminating process.")
+            logger.info("Maximum request limit of %d exceeded. Terminating process.", max_requests)
             return True
 
         return False
