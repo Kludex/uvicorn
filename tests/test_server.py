@@ -125,7 +125,7 @@ async def test_shutdown_on_early_exit_during_startup(unused_tcp_port: int):
 async def test_request_than_limit_max_requests_warn_log(
     unused_tcp_port: int, http_protocol_cls: type[H11Protocol | HttpToolsProtocol], caplog: pytest.LogCaptureFixture
 ):
-    caplog.set_level(logging.WARNING, logger="uvicorn.error")
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
     config = Config(app=app, limit_max_requests=1, port=unused_tcp_port, http=http_protocol_cls)
     async with run_server(config):
         async with httpx.AsyncClient() as client:
