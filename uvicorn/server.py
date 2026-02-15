@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import logging
 import os
 import platform
@@ -64,12 +65,11 @@ class Server:
 
         self._captured_signals: list[int] = []
 
-        self.limit_max_requests: int | None
-        if self.config.limit_max_requests is not None:
-            jitter = random.randint(0, self.config.limit_max_requests_jitter)
-            self.limit_max_requests = self.config.limit_max_requests + jitter
-        else:
-            self.limit_max_requests = None
+    @functools.cached_property
+    def limit_max_requests(self) -> int | None:
+        if self.config.limit_max_requests is None:
+            return None
+        return self.config.limit_max_requests + random.randint(0, self.config.limit_max_requests_jitter)
 
     def run(self, sockets: list[socket.socket] | None = None) -> None:
         return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
