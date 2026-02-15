@@ -63,8 +63,8 @@ For more nuanced control over which file modifications trigger reloads, install 
 
 Using Uvicorn with watchfiles will enable the following options (which are otherwise ignored):
 
-* `--reload-include <glob-pattern>` - Specify a glob pattern to match files or directories which will be watched. May be used multiple times. By default the following patterns are included: `*.py`. These defaults can be overwritten by including them in `--reload-exclude`.
-* `--reload-exclude <glob-pattern>` - Specify a glob pattern to match files or directories which will excluded from watching. May be used multiple times. By default the following patterns are excluded: `.*, .py[cod], .sw.*, ~*`. These defaults can be overwritten by including them in `--reload-include`.
+* `--reload-include <glob-pattern>` - Specify a glob pattern to [match](https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.match) files or directories which will be watched. May be used multiple times. By default the following patterns are included: `*.py`. These defaults can be overwritten by including them in `--reload-exclude`. Note, `**` is not supported in `<glob-pattern>`.
+* `--reload-exclude <glob-pattern>` - Specify a glob pattern to [match](https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.match) files or directories which will be excluded from watching. May be used multiple times. If `<glob-pattern>` does not contain a `/` or `*`, it will be compared against every path part of the resolved watched file path (e.g. `--reload-exclude '__pycache__'` will exclude any file matches who have `__pycache__` as an ancestor directory). By default the following patterns are excluded: `.*, .py[cod], .sw.*, ~*`. These defaults can be overwritten by including them in `--reload-include`. Note, `**` is not supported in `<glob-pattern>`.
 
 !!! tip
     When using Uvicorn through [WSL](https://en.wikipedia.org/wiki/Windows_Subsystem_for_Linux), you might

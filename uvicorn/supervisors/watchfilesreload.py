@@ -13,26 +13,38 @@ from uvicorn.supervisors.basereload import BaseReload
 class FileFilter:
     def __init__(self, config: Config):
         default_includes = ["*.py"]
-        self.includes = [default for default in default_includes if default not in config.reload_excludes]
-        self.includes.extend(config.reload_includes)
-        self.includes = list(set(self.includes))
+        self.includes = list(
+            # Remove any included defaults that are excluded
+            (set(default_includes) - set(config.reload_excludes))
+            # Merge with any user-provided includes
+            | set(config.reload_includes)
+        )
 
-        default_excludes = [".*", ".py[cod]", ".sw.*", "~*"]
-        self.excludes = [default for default in default_excludes if default not in config.reload_includes]
         self.exclude_dirs = []
+        """List of excluded directories resolved to absolute paths"""
+
         for e in config.reload_excludes:
             p = Path(e)
             try:
-                is_dir = p.is_dir()
+                if p.is_dir():
+                    # Storing absolute path to always match `path.parents` values (which are absolute)
+                    self.exclude_dirs.append(p.absolute())
             except OSError:  # pragma: no cover
                 # gets raised on Windows for values like "*.py"
-                is_dir = False
+                pass
 
-            if is_dir:
-                self.exclude_dirs.append(p)
-            else:
-                self.excludes.append(e)  # pragma: full coverage
-        self.excludes = list(set(self.excludes))
+        default_excludes = [".*", ".py[cod]", ".sw.*", "~*"]
+        self.excludes = list(
+            # Remove any excluded defaults that are included
+            (set(default_excludes) - set(config.reload_includes))
+            # Merge with any user-provided excludes (excluding directories)
+            | (set(config.reload_excludes) - set(str(ex_dir) for ex_dir in self.exclude_dirs))
+        )
+
+        self._exclude_dir_names_set = set(
+            exclude for exclude in config.reload_excludes if "*" not in exclude and "/" not in exclude
+        )
+        """Set of excluded directory names that do not contain a wildcard or path separator"""
 
     def __call__(self, path: Path) -> bool:
         for include_pattern in self.includes:
@@ -40,13 +52,25 @@ class FileFilter:
                 if str(path).endswith(include_pattern):
                     return True  # pragma: full coverage
 
-                for exclude_dir in self.exclude_dirs:
-                    if exclude_dir in path.parents:
-                        return False
-
+                # Exclude if the pattern matches the file path
                 for exclude_pattern in self.excludes:
                     if path.match(exclude_pattern):
                         return False  # pragma: full coverage
+
+                # Exclude if any parent of the path is an excluded directory
+                # Ex: `/www/xxx/yyy/z.txt` will be excluded if
+                # * `/www` or `/www/xxx` is in the exclude list
+                # * `xxx/yyy` is in the exclude list and the current directory is `/www`
+                path_parents = path.parents
+                for exclude_dir in self.exclude_dirs:
+                    if exclude_dir in path_parents:
+                        return False
+
+                # Exclude if any parent directory name is an exact match to an excluded value
+                # Ex: `aaa/bbb/ccc/d.txt` will be excluded if `bbb` is in the exclude list,
+                #     but not `bb` or `bb*` or `bbb/**`
+                if set(path.parent.parts) & self._exclude_dir_names_set:
+                    return False
 
                 return True
         return False
