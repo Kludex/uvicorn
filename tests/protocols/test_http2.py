@@ -568,6 +568,75 @@ async def test_large_body():
     assert received_body == large_body
 
 
+async def test_large_response_exceeding_flow_control_window():
+    """Test that response body larger than the flow control window is fully sent.
+
+    The default HTTP/2 flow control window is 65535 bytes. When the server sends
+    more data than that, it must buffer the excess and flush it when the client
+    sends WINDOW_UPDATE frames. Without proper buffering, the excess data is
+    silently dropped and the response is truncated.
+    """
+    from h2.events import DataReceived
+
+    large_body = b"x" * 100_000
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [
+                    (b"content-type", b"application/octet-stream"),
+                    (b"content-length", str(len(large_body)).encode()),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": large_body, "more_body": False})
+
+    protocol = get_connected_protocol(app)
+    protocol.transport.clear_buffer()
+
+    # Set up a client-side h2 connection to simulate the round-trip
+    client_config = H2Configuration(client_side=True, header_encoding="utf-8")
+    client_conn = H2Connection(config=client_config)
+    client_conn.initiate_connection()
+    client_conn.send_headers(
+        1,
+        [(":method", "GET"), (":path", "/"), (":scheme", "https"), (":authority", "example.org")],
+        end_stream=True,
+    )
+    # Feed client preface + request to server
+    protocol.data_received(client_conn.data_to_send())
+    await protocol.loop.run_one()
+
+    # Server has sent data up to the flow control window limit.
+    # Feed server output to client, which will acknowledge data with WINDOW_UPDATE.
+    received_body = b""
+    server_data = protocol.transport.buffer
+    protocol.transport.clear_buffer()
+
+    events = client_conn.receive_data(server_data)
+    for event in events:
+        if isinstance(event, DataReceived):
+            received_body += event.data
+            client_conn.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
+
+    # Client sends WINDOW_UPDATE frames back to the server
+    window_update_data = client_conn.data_to_send()
+    if window_update_data:
+        protocol.data_received(window_update_data)
+
+    # Collect any additional data the server sends after the window update
+    if protocol.transport.buffer:
+        events = client_conn.receive_data(protocol.transport.buffer)
+        for event in events:
+            if isinstance(event, DataReceived):
+                received_body += event.data
+
+    assert len(received_body) == 100_000
+    assert received_body == large_body
+
+
 async def test_multiple_requests_sequential() -> None:
     """Test multiple sequential requests on same connection."""
     request_count = 0

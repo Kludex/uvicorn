@@ -317,7 +317,7 @@ class H2Protocol(HTTP2Protocol):
                 self.handle_stream_ended(event)
             elif isinstance(event, StreamReset):  # pragma: no cover
                 self.handle_stream_reset(event)
-            elif isinstance(event, WindowUpdated):  # pragma: no cover
+            elif isinstance(event, WindowUpdated):
                 self.handle_window_updated(event)
             elif isinstance(event, RemoteSettingsChanged):  # pragma: no cover
                 pass  # Settings acknowledged, no action needed
@@ -461,9 +461,16 @@ class H2Protocol(HTTP2Protocol):
                 stream.cycle.message_event.set()
             del self.streams[stream_id]
 
-    def handle_window_updated(self, event: WindowUpdated) -> None:  # pragma: no cover
-        # Flow control window was updated, we can potentially send more data
-        _ = event  # Unused, but kept for potential future flow control improvements
+    def handle_window_updated(self, event: WindowUpdated) -> None:
+        stream_id = event.stream_id
+
+        if stream_id == 0:
+            # Connection-level window update - flush all streams with pending data
+            for stream in list(self.streams.values()):
+                stream.flush_pending_data()
+        elif stream_id in self.streams:
+            # Stream-level window update
+            self.streams[stream_id].flush_pending_data()
 
     def handle_request_received_for_push(self, stream_id: int, headers: list[tuple[bytes, bytes]]) -> None:
         """Handle a pushed request (server push)."""
@@ -542,9 +549,14 @@ class H2Protocol(HTTP2Protocol):
     def on_response_complete(self, stream_id: int) -> None:
         self.server_state.total_requests += 1
 
-        # Clean up completed stream
+        # Clean up completed stream (defer if there's pending data to flush)
         if stream_id in self.streams:
-            del self.streams[stream_id]
+            stream = self.streams[stream_id]
+            if stream._pending_data or stream._pending_end_stream:
+                # Data still waiting for flow control window - defer cleanup
+                stream._cleanup_pending = True
+            else:
+                del self.streams[stream_id]
 
         if self.transport.is_closing():  # pragma: no cover
             return
@@ -613,6 +625,11 @@ class H2Stream:
         self.protocol = protocol
         self.cycle: RequestResponseCycle | None = None
 
+        # Pending data that couldn't be sent due to flow control
+        self._pending_data = b""
+        self._pending_end_stream = False
+        self._cleanup_pending = False
+
     def send_headers(self, headers: list[tuple[str, str]], end_stream: bool = False) -> None:
         """Send response headers on this stream."""
         self.conn.send_headers(self.stream_id, headers, end_stream=end_stream)
@@ -623,28 +640,35 @@ class H2Stream:
         if not data and not end_stream:  # pragma: no cover
             return
 
-        # Check available flow control window
-        while data:
-            # Get the minimum of local flow control window and data length
+        self._pending_data += data
+        if end_stream:
+            self._pending_end_stream = True
+        self.flush_pending_data()
+
+    def flush_pending_data(self) -> None:
+        """Flush as much pending data as the flow control window allows."""
+        while self._pending_data:
             available_window = self.conn.local_flow_control_window(self.stream_id)
             max_frame_size = self.conn.max_outbound_frame_size
 
-            if available_window <= 0:  # pragma: no cover
-                # Need to wait for window update - for now, just send what we can
+            if available_window <= 0:
                 break
 
-            chunk_size = min(available_window, max_frame_size, len(data))
-            chunk = data[:chunk_size]
-            data = data[chunk_size:]
+            chunk_size = min(available_window, max_frame_size, len(self._pending_data))
+            chunk = self._pending_data[:chunk_size]
+            self._pending_data = self._pending_data[chunk_size:]
 
-            is_end = end_stream and not data
+            is_end = self._pending_end_stream and not self._pending_data
             self.conn.send_data(self.stream_id, chunk, end_stream=is_end)
             self.transport.write(self.conn.data_to_send())
+            if is_end:
+                self._pending_end_stream = False
 
-        # If we still have data and end_stream, send empty frame to end
-        if not data and end_stream:  # pragma: no cover
-            # Already handled in the loop
-            pass
+        # If all pending data has been flushed and cleanup was deferred, do it now
+        if not self._pending_data and not self._pending_end_stream and self._cleanup_pending:
+            self._cleanup_pending = False
+            if self.stream_id in self.protocol.streams:
+                del self.protocol.streams[self.stream_id]
 
     def end_stream(self) -> None:  # pragma: no cover
         """End the stream."""
