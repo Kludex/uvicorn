@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import multiprocessing
 import socket
 from unittest.mock import patch
 
@@ -22,7 +23,7 @@ def test_get_subprocess() -> None:
     config = Config(app=app, fd=fd)
     config.load()
 
-    process = get_subprocess(config, server_run, [fdsock])
+    process, _ = get_subprocess(config, server_run, [fdsock])
     assert isinstance(process, SpawnProcess)
 
     fdsock.close()
@@ -33,10 +34,11 @@ def test_subprocess_started() -> None:
     fd = fdsock.fileno()
     config = Config(app=app, fd=fd)
     config.load()
+    event = multiprocessing.Event()
 
     with patch("tests.test_subprocess.server_run") as mock_run:
         with patch.object(config, "configure_logging") as mock_config_logging:
-            subprocess_started(config, server_run, [fdsock], None)
+            subprocess_started(config, server_run, [fdsock], event, None)
             mock_run.assert_called_once()
             mock_config_logging.assert_called_once()
 
