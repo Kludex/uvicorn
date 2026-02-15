@@ -263,7 +263,7 @@ def test_cli_bind_unix_cleanup() -> None:  # pragma: py-win32
         mock_run.assert_called_once()
         assert not Path(sock_path).exists()
     finally:
-        if Path(sock_path).exists():
+        if Path(sock_path).exists():  # pragma: no cover
             os.remove(sock_path)
 
 
