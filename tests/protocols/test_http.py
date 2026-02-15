@@ -226,7 +226,7 @@ class MockLoop:
         self._tasks: list[asyncio.Task[Any]] = []
         self._later: list[MockTimerHandle] = []
 
-    def create_task(self, coroutine: Any) -> Any:
+    def create_task(self, coroutine: Any, **kwargs: Any) -> Any:
         self._tasks.insert(0, coroutine)
         return MockTask()
 
