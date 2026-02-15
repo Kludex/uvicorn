@@ -219,9 +219,7 @@ def test_cli_bind_multiple() -> None:
     runner = CliRunner()
 
     with mock.patch.object(main, "run") as mock_run:
-        result = runner.invoke(
-            cli, ["tests.test_cli:App", "-b", "127.0.0.1:8000", "-b", "127.0.0.1:9000"]
-        )
+        result = runner.invoke(cli, ["tests.test_cli:App", "-b", "127.0.0.1:8000", "-b", "127.0.0.1:9000"])
 
     assert result.output == ""
     assert result.exit_code == 0
