@@ -85,12 +85,9 @@ def test_multiprocess_health_check() -> None:
     process.kill()
     assert not process.is_alive()
     deadline = time.monotonic() + 10
-    while time.monotonic() < deadline:
-        if all(p.is_alive() for p in supervisor.processes):
-            break
+    while not all(p.is_alive() for p in supervisor.processes):
+        assert time.monotonic() < deadline, "Timed out waiting for processes to be alive"
         time.sleep(0.1)
-    for p in supervisor.processes:
-        assert p.is_alive()
     supervisor.signal_queue.append(signal.SIGINT)
     supervisor.join_all()
 
