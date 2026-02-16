@@ -48,6 +48,11 @@ uvicorn itself.
 * `--fd <int>` - Bind to socket from this file descriptor. Useful if you want to run Uvicorn within a process manager.
 * `--bind <str>` / `-b <str>` - Bind to one or more addresses. May be specified multiple times to listen on multiple sockets simultaneously. Supported formats: `HOST:PORT` (e.g. `0.0.0.0:8000`), `[HOST]:PORT` for IPv6 (e.g. `[::1]:8000`), `unix:PATH` (e.g. `unix:/tmp/uvicorn.sock`), `fd://NUM` (e.g. `fd://3`). Mutually exclusive with `--host`, `--port`, `--uds`, and `--fd`.
 
+!!! note
+    The `--host`, `--port`, `--uds`, and `--fd` options each bind to a single address of a single type.
+    Use `--bind` when you need to listen on multiple addresses (e.g. dual-stack IPv4 + IPv6) or mix
+    transport types (e.g. a TCP port for internal services and a unix socket behind a reverse proxy).
+
 ## Development
 
 * `--reload` - Enable auto-reload. Uvicorn supports two versions of auto-reloading behavior enabled by this option. **Default:** *False*.

@@ -235,20 +235,6 @@ class Config:
         self.uds = uds
         self.fd = fd
         self.bind = bind
-
-        if bind is not None:
-            conflicting: list[str] = []
-            if host != "127.0.0.1":
-                conflicting.append("host")
-            if port != 8000:
-                conflicting.append("port")
-            if uds is not None:
-                conflicting.append("uds")
-            if fd is not None:
-                conflicting.append("fd")
-            if conflicting:
-                raise ValueError(f"'bind' is mutually exclusive with {', '.join(map(repr, conflicting))}")
-
         self.loop = loop
         self.http = http
         self.ws = ws
@@ -357,6 +343,20 @@ class Config:
 
         if self.reload and self.workers > 1:
             logger.warning('"workers" flag is ignored when reloading is enabled.')
+
+        if self.bind is not None:
+            # Only flag options explicitly set to non-default values.
+            conflicting: list[str] = []
+            if self.host != "127.0.0.1":  # default host
+                conflicting.append("host")
+            if self.port != 8000:  # default port
+                conflicting.append("port")
+            if self.uds is not None:
+                conflicting.append("uds")
+            if self.fd is not None:
+                conflicting.append("fd")
+            if conflicting:
+                raise ValueError(f"'bind' is mutually exclusive with {', '.join(map(repr, conflicting))}")
 
     @property
     def asgi_version(self) -> Literal["2.0", "3.0"]:
@@ -580,6 +580,10 @@ class Config:
                 sock = self._bind_one(host=host, port=port)
             sockets.append(sock)
         return sockets
+
+    @property
+    def bind_unix_paths(self) -> list[str]:  # pragma: py-win32
+        return [b[5:] for b in (self.bind or []) if b.startswith("unix:")]
 
     @property
     def should_reload(self) -> bool:

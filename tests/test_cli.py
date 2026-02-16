@@ -240,11 +240,8 @@ def test_cli_bind_multiple() -> None:
 def test_cli_bind_mutually_exclusive(extra_args: list[str]) -> None:
     runner = CliRunner()
 
-    result = runner.invoke(cli, ["tests.test_cli:App", "-b", "127.0.0.1:8000", *extra_args])
-
-    assert result.exit_code != 0
-    assert isinstance(result.exception, ValueError)
-    assert "'bind' is mutually exclusive with" in str(result.exception)
+    with pytest.raises(ValueError, match="'bind' is mutually exclusive with.*"):
+        runner.invoke(cli, ["tests.test_cli:App", "-b", "127.0.0.1:8000", *extra_args], catch_exceptions=False)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")

@@ -610,11 +610,9 @@ def run(
     finally:
         if config.uds and os.path.exists(config.uds):
             os.remove(config.uds)  # pragma: py-win32
-        for bind_str in config.bind or []:
-            if bind_str.startswith("unix:"):  # pragma: py-win32
-                path = bind_str[5:]
-                if os.path.exists(path):
-                    os.remove(path)
+        for path in config.bind_unix_paths:  # pragma: py-win32
+            if os.path.exists(path):
+                os.remove(path)
 
     if not server.started and not config.should_reload and config.workers == 1:
         sys.exit(STARTUP_FAILURE)
