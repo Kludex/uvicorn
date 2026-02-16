@@ -1,0 +1,4579 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="The lightning-fast ASGI server.">
+      
+      
+      
+        <link rel="canonical" href="https://uvicorn.dev/release-notes/">
+      
+      
+        <link rel="prev" href="../deployment/docker/">
+      
+      
+        <link rel="next" href="../contributing/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../uvicorn.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+    
+    
+      
+        <title>Release Notes - Uvicorn</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-KTS6TXPD85"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-KTS6TXPD85",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-KTS6TXPD85",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+  
+  <script>
+    // Redirect starlette.io to starlette.dev
+    if (window.location.hostname === 'www.uvicorn.org' || window.location.hostname === 'uvicorn.org') {
+      const newUrl = window.location.href.replace(/^https?:\/\/(www\.)?uvicorn\.org/, 'https://uvicorn.dev');
+      window.location.replace(newUrl);
+    }
+  </script>
+
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#0410-february-16-2026" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Uvicorn" class="md-header__button md-logo" aria-label="Uvicorn" data-md-component="logo">
+      
+  <img src="../uvicorn.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Uvicorn
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Release Notes
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7M9 21a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-1H9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="blue" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7M9 21v-1h6v1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1m3-17a5 5 0 0 0-5 5c0 2.05 1.23 3.81 3 4.58V16h4v-2.42c1.77-.77 3-2.53 3-4.58a5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Kludex/uvicorn" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Kludex/uvicorn
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<!-- Determine class according to configuration -->
+ 
+ 
+ 
+
+ <!-- Main navigation -->
+ <nav
+   class="md-nav md-nav--primary"
+   aria-label="nav.title"
+   data-md-level="0"
+ >
+
+   <!-- Site title -->
+   <label class="md-nav__title" for="__drawer">
+     <a
+       href=".."
+       title="Uvicorn"
+       class="md-nav__button md-logo"
+       aria-label="Uvicorn"
+       data-md-component="logo"
+     >
+       
+  <img src="../uvicorn.png" alt="logo">
+
+     </a>
+     Uvicorn
+   </label>
+
+   <!-- Repository information -->
+   
+     <div class="md-nav__source">
+       <a href="https://github.com/Kludex/uvicorn" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Kludex/uvicorn
+  </div>
+</a>
+     </div>
+   
+
+   <!-- Navigation list -->
+   <ul class="md-nav__list" data-md-scrollfix>
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Welcome
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../server-behavior/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Server Behavior
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/asgi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ASGI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/lifespan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lifespan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/websockets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSockets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/event-loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event Loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+     
+       
+       
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release Notes
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0410-february-16-2026" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.41.0 (February 16, 2026)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.41.0 (February 16, 2026)">
+    <ul class="md-nav__list">
+        
+         
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0400-december-21-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.40.0 (December 21, 2025)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.40.0 (December 21, 2025)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0390-december-21-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.39.0 (December 21, 2025)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.39.0 (December 21, 2025)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0380-october-18-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.38.0 (October 18, 2025)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.38.0 (October 18, 2025)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0370-september-23-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.37.0 (September 23, 2025)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.37.0 (September 23, 2025)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0361-september-23-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.36.1 (September 23, 2025)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.36.1 (September 23, 2025)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0360-september-20-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.36.0 (September 20, 2025)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.36.0 (September 20, 2025)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0350-june-28-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.35.0 (June 28, 2025)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.35.0 (June 28, 2025)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0343-june-1-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.34.3 (June 1, 2025)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.34.3 (June 1, 2025)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0342-april-19-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.34.2 (April 19, 2025)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.34.2 (April 19, 2025)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0341-april-13-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.34.1 (April 13, 2025)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.34.1 (April 13, 2025)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0340-december-15-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.34.0 (December 15, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.34.0 (December 15, 2024)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0330-december-14-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.33.0 (December 14, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.33.0 (December 14, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0321-november-20-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.32.1 (November 20, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.32.1 (November 20, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0320-october-15-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.32.0 (October 15, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.32.0 (October 15, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0311-october-9-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.31.1 (October 9, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.31.1 (October 9, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0310-september-27-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.31.0 (September 27, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.31.0 (September 27, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0306-august-13-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.30.6 (August 13, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.30.6 (August 13, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0305-august-2-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.30.5 (August 2, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.30.5 (August 2, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0304-july-31-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.30.4 (July 31, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.30.4 (July 31, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0303-july-20-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.30.3 (July 20, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.30.3 (July 20, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0302-july-20-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.30.2 (July 20, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.30.2 (July 20, 2024)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0301-june-2-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.30.1 (June 2, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.30.1 (June 2, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0300-may-28-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.30.0 (May 28, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.30.0 (May 28, 2024)">
+    <ul class="md-nav__list">
+        
+         
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0290-march-19-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.29.0 (March 19, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.29.0 (March 19, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0281-march-19-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.28.1 (March 19, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.28.1 (March 19, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0280-march-9-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.28.0 (March 9, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.28.0 (March 9, 2024)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0271-february-10-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.27.1 (February 10, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0270post1-january-29-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.27.0.post1 (January 29, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.27.0.post1 (January 29, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0270-january-22-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.27.0 (January 22, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.27.0 (January 22, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0260-january-16-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.26.0 (January 16, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.26.0 (January 16, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0250-december-17-2023" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.25.0 (December 17, 2023)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.25.0 (December 17, 2023)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0240post1-november-6-2023" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.24.0.post1 (November 6, 2023)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.24.0.post1 (November 6, 2023)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0240-november-4-2023" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.24.0 (November 4, 2023)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.24.0 (November 4, 2023)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0232-july-31-2023" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.23.2 (July 31, 2023)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.23.2 (July 31, 2023)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0231-july-18-2023" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.23.1 (July 18, 2023)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.23.1 (July 18, 2023)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0230-july-10-2023" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.23.0 (July 10, 2023)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.23.0 (July 10, 2023)">
+    <ul class="md-nav__list">
+        
+         
+         
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0220-april-28-2023" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.22.0 (April 28, 2023)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.22.0 (April 28, 2023)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0211-march-16-2023" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.21.1 (March 16, 2023)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.21.1 (March 16, 2023)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0210-march-9-2023" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.21.0 (March 9, 2023)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.21.0 (March 9, 2023)">
+    <ul class="md-nav__list">
+        
+         
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0200-november-20-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.20.0 (November 20, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.20.0 (November 20, 2022)">
+    <ul class="md-nav__list">
+        
+         
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0190-october-19-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.19.0 (October 19, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.19.0 (October 19, 2022)">
+    <ul class="md-nav__list">
+        
+         
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0183-august-24-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.18.3 (August 24, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.18.3 (August 24, 2022)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0182-june-27-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.18.2 (June 27, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.18.2 (June 27, 2022)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0181-june-23-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.18.1 (June 23, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.18.1 (June 23, 2022)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0180-june-23-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.18.0 (June 23, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.18.0 (June 23, 2022)">
+    <ul class="md-nav__list">
+        
+         
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0176-march-11-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.17.6 (March 11, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.17.6 (March 11, 2022)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0175-february-16-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.17.5 (February 16, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.17.5 (February 16, 2022)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0174-february-4-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.17.4 (February 4, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.17.4 (February 4, 2022)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0173-february-3-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.17.3 (February 3, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.17.3 (February 3, 2022)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0172-february-3-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.17.2 (February 3, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.17.2 (February 3, 2022)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0171-january-28-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.17.1 (January 28, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.17.1 (January 28, 2022)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0170post1-january-24-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.17.0.post1 (January 24, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.17.0.post1 (January 24, 2022)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0170-january-14-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.17.0 (January 14, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.17.0 (January 14, 2022)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0160-december-8-2021" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.16.0 (December 8, 2021)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.16.0 (December 8, 2021)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0150-august-13-2021" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.15.0 (August 13, 2021)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.15.0 (August 13, 2021)">
+    <ul class="md-nav__list">
+        
+         
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0140-june-1-2021" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.14.0 (June 1, 2021)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.14.0 (June 1, 2021)">
+    <ul class="md-nav__list">
+        
+         
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0134-february-20-2021" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.13.4 (February 20, 2021)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.13.4 (February 20, 2021)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0133-december-29-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.13.3 (December 29, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.13.3 (December 29, 2020)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0132-december-12-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.13.2 (December 12, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.13.2 (December 12, 2020)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0131-december-12-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.13.1 (December 12, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.13.1 (December 12, 2020)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0130-december-8-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.13.0 (December 8, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.13.0 (December 8, 2020)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0123-november-21-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.12.3 (November 21, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.12.3 (November 21, 2020)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0122-october-19-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.12.2 (October 19, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.12.2 (October 19, 2020)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0121-september-30-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.12.1 (September 30, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.12.1 (September 30, 2020)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0120-september-28-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.12.0 (September 28, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.12.0 (September 28, 2020)">
+    <ul class="md-nav__list">
+        
+         
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0118-july-30-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.11.8 (July 30, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0117-july-28-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.11.7 (July 28, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0116-july-17-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.11.6 (July 17, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0115-april-29-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.11.5 (April 29, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0114-april-28-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.11.4 (April 28, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0113-february-17-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.11.3 (February 17, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0112-january-20-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.11.2 (January 20, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0111-december-20-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.11.1 (December 20, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0110-december-20-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.11.0 (December 20, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0108-november-12-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.10.8 (November 12, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0107-november-12-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.10.7 (November 12, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0106-november-12-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.10.6 (November 12, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0105-november-12-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.10.5 (November 12, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0104-november-9-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.10.4 (November 9, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0103-november-1-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.10.3 (November 1, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0102-october-31-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.10.2 (October 31, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0101-october-31-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.10.1 (October 31, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0100-october-29-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.10.0 (October 29, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+     
+       
+       
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sponsorship/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sponsorship
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+     
+   </ul>
+ </nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0410-february-16-2026" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.41.0 (February 16, 2026)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.41.0 (February 16, 2026)">
+    <ul class="md-nav__list">
+        
+         
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0400-december-21-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.40.0 (December 21, 2025)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.40.0 (December 21, 2025)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0390-december-21-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.39.0 (December 21, 2025)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.39.0 (December 21, 2025)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0380-october-18-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.38.0 (October 18, 2025)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.38.0 (October 18, 2025)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0370-september-23-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.37.0 (September 23, 2025)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.37.0 (September 23, 2025)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0361-september-23-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.36.1 (September 23, 2025)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.36.1 (September 23, 2025)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0360-september-20-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.36.0 (September 20, 2025)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.36.0 (September 20, 2025)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0350-june-28-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.35.0 (June 28, 2025)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.35.0 (June 28, 2025)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0343-june-1-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.34.3 (June 1, 2025)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.34.3 (June 1, 2025)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0342-april-19-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.34.2 (April 19, 2025)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.34.2 (April 19, 2025)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0341-april-13-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.34.1 (April 13, 2025)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.34.1 (April 13, 2025)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0340-december-15-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.34.0 (December 15, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.34.0 (December 15, 2024)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0330-december-14-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.33.0 (December 14, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.33.0 (December 14, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0321-november-20-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.32.1 (November 20, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.32.1 (November 20, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0320-october-15-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.32.0 (October 15, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.32.0 (October 15, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0311-october-9-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.31.1 (October 9, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.31.1 (October 9, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0310-september-27-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.31.0 (September 27, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.31.0 (September 27, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0306-august-13-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.30.6 (August 13, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.30.6 (August 13, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0305-august-2-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.30.5 (August 2, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.30.5 (August 2, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0304-july-31-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.30.4 (July 31, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.30.4 (July 31, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0303-july-20-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.30.3 (July 20, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.30.3 (July 20, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0302-july-20-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.30.2 (July 20, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.30.2 (July 20, 2024)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0301-june-2-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.30.1 (June 2, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.30.1 (June 2, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0300-may-28-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.30.0 (May 28, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.30.0 (May 28, 2024)">
+    <ul class="md-nav__list">
+        
+         
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0290-march-19-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.29.0 (March 19, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.29.0 (March 19, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0281-march-19-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.28.1 (March 19, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.28.1 (March 19, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0280-march-9-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.28.0 (March 9, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.28.0 (March 9, 2024)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0271-february-10-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.27.1 (February 10, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0270post1-january-29-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.27.0.post1 (January 29, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.27.0.post1 (January 29, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0270-january-22-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.27.0 (January 22, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.27.0 (January 22, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0260-january-16-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.26.0 (January 16, 2024)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.26.0 (January 16, 2024)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0250-december-17-2023" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.25.0 (December 17, 2023)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.25.0 (December 17, 2023)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0240post1-november-6-2023" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.24.0.post1 (November 6, 2023)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.24.0.post1 (November 6, 2023)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0240-november-4-2023" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.24.0 (November 4, 2023)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.24.0 (November 4, 2023)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0232-july-31-2023" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.23.2 (July 31, 2023)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.23.2 (July 31, 2023)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0231-july-18-2023" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.23.1 (July 18, 2023)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.23.1 (July 18, 2023)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0230-july-10-2023" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.23.0 (July 10, 2023)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.23.0 (July 10, 2023)">
+    <ul class="md-nav__list">
+        
+         
+         
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0220-april-28-2023" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.22.0 (April 28, 2023)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.22.0 (April 28, 2023)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0211-march-16-2023" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.21.1 (March 16, 2023)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.21.1 (March 16, 2023)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0210-march-9-2023" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.21.0 (March 9, 2023)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.21.0 (March 9, 2023)">
+    <ul class="md-nav__list">
+        
+         
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0200-november-20-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.20.0 (November 20, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.20.0 (November 20, 2022)">
+    <ul class="md-nav__list">
+        
+         
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0190-october-19-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.19.0 (October 19, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.19.0 (October 19, 2022)">
+    <ul class="md-nav__list">
+        
+         
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0183-august-24-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.18.3 (August 24, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.18.3 (August 24, 2022)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0182-june-27-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.18.2 (June 27, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.18.2 (June 27, 2022)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0181-june-23-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.18.1 (June 23, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.18.1 (June 23, 2022)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0180-june-23-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.18.0 (June 23, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.18.0 (June 23, 2022)">
+    <ul class="md-nav__list">
+        
+         
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0176-march-11-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.17.6 (March 11, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.17.6 (March 11, 2022)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0175-february-16-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.17.5 (February 16, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.17.5 (February 16, 2022)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0174-february-4-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.17.4 (February 4, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.17.4 (February 4, 2022)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0173-february-3-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.17.3 (February 3, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.17.3 (February 3, 2022)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0172-february-3-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.17.2 (February 3, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.17.2 (February 3, 2022)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0171-january-28-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.17.1 (January 28, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.17.1 (January 28, 2022)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0170post1-january-24-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.17.0.post1 (January 24, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.17.0.post1 (January 24, 2022)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0170-january-14-2022" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.17.0 (January 14, 2022)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.17.0 (January 14, 2022)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0160-december-8-2021" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.16.0 (December 8, 2021)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.16.0 (December 8, 2021)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0150-august-13-2021" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.15.0 (August 13, 2021)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.15.0 (August 13, 2021)">
+    <ul class="md-nav__list">
+        
+         
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0140-june-1-2021" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.14.0 (June 1, 2021)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.14.0 (June 1, 2021)">
+    <ul class="md-nav__list">
+        
+         
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0134-february-20-2021" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.13.4 (February 20, 2021)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.13.4 (February 20, 2021)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0133-december-29-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.13.3 (December 29, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.13.3 (December 29, 2020)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0132-december-12-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.13.2 (December 12, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.13.2 (December 12, 2020)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0131-december-12-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.13.1 (December 12, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.13.1 (December 12, 2020)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0130-december-8-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.13.0 (December 8, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.13.0 (December 8, 2020)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0123-november-21-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.12.3 (November 21, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.12.3 (November 21, 2020)">
+    <ul class="md-nav__list">
+        
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0122-october-19-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.12.2 (October 19, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.12.2 (October 19, 2020)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0121-september-30-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.12.1 (September 30, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.12.1 (September 30, 2020)">
+    <ul class="md-nav__list">
+        
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0120-september-28-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.12.0 (September 28, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+<nav class="md-nav" aria-label="0.12.0 (September 28, 2020)">
+    <ul class="md-nav__list">
+        
+         
+         
+          </ul>
+</nav>
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0118-july-30-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.11.8 (July 30, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0117-july-28-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.11.7 (July 28, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0116-july-17-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.11.6 (July 17, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0115-april-29-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.11.5 (April 29, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0114-april-28-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.11.4 (April 28, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0113-february-17-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.11.3 (February 17, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0112-january-20-2020" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.11.2 (January 20, 2020)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0111-december-20-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.11.1 (December 20, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0110-december-20-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.11.0 (December 20, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0108-november-12-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.10.8 (November 12, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0107-november-12-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.10.7 (November 12, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0106-november-12-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.10.6 (November 12, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0105-november-12-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.10.5 (November 12, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0104-november-9-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.10.4 (November 9, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0103-november-1-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.10.3 (November 1, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0102-october-31-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.10.2 (October 31, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0101-october-31-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.10.1 (October 31, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+        <!-- Copied from https://github.com/squidfunk/mkdocs-material/issues/4827#issuecomment-1869812019 -->
+<li class="md-nav__item"></li>
+<a href="#0100-october-29-2019" class="md-nav__link">
+    <span class="md-ellipsis">
+        0.10.0 (October 29, 2019)
+    </span>
+</a>
+
+<!-- Table of contents list -->
+
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+  <h1>Release Notes</h1>
+
+<h2 id="0410-february-16-2026">0.41.0 (February 16, 2026)<a class="headerlink" href="#0410-february-16-2026" title="Permanent link">&para;</a></h2>
+<h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Add <code>--limit-max-requests-jitter</code> to stagger worker restarts (<a href='https://github.com/Kludex/uvicorn/pull/2707'>#2707</a>)</li>
+<li>Add socket path to <code>scope["server"]</code> (<a href='https://github.com/Kludex/uvicorn/pull/2561'>#2561</a>)</li>
+</ul>
+<h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Rename <code>LifespanOn.error_occured</code> to <code>error_occurred</code> (<a href='https://github.com/Kludex/uvicorn/pull/2776'>#2776</a>)</li>
+</ul>
+<h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Ignore permission denied errors in watchfiles reloader (<a href='https://github.com/Kludex/uvicorn/pull/2817'>#2817</a>)</li>
+<li>Ensure lifespan shutdown runs when <code>should_exit</code> is set during startup (<a href='https://github.com/Kludex/uvicorn/pull/2812'>#2812</a>)</li>
+<li>Reduce the log level of 'request limit exceeded' messages (<a href='https://github.com/Kludex/uvicorn/pull/2788'>#2788</a>)</li>
+</ul>
+<h2 id="0400-december-21-2025">0.40.0 (December 21, 2025)<a class="headerlink" href="#0400-december-21-2025" title="Permanent link">&para;</a></h2>
+<h3 id="remove">Remove<a class="headerlink" href="#remove" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Drop support for Python 3.9 (<a href='https://github.com/Kludex/uvicorn/pull/2772'>#2772</a>)</li>
+</ul>
+<h2 id="0390-december-21-2025">0.39.0 (December 21, 2025)<a class="headerlink" href="#0390-december-21-2025" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_1">Fixed<a class="headerlink" href="#fixed_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Send close frame on ASGI return for WebSockets (<a href='https://github.com/Kludex/uvicorn/pull/2769'>#2769</a>)</li>
+<li>Explicitly start ASGI run with empty context (<a href='https://github.com/Kludex/uvicorn/pull/2742'>#2742</a>)</li>
+</ul>
+<h2 id="0380-october-18-2025">0.38.0 (October 18, 2025)<a class="headerlink" href="#0380-october-18-2025" title="Permanent link">&para;</a></h2>
+<h3 id="added_1">Added<a class="headerlink" href="#added_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Support Python 3.14 (<a href='https://github.com/Kludex/uvicorn/pull/2723'>#2723</a>)</li>
+</ul>
+<h2 id="0370-september-23-2025">0.37.0 (September 23, 2025)<a class="headerlink" href="#0370-september-23-2025" title="Permanent link">&para;</a></h2>
+<h3 id="added_2">Added<a class="headerlink" href="#added_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Add <code>--timeout-worker-healthcheck</code> option (<a href='https://github.com/Kludex/uvicorn/pull/2711'>#2711</a>)</li>
+<li>Add <code>os.PathLike[str]</code> type to <code>ssl_ca_certs</code> (<a href='https://github.com/Kludex/uvicorn/pull/2676'>#2676</a>)</li>
+</ul>
+<h2 id="0361-september-23-2025">0.36.1 (September 23, 2025)<a class="headerlink" href="#0361-september-23-2025" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_2">Fixed<a class="headerlink" href="#fixed_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Raise an exception when calling removed <code>Config.setup_event_loop()</code> (<a href='https://github.com/Kludex/uvicorn/pull/2709'>#2709</a>)</li>
+</ul>
+<h2 id="0360-september-20-2025">0.36.0 (September 20, 2025)<a class="headerlink" href="#0360-september-20-2025" title="Permanent link">&para;</a></h2>
+<h3 id="added_3">Added<a class="headerlink" href="#added_3" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Support custom IOLOOPs (<a href='https://github.com/Kludex/uvicorn/pull/2435'>#2435</a>)</li>
+<li>Allow to provide importable string in <code>--http</code>, <code>--ws</code> and <code>--loop</code> (<a href='https://github.com/Kludex/uvicorn/pull/2658'>#2658</a>)</li>
+</ul>
+<h2 id="0350-june-28-2025">0.35.0 (June 28, 2025)<a class="headerlink" href="#0350-june-28-2025" title="Permanent link">&para;</a></h2>
+<h3 id="added_4">Added<a class="headerlink" href="#added_4" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Add <code>WebSocketsSansIOProtocol</code> (<a href='https://github.com/Kludex/uvicorn/pull/2540'>#2540</a>)</li>
+</ul>
+<h3 id="changed_1">Changed<a class="headerlink" href="#changed_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Refine help message for option <code>--proxy-headers</code> (<a href='https://github.com/Kludex/uvicorn/pull/2653'>#2653</a>)</li>
+</ul>
+<h2 id="0343-june-1-2025">0.34.3 (June 1, 2025)<a class="headerlink" href="#0343-june-1-2025" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_3">Fixed<a class="headerlink" href="#fixed_3" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Don't include <code>cwd()</code> when non-empty <code>--reload-dirs</code> is passed (<a href='https://github.com/Kludex/uvicorn/pull/2598'>#2598</a>)</li>
+<li>Apply <code>get_client_addr</code> formatting to WebSocket logging (<a href='https://github.com/Kludex/uvicorn/pull/2636'>#2636</a>)</li>
+</ul>
+<h2 id="0342-april-19-2025">0.34.2 (April 19, 2025)<a class="headerlink" href="#0342-april-19-2025" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_4">Fixed<a class="headerlink" href="#fixed_4" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Flush stdout buffer on Windows to trigger reload (<a href='https://github.com/Kludex/uvicorn/pull/2604'>#2604</a>)</li>
+</ul>
+<h2 id="0341-april-13-2025">0.34.1 (April 13, 2025)<a class="headerlink" href="#0341-april-13-2025" title="Permanent link">&para;</a></h2>
+<h3 id="deprecated">Deprecated<a class="headerlink" href="#deprecated" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Deprecate <code>ServerState</code> in the main module (<a href='https://github.com/Kludex/uvicorn/pull/2581'>#2581</a>)</li>
+</ul>
+<h2 id="0340-december-15-2024">0.34.0 (December 15, 2024)<a class="headerlink" href="#0340-december-15-2024" title="Permanent link">&para;</a></h2>
+<h3 id="added_5">Added<a class="headerlink" href="#added_5" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Add <code>content-length</code> to 500 response in <code>wsproto</code> implementation (<a href='https://github.com/Kludex/uvicorn/pull/2542'>#2542</a>)</li>
+</ul>
+<h3 id="removed">Removed<a class="headerlink" href="#removed" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Drop support for Python 3.8 (<a href='https://github.com/Kludex/uvicorn/pull/2543'>#2543</a>)</li>
+</ul>
+<h2 id="0330-december-14-2024">0.33.0 (December 14, 2024)<a class="headerlink" href="#0330-december-14-2024" title="Permanent link">&para;</a></h2>
+<h3 id="removed_1">Removed<a class="headerlink" href="#removed_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Remove <code>WatchGod</code> support for <code>--reload</code> (<a href='https://github.com/Kludex/uvicorn/pull/2536'>#2536</a>)</li>
+</ul>
+<h2 id="0321-november-20-2024">0.32.1 (November 20, 2024)<a class="headerlink" href="#0321-november-20-2024" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_5">Fixed<a class="headerlink" href="#fixed_5" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Drop ASGI spec version to 2.3 on HTTP scope (<a href='https://github.com/Kludex/uvicorn/pull/2513'>#2513</a>)</li>
+<li>Enable httptools lenient data on <code>httptools &gt;= 0.6.3</code> (<a href='https://github.com/Kludex/uvicorn/pull/2488'>#2488</a>)</li>
+</ul>
+<h2 id="0320-october-15-2024">0.32.0 (October 15, 2024)<a class="headerlink" href="#0320-october-15-2024" title="Permanent link">&para;</a></h2>
+<h3 id="added_6">Added<a class="headerlink" href="#added_6" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Officially support Python 3.13 (<a href='https://github.com/Kludex/uvicorn/pull/2482'>#2482</a>)</li>
+<li>Warn when <code>max_request_limit</code> is exceeded (<a href='https://github.com/Kludex/uvicorn/pull/2430'>#2430</a>)</li>
+</ul>
+<h2 id="0311-october-9-2024">0.31.1 (October 9, 2024)<a class="headerlink" href="#0311-october-9-2024" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_6">Fixed<a class="headerlink" href="#fixed_6" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Support WebSockets 0.13.1 (<a href='https://github.com/Kludex/uvicorn/pull/2471'>#2471</a>)</li>
+<li>Restore support for <code>[*]</code> in trusted hosts (<a href='https://github.com/Kludex/uvicorn/pull/2480'>#2480</a>)</li>
+<li>Add <code>PathLike[str]</code> type hint for <code>ssl_keyfile</code> (<a href='https://github.com/Kludex/uvicorn/pull/2481'>#2481</a>)</li>
+</ul>
+<h2 id="0310-september-27-2024">0.31.0 (September 27, 2024)<a class="headerlink" href="#0310-september-27-2024" title="Permanent link">&para;</a></h2>
+<h3 id="added_7">Added<a class="headerlink" href="#added_7" title="Permanent link">&para;</a></h3>
+<p>Improve <code>ProxyHeadersMiddleware</code> (<a href='https://github.com/Kludex/uvicorn/pull/2468'>#2468</a>) and (<a href='https://github.com/Kludex/uvicorn/pull/2231'>#2231</a>):</p>
+<ul>
+<li>Fix the host for requests from clients running on the proxy server itself.</li>
+<li>Fallback to host that was already set for empty x-forwarded-for headers.</li>
+<li>Also allow to specify IP Networks as trusted hosts. This greatly simplifies deployments
+  on docker swarm/kubernetes, where the reverse proxy might have a dynamic IP.<ul>
+<li>This includes support for IPv6 Address/Networks.</li>
+</ul>
+</li>
+</ul>
+<h2 id="0306-august-13-2024">0.30.6 (August 13, 2024)<a class="headerlink" href="#0306-august-13-2024" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_7">Fixed<a class="headerlink" href="#fixed_7" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Don't warn when upgrade is not WebSocket and dependencies are installed (<a href='https://github.com/Kludex/uvicorn/pull/2360'>#2360</a>)</li>
+</ul>
+<h2 id="0305-august-2-2024">0.30.5 (August 2, 2024)<a class="headerlink" href="#0305-august-2-2024" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_8">Fixed<a class="headerlink" href="#fixed_8" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Don't close connection before receiving body on H11 (<a href='https://github.com/Kludex/uvicorn/pull/2408'>#2408</a>)</li>
+</ul>
+<h2 id="0304-july-31-2024">0.30.4 (July 31, 2024)<a class="headerlink" href="#0304-july-31-2024" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_9">Fixed<a class="headerlink" href="#fixed_9" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Close connection when <code>h11</code> sets client state to <code>MUST_CLOSE</code> (<a href='https://github.com/Kludex/uvicorn/pull/2375'>#2375</a>)</li>
+</ul>
+<h2 id="0303-july-20-2024">0.30.3 (July 20, 2024)<a class="headerlink" href="#0303-july-20-2024" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_10">Fixed<a class="headerlink" href="#fixed_10" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Suppress <code>KeyboardInterrupt</code> from CLI and programmatic usage (<a href='https://github.com/Kludex/uvicorn/pull/2384'>#2384</a>)</li>
+<li><code>ClientDisconnect</code> inherits from <code>OSError</code> instead of <code>IOError</code> (<a href='https://github.com/Kludex/uvicorn/pull/2393'>#2393</a>)</li>
+</ul>
+<h2 id="0302-july-20-2024">0.30.2 (July 20, 2024)<a class="headerlink" href="#0302-july-20-2024" title="Permanent link">&para;</a></h2>
+<h3 id="added_8">Added<a class="headerlink" href="#added_8" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Add <code>reason</code> support to <a href="https://asgi.readthedocs.io/en/latest/specs/www.html#disconnect-receive-event-ws"><code>websocket.disconnect</code></a> event (<a href='https://github.com/Kludex/uvicorn/pull/2324'>#2324</a>)</li>
+</ul>
+<h3 id="fixed_11">Fixed<a class="headerlink" href="#fixed_11" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Iterate subprocesses in-place on the process manager (<a href='https://github.com/Kludex/uvicorn/pull/2373'>#2373</a>)</li>
+</ul>
+<h2 id="0301-june-2-2024">0.30.1 (June 2, 2024)<a class="headerlink" href="#0301-june-2-2024" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_12">Fixed<a class="headerlink" href="#fixed_12" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Allow horizontal tabs <code>\t</code> in response header values (<a href='https://github.com/Kludex/uvicorn/pull/2345'>#2345</a>)</li>
+</ul>
+<h2 id="0300-may-28-2024">0.30.0 (May 28, 2024)<a class="headerlink" href="#0300-may-28-2024" title="Permanent link">&para;</a></h2>
+<h3 id="added_9">Added<a class="headerlink" href="#added_9" title="Permanent link">&para;</a></h3>
+<ul>
+<li>New multiprocess manager (<a href='https://github.com/Kludex/uvicorn/pull/2183'>#2183</a>)</li>
+<li>Allow <code>ConfigParser</code> or a <code>io.IO[Any]</code> on <code>log_config</code> (<a href='https://github.com/Kludex/uvicorn/pull/1976'>#1976</a>)</li>
+</ul>
+<h3 id="fixed_13">Fixed<a class="headerlink" href="#fixed_13" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Suppress side-effects of signal propagation (<a href='https://github.com/Kludex/uvicorn/pull/2317'>#2317</a>)</li>
+<li>Send <code>content-length</code> header on 5xx (<a href='https://github.com/Kludex/uvicorn/pull/2304'>#2304</a>)</li>
+</ul>
+<h3 id="deprecated_1">Deprecated<a class="headerlink" href="#deprecated_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Deprecate the <code>uvicorn.workers</code> module (<a href='https://github.com/Kludex/uvicorn/pull/2302'>#2302</a>)</li>
+</ul>
+<h2 id="0290-march-19-2024">0.29.0 (March 19, 2024)<a class="headerlink" href="#0290-march-19-2024" title="Permanent link">&para;</a></h2>
+<h3 id="added_10">Added<a class="headerlink" href="#added_10" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Cooperative signal handling (<a href='https://github.com/Kludex/uvicorn/pull/1600'>#1600</a>)</li>
+</ul>
+<h2 id="0281-march-19-2024">0.28.1 (March 19, 2024)<a class="headerlink" href="#0281-march-19-2024" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_14">Fixed<a class="headerlink" href="#fixed_14" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Revert raise <code>ClientDisconnected</code> on HTTP (<a href='https://github.com/Kludex/uvicorn/pull/2276'>#2276</a>)</li>
+</ul>
+<h2 id="0280-march-9-2024">0.28.0 (March 9, 2024)<a class="headerlink" href="#0280-march-9-2024" title="Permanent link">&para;</a></h2>
+<h3 id="added_11">Added<a class="headerlink" href="#added_11" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Raise <code>ClientDisconnected</code> on <code>send()</code> when client disconnected (<a href='https://github.com/Kludex/uvicorn/pull/2220'>#2220</a>)</li>
+</ul>
+<h3 id="fixed_15">Fixed<a class="headerlink" href="#fixed_15" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Except <code>AttributeError</code> on <code>sys.stdin.fileno()</code> for Windows IIS10 (<a href='https://github.com/Kludex/uvicorn/pull/1947'>#1947</a>)</li>
+<li>Use <code>X-Forwarded-Proto</code> for WebSockets scheme when the proxy provides it (<a href='https://github.com/Kludex/uvicorn/pull/2258'>#2258</a>)</li>
+</ul>
+<h2 id="0271-february-10-2024">0.27.1 (February 10, 2024)<a class="headerlink" href="#0271-february-10-2024" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Fix spurious LocalProtocolError errors when processing pipelined requests (<a href='https://github.com/Kludex/uvicorn/pull/2243'>#2243</a>)</li>
+</ul>
+<h2 id="0270post1-january-29-2024">0.27.0.post1 (January 29, 2024)<a class="headerlink" href="#0270post1-january-29-2024" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_16">Fixed<a class="headerlink" href="#fixed_16" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Fix nav overrides for newer version of Mkdocs Material (<a href='https://github.com/Kludex/uvicorn/pull/2233'>#2233</a>)</li>
+</ul>
+<h2 id="0270-january-22-2024">0.27.0 (January 22, 2024)<a class="headerlink" href="#0270-january-22-2024" title="Permanent link">&para;</a></h2>
+<h3 id="added_12">Added<a class="headerlink" href="#added_12" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Raise <code>ClientDisconnect(IOError)</code> on <code>send()</code> when client disconnected (<a href='https://github.com/Kludex/uvicorn/pull/2218'>#2218</a>)</li>
+<li>Bump ASGI WebSocket spec version to 2.4 (<a href='https://github.com/Kludex/uvicorn/pull/2221'>#2221</a>)</li>
+</ul>
+<h2 id="0260-january-16-2024">0.26.0 (January 16, 2024)<a class="headerlink" href="#0260-january-16-2024" title="Permanent link">&para;</a></h2>
+<h3 id="changed_2">Changed<a class="headerlink" href="#changed_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Update <code>--root-path</code> to include the root path prefix in the full ASGI <code>path</code> as per the ASGI spec (<a href='https://github.com/Kludex/uvicorn/pull/2213'>#2213</a>)</li>
+<li>Use <code>__future__.annotations</code> on some internal modules (<a href='https://github.com/Kludex/uvicorn/pull/2199'>#2199</a>)</li>
+</ul>
+<h2 id="0250-december-17-2023">0.25.0 (December 17, 2023)<a class="headerlink" href="#0250-december-17-2023" title="Permanent link">&para;</a></h2>
+<h3 id="added_13">Added<a class="headerlink" href="#added_13" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Support the WebSocket Denial Response ASGI extension (<a href='https://github.com/Kludex/uvicorn/pull/1916'>#1916</a>)</li>
+</ul>
+<h3 id="fixed_17">Fixed<a class="headerlink" href="#fixed_17" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Allow explicit hidden file paths on <code>--reload-include</code> (<a href='https://github.com/Kludex/uvicorn/pull/2176'>#2176</a>)</li>
+<li>Properly annotate <code>uvicorn.run()</code> (<a href='https://github.com/Kludex/uvicorn/pull/2158'>#2158</a>)</li>
+</ul>
+<h2 id="0240post1-november-6-2023">0.24.0.post1 (November 6, 2023)<a class="headerlink" href="#0240post1-november-6-2023" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_18">Fixed<a class="headerlink" href="#fixed_18" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Revert mkdocs-material from 9.1.21 to 9.2.6 (<a href='https://github.com/Kludex/uvicorn/pull/2148'>#2148</a>)</li>
+</ul>
+<h2 id="0240-november-4-2023">0.24.0 (November 4, 2023)<a class="headerlink" href="#0240-november-4-2023" title="Permanent link">&para;</a></h2>
+<h3 id="added_14">Added<a class="headerlink" href="#added_14" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Support Python 3.12 (<a href='https://github.com/Kludex/uvicorn/pull/2145'>#2145</a>)</li>
+<li>Allow setting <code>app</code> via environment variable <code>UVICORN_APP</code> (<a href='https://github.com/Kludex/uvicorn/pull/2106'>#2106</a>)</li>
+</ul>
+<h2 id="0232-july-31-2023">0.23.2 (July 31, 2023)<a class="headerlink" href="#0232-july-31-2023" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_19">Fixed<a class="headerlink" href="#fixed_19" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Maintain the same behavior of <code>websockets</code> from 10.4 on 11.0 (<a href='https://github.com/Kludex/uvicorn/pull/2061'>#2061</a>)</li>
+</ul>
+<h2 id="0231-july-18-2023">0.23.1 (July 18, 2023)<a class="headerlink" href="#0231-july-18-2023" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_20">Fixed<a class="headerlink" href="#fixed_20" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Add <code>typing_extensions</code> for Python 3.10 and lower (<a href='https://github.com/Kludex/uvicorn/pull/2053'>#2053</a>)</li>
+</ul>
+<h2 id="0230-july-10-2023">0.23.0 (July 10, 2023)<a class="headerlink" href="#0230-july-10-2023" title="Permanent link">&para;</a></h2>
+<h3 id="added_15">Added<a class="headerlink" href="#added_15" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Add <code>--ws-max-queue</code> parameter WebSockets (<a href='https://github.com/Kludex/uvicorn/pull/2033'>#2033</a>)</li>
+</ul>
+<h3 id="removed_2">Removed<a class="headerlink" href="#removed_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Drop support for Python 3.7 (<a href='https://github.com/Kludex/uvicorn/pull/1996'>#1996</a>)</li>
+<li>Remove <code>asgiref</code> as typing dependency (<a href='https://github.com/Kludex/uvicorn/pull/1999'>#1999</a>)</li>
+</ul>
+<h3 id="fixed_21">Fixed<a class="headerlink" href="#fixed_21" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Set <code>scope["scheme"]</code> to <code>ws</code> or <code>wss</code> instead of <code>http</code> or <code>https</code> on <code>ProxyHeadersMiddleware</code> for WebSockets (<a href='https://github.com/Kludex/uvicorn/pull/2043'>#2043</a>)</li>
+</ul>
+<h3 id="changed_3">Changed<a class="headerlink" href="#changed_3" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Raise <code>ImportError</code> on circular import (<a href='https://github.com/Kludex/uvicorn/pull/2040'>#2040</a>)</li>
+<li>Use <code>logger.getEffectiveLevel()</code> instead of <code>logger.level</code> to check if log level is <code>TRACE</code> (<a href='https://github.com/Kludex/uvicorn/pull/1966'>#1966</a>)</li>
+</ul>
+<h2 id="0220-april-28-2023">0.22.0 (April 28, 2023)<a class="headerlink" href="#0220-april-28-2023" title="Permanent link">&para;</a></h2>
+<h3 id="added_16">Added<a class="headerlink" href="#added_16" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Add <code>--timeout-graceful-shutdown</code> parameter (<a href='https://github.com/Kludex/uvicorn/pull/1950'>#1950</a>)</li>
+<li>Handle <code>SIGBREAK</code> on Windows (<a href='https://github.com/Kludex/uvicorn/pull/1909'>#1909</a>)</li>
+</ul>
+<h3 id="fixed_22">Fixed<a class="headerlink" href="#fixed_22" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Shutdown event is now being triggered on Windows when using hot reload (<a href='https://github.com/Kludex/uvicorn/pull/1584'>#1584</a>)</li>
+<li><code>--reload-delay</code> is effectively used on the <code>watchfiles</code> reloader (<a href='https://github.com/Kludex/uvicorn/pull/1930'>#1930</a>)</li>
+</ul>
+<h2 id="0211-march-16-2023">0.21.1 (March 16, 2023)<a class="headerlink" href="#0211-march-16-2023" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_23">Fixed<a class="headerlink" href="#fixed_23" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Reset lifespan state on each request (<a href='https://github.com/Kludex/uvicorn/pull/1903'>#1903</a>)</li>
+</ul>
+<h2 id="0210-march-9-2023">0.21.0 (March 9, 2023)<a class="headerlink" href="#0210-march-9-2023" title="Permanent link">&para;</a></h2>
+<h3 id="added_17">Added<a class="headerlink" href="#added_17" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Introduce lifespan state (<a href='https://github.com/Kludex/uvicorn/pull/1818'>#1818</a>)</li>
+<li>Allow headers to be sent as iterables on H11 implementation (<a href='https://github.com/Kludex/uvicorn/pull/1782'>#1782</a>)</li>
+<li>Improve discoverability when --port=0 is used (<a href='https://github.com/Kludex/uvicorn/pull/1890'>#1890</a>)</li>
+</ul>
+<h3 id="changed_4">Changed<a class="headerlink" href="#changed_4" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Avoid importing <code>h11</code> and <code>pyyaml</code> when not needed to improve import time (<a href='https://github.com/Kludex/uvicorn/pull/1846'>#1846</a>)</li>
+<li>Replace current native <code>WSGIMiddleware</code> implementation by <code>a2wsgi</code> (<a href='https://github.com/Kludex/uvicorn/pull/1825'>#1825</a>)</li>
+<li>Change default <code>--app-dir</code> from "." (dot) to "" (empty string) (<a href='https://github.com/Kludex/uvicorn/pull/1835'>#1835</a>)</li>
+</ul>
+<h3 id="fixed_24">Fixed<a class="headerlink" href="#fixed_24" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Send code 1012 on shutdown for WebSockets (<a href='https://github.com/Kludex/uvicorn/pull/1816'>#1816</a>)</li>
+<li>Use <code>surrogateescape</code> to encode headers on <code>websockets</code> implementation (<a href='https://github.com/Kludex/uvicorn/pull/1005'>#1005</a>)</li>
+<li>Fix warning message on reload failure (<a href='https://github.com/Kludex/uvicorn/pull/1784'>#1784</a>)</li>
+</ul>
+<h2 id="0200-november-20-2022">0.20.0 (November 20, 2022)<a class="headerlink" href="#0200-november-20-2022" title="Permanent link">&para;</a></h2>
+<h3 id="added_18">Added<a class="headerlink" href="#added_18" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Check if handshake is completed before sending frame on <code>wsproto</code> shutdown (<a href='https://github.com/Kludex/uvicorn/pull/1737'>#1737</a>)</li>
+<li>Add default headers to WebSockets implementations (#1606 &amp; #1747)</li>
+<li>Warn user when <code>reload</code> and <code>workers</code> flag are used together (<a href='https://github.com/Kludex/uvicorn/pull/1731'>#1731</a>)</li>
+</ul>
+<h3 id="fixed_25">Fixed<a class="headerlink" href="#fixed_25" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Use correct <code>WebSocket</code> error codes on <code>close</code> (<a href='https://github.com/Kludex/uvicorn/pull/1753'>#1753</a>)</li>
+<li>Send disconnect event on connection lost for <code>wsproto</code> (<a href='https://github.com/Kludex/uvicorn/pull/996'>#996</a>)</li>
+<li>Add <code>SIGQUIT</code> handler to <code>UvicornWorker</code> (<a href='https://github.com/Kludex/uvicorn/pull/1710'>#1710</a>)</li>
+<li>Fix crash on exist with "--uds" if socket doesn't exist (<a href='https://github.com/Kludex/uvicorn/pull/1725'>#1725</a>)</li>
+<li>Annotate <code>CONFIG_KWARGS</code> in <code>UvicornWorker</code> class (<a href='https://github.com/Kludex/uvicorn/pull/1746'>#1746</a>)</li>
+</ul>
+<h3 id="removed_3">Removed<a class="headerlink" href="#removed_3" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Remove conditional on <code>RemoteProtocolError.event_hint</code> on <code>wsproto</code> (<a href='https://github.com/Kludex/uvicorn/pull/1486'>#1486</a>)</li>
+<li>Remove unused <code>handle_no_connect</code> on <code>wsproto</code> implementation (<a href='https://github.com/Kludex/uvicorn/pull/1759'>#1759</a>)</li>
+</ul>
+<h2 id="0190-october-19-2022">0.19.0 (October 19, 2022)<a class="headerlink" href="#0190-october-19-2022" title="Permanent link">&para;</a></h2>
+<h3 id="added_19">Added<a class="headerlink" href="#added_19" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Support Python 3.11 (<a href='https://github.com/Kludex/uvicorn/pull/1652'>#1652</a>)</li>
+<li>Bump minimal <code>httptools</code> version to <code>0.5.0</code> (<a href='https://github.com/Kludex/uvicorn/pull/1645'>#1645</a>)</li>
+<li>Ignore HTTP/2 upgrade and optionally ignore WebSocket upgrade (<a href='https://github.com/Kludex/uvicorn/pull/1661'>#1661</a>)</li>
+<li>Add <code>py.typed</code> to comply with PEP 561 (<a href='https://github.com/Kludex/uvicorn/pull/1687'>#1687</a>)</li>
+</ul>
+<h3 id="fixed_26">Fixed<a class="headerlink" href="#fixed_26" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Set <code>propagate</code> to <code>False</code> on "uvicorn" logger (<a href='https://github.com/Kludex/uvicorn/pull/1288'>#1288</a>)</li>
+<li>USR1 signal is now handled correctly on <code>UvicornWorker</code>. (<a href='https://github.com/Kludex/uvicorn/pull/1565'>#1565</a>)</li>
+<li>Use path with query string on <code>WebSockets</code> logs (<a href='https://github.com/Kludex/uvicorn/pull/1385'>#1385</a>)</li>
+<li>Fix behavior on which "Date" headers were not updated on the same connection (<a href='https://github.com/Kludex/uvicorn/pull/1706'>#1706</a>)</li>
+</ul>
+<h3 id="removed_4">Removed<a class="headerlink" href="#removed_4" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Remove the <code>--debug</code> flag (<a href='https://github.com/Kludex/uvicorn/pull/1640'>#1640</a>)</li>
+<li>Remove the <code>DebugMiddleware</code> (<a href='https://github.com/Kludex/uvicorn/pull/1697'>#1697</a>)</li>
+</ul>
+<h2 id="0183-august-24-2022">0.18.3 (August 24, 2022)<a class="headerlink" href="#0183-august-24-2022" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_27">Fixed<a class="headerlink" href="#fixed_27" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Remove cyclic references on HTTP implementations. (<a href='https://github.com/Kludex/uvicorn/pull/1604'>#1604</a>)</li>
+</ul>
+<h3 id="changed_5">Changed<a class="headerlink" href="#changed_5" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>reload_delay</code> default changed from <code>None</code> to <code>0.25</code> on <code>uvicorn.run()</code> and <code>Config</code>. <code>None</code> is not an acceptable value anymore. (<a href='https://github.com/Kludex/uvicorn/pull/1545'>#1545</a>)</li>
+</ul>
+<h2 id="0182-june-27-2022">0.18.2 (June 27, 2022)<a class="headerlink" href="#0182-june-27-2022" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_28">Fixed<a class="headerlink" href="#fixed_28" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Add default <code>log_config</code> on <code>uvicorn.run()</code> (<a href='https://github.com/Kludex/uvicorn/pull/1541'>#1541</a>)</li>
+<li>Revert <code>logging</code> file name modification (<a href='https://github.com/Kludex/uvicorn/pull/1543'>#1543</a>)</li>
+</ul>
+<h2 id="0181-june-23-2022">0.18.1 (June 23, 2022)<a class="headerlink" href="#0181-june-23-2022" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_29">Fixed<a class="headerlink" href="#fixed_29" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Use <code>DEFAULT_MAX_INCOMPLETE_EVENT_SIZE</code> as default to <code>h11_max_incomplete_event_size</code> on the CLI (<a href='https://github.com/Kludex/uvicorn/pull/1534'>#1534</a>)</li>
+</ul>
+<h2 id="0180-june-23-2022">0.18.0 (June 23, 2022)<a class="headerlink" href="#0180-june-23-2022" title="Permanent link">&para;</a></h2>
+<h3 id="added_20">Added<a class="headerlink" href="#added_20" title="Permanent link">&para;</a></h3>
+<ul>
+<li>The <code>reload</code> flag prioritizes <code>watchfiles</code> instead of the deprecated <code>watchgod</code> (<a href='https://github.com/Kludex/uvicorn/pull/1437'>#1437</a>)</li>
+<li>Annotate <code>uvicorn.run()</code> function (<a href='https://github.com/Kludex/uvicorn/pull/1423'>#1423</a>)</li>
+<li>Allow configuring <code>max_incomplete_event_size</code> for <code>h11</code> implementation (<a href='https://github.com/Kludex/uvicorn/pull/1514'>#1514</a>)</li>
+</ul>
+<h3 id="removed_5">Removed<a class="headerlink" href="#removed_5" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Remove <code>asgiref</code> dependency (<a href='https://github.com/Kludex/uvicorn/pull/1532'>#1532</a>)</li>
+</ul>
+<h3 id="fixed_30">Fixed<a class="headerlink" href="#fixed_30" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Turn <code>raw_path</code> into bytes on both websockets implementations (<a href='https://github.com/Kludex/uvicorn/pull/1487'>#1487</a>)</li>
+<li>Revert log exception traceback in case of invalid HTTP request (<a href='https://github.com/Kludex/uvicorn/pull/1518'>#1518</a>)</li>
+<li>Set <code>asyncio.WindowsSelectorEventLoopPolicy()</code> when using multiple workers to avoid "WinError 87" (<a href='https://github.com/Kludex/uvicorn/pull/1454'>#1454</a>)</li>
+</ul>
+<h2 id="0176-march-11-2022">0.17.6 (March 11, 2022)<a class="headerlink" href="#0176-march-11-2022" title="Permanent link">&para;</a></h2>
+<h3 id="changed_6">Changed<a class="headerlink" href="#changed_6" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Change <code>httptools</code> range to <code>&gt;=0.4.0</code> (<a href='https://github.com/Kludex/uvicorn/pull/1400'>#1400</a>)</li>
+</ul>
+<h2 id="0175-february-16-2022">0.17.5 (February 16, 2022)<a class="headerlink" href="#0175-february-16-2022" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_31">Fixed<a class="headerlink" href="#fixed_31" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Fix case where url is fragmented in httptools protocol (<a href='https://github.com/Kludex/uvicorn/pull/1263'>#1263</a>)</li>
+<li>Fix WSGI middleware not to explode quadratically in the case of a larger body (<a href='https://github.com/Kludex/uvicorn/pull/1329'>#1329</a>)</li>
+</ul>
+<h3 id="changed_7">Changed<a class="headerlink" href="#changed_7" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Send HTTP 400 response for invalid request (<a href='https://github.com/Kludex/uvicorn/pull/1352'>#1352</a>)</li>
+</ul>
+<h2 id="0174-february-4-2022">0.17.4 (February 4, 2022)<a class="headerlink" href="#0174-february-4-2022" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_32">Fixed<a class="headerlink" href="#fixed_32" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Replace <code>create_server</code> by <code>create_unix_server</code> (<a href='https://github.com/Kludex/uvicorn/pull/1362'>#1362</a>)</li>
+</ul>
+<h2 id="0173-february-3-2022">0.17.3 (February 3, 2022)<a class="headerlink" href="#0173-february-3-2022" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_33">Fixed<a class="headerlink" href="#fixed_33" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Drop wsproto version checking. (<a href='https://github.com/Kludex/uvicorn/pull/1359'>#1359</a>)</li>
+</ul>
+<h2 id="0172-february-3-2022">0.17.2 (February 3, 2022)<a class="headerlink" href="#0172-february-3-2022" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_34">Fixed<a class="headerlink" href="#fixed_34" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Revert #1332. While trying to solve the memory leak, it introduced an issue (<a href='https://github.com/Kludex/uvicorn/pull/1345'>#1345</a>) when the server receives big chunks of data using the <code>httptools</code> implementation. (<a href='https://github.com/Kludex/uvicorn/pull/1354'>#1354</a>)</li>
+<li>Revert stream interface changes. This was introduced on 0.14.0, and caused an issue (<a href='https://github.com/Kludex/uvicorn/pull/1226'>#1226</a>), which caused a memory leak when sending TCP pings. (<a href='https://github.com/Kludex/uvicorn/pull/1355'>#1355</a>)</li>
+<li>Fix wsproto version check expression (<a href='https://github.com/Kludex/uvicorn/pull/1342'>#1342</a>)</li>
+</ul>
+<h2 id="0171-january-28-2022">0.17.1 (January 28, 2022)<a class="headerlink" href="#0171-january-28-2022" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_35">Fixed<a class="headerlink" href="#fixed_35" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Move all data handling logic to protocol and ensure connection is closed. (<a href='https://github.com/Kludex/uvicorn/pull/1332'>#1332</a>)</li>
+<li>Change <code>spec_version</code> field from "2.1" to "2.3", as Uvicorn is compliant with that version of the ASGI specifications. (<a href='https://github.com/Kludex/uvicorn/pull/1337'>#1337</a>)</li>
+</ul>
+<h2 id="0170post1-january-24-2022">0.17.0.post1 (January 24, 2022)<a class="headerlink" href="#0170post1-january-24-2022" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_36">Fixed<a class="headerlink" href="#fixed_36" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Add the <code>python_requires</code> version specifier (<a href='https://github.com/Kludex/uvicorn/pull/1328'>#1328</a>)</li>
+</ul>
+<h2 id="0170-january-14-2022">0.17.0 (January 14, 2022)<a class="headerlink" href="#0170-january-14-2022" title="Permanent link">&para;</a></h2>
+<h3 id="added_21">Added<a class="headerlink" href="#added_21" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Allow configurable websocket per-message-deflate setting (<a href='https://github.com/Kludex/uvicorn/pull/1300'>#1300</a>)</li>
+<li>Support extra_headers for WS accept message (<a href='https://github.com/Kludex/uvicorn/pull/1293'>#1293</a>)</li>
+<li>Add missing http version on websockets scope (<a href='https://github.com/Kludex/uvicorn/pull/1309'>#1309</a>)</li>
+</ul>
+<h3 id="fixedremoved">Fixed/Removed<a class="headerlink" href="#fixedremoved" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Drop Python 3.6 support (<a href='https://github.com/Kludex/uvicorn/pull/1261'>#1261</a>)</li>
+<li>Fix reload process behavior when exception is raised (<a href='https://github.com/Kludex/uvicorn/pull/1313'>#1313</a>)</li>
+<li>Remove <code>root_path</code> from logs (<a href='https://github.com/Kludex/uvicorn/pull/1294'>#1294</a>)</li>
+</ul>
+<h2 id="0160-december-8-2021">0.16.0 (December 8, 2021)<a class="headerlink" href="#0160-december-8-2021" title="Permanent link">&para;</a></h2>
+<h3 id="added_22">Added<a class="headerlink" href="#added_22" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Enable read of uvicorn settings from environment variables (<a href='https://github.com/Kludex/uvicorn/pull/1279'>#1279</a>)</li>
+<li>Bump <code>websockets</code> to 10.0. (<a href='https://github.com/Kludex/uvicorn/pull/1180'>#1180</a>)</li>
+<li>Ensure non-zero exit code when startup fails (<a href='https://github.com/Kludex/uvicorn/pull/1278'>#1278</a>)</li>
+<li>Increase <code>httptools</code> version range from "==0.2.*" to "&gt;=0.2.0,&lt;0.4.0". (<a href='https://github.com/Kludex/uvicorn/pull/1243'>#1243</a>)</li>
+<li>Override default asyncio event loop with reload only on Windows (<a href='https://github.com/Kludex/uvicorn/pull/1257'>#1257</a>)</li>
+<li>Replace <code>HttpToolsProtocol.pipeline</code> type from <code>list</code> to <code>deque</code>. (<a href='https://github.com/Kludex/uvicorn/pull/1213'>#1213</a>)</li>
+<li>Replace <code>WSGIResponder.send_queue</code> type from <code>list</code> to <code>deque</code>. (<a href='https://github.com/Kludex/uvicorn/pull/1214'>#1214</a>)</li>
+</ul>
+<h3 id="fixed_37">Fixed<a class="headerlink" href="#fixed_37" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Main process exit after startup failure on reloader classes (<a href='https://github.com/Kludex/uvicorn/pull/1177'>#1177</a>)</li>
+<li>Fix the need of <code>httptools</code> on minimal installation (<a href='https://github.com/Kludex/uvicorn/pull/1135'>#1135</a>)</li>
+<li>Fix ping parameters annotation in Config class (<a href='https://github.com/Kludex/uvicorn/pull/1127'>#1127</a>)</li>
+</ul>
+<h2 id="0150-august-13-2021">0.15.0 (August 13, 2021)<a class="headerlink" href="#0150-august-13-2021" title="Permanent link">&para;</a></h2>
+<h3 id="added_23">Added<a class="headerlink" href="#added_23" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Change reload to be configurable with glob patterns. Currently only <code>.py</code> files are watched, which is different from the previous default behavior. (<a href='https://github.com/Kludex/uvicorn/pull/820'>#820</a>)</li>
+<li>Add Python 3.10-rc.1 support. Now the server uses <code>asyncio.run</code> which will: start a fresh asyncio event loop, on shutdown cancel any background tasks rather than aborting them, <code>aexit</code> any remaining async generators, and shutdown the default <code>ThreadPoolExecutor</code>. (<a href='https://github.com/Kludex/uvicorn/pull/1070'>#1070</a>)</li>
+<li>Exit with status 3 when worker starts failed (<a href='https://github.com/Kludex/uvicorn/pull/1077'>#1077</a>)</li>
+<li>Add option to set websocket ping interval and timeout (<a href='https://github.com/Kludex/uvicorn/pull/1048'>#1048</a>)</li>
+<li>Adapt bind_socket to make it usable with multiple processes (<a href='https://github.com/Kludex/uvicorn/pull/1009'>#1009</a>)</li>
+<li>Add existence check to the reload directory(ies) (<a href='https://github.com/Kludex/uvicorn/pull/1089'>#1089</a>)</li>
+<li>Add missing trace log for websocket protocols (<a href='https://github.com/Kludex/uvicorn/pull/1083'>#1083</a>)</li>
+<li>Support disabling default Server and Date headers (<a href='https://github.com/Kludex/uvicorn/pull/818'>#818</a>)</li>
+</ul>
+<h3 id="changed_8">Changed<a class="headerlink" href="#changed_8" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Add PEP440 compliant version of click (<a href='https://github.com/Kludex/uvicorn/pull/1099'>#1099</a>)</li>
+<li>Bump asgiref to 3.4.0 (<a href='https://github.com/Kludex/uvicorn/pull/1100'>#1100</a>)</li>
+</ul>
+<h3 id="fixed_38">Fixed<a class="headerlink" href="#fixed_38" title="Permanent link">&para;</a></h3>
+<ul>
+<li>When receiving a <code>SIGTERM</code> supervisors now terminate their processes before joining them (<a href='https://github.com/Kludex/uvicorn/pull/1069'>#1069</a>)</li>
+<li>Fix <code>httptools</code> range to <code>&gt;=0.4.0</code> (<a href='https://github.com/Kludex/uvicorn/pull/1400'>#1400</a>)</li>
+</ul>
+<h2 id="0140-june-1-2021">0.14.0 (June 1, 2021)<a class="headerlink" href="#0140-june-1-2021" title="Permanent link">&para;</a></h2>
+<h3 id="added_24">Added<a class="headerlink" href="#added_24" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Defaults ws max_size on server to 16MB (<a href='https://github.com/Kludex/uvicorn/pull/995'>#995</a>)</li>
+<li>Improve user feedback if no ws library installed (#926 and #1023)</li>
+<li>Support 'reason' field in 'websocket.close' messages (<a href='https://github.com/Kludex/uvicorn/pull/957'>#957</a>)</li>
+<li>Implemented lifespan.shutdown.failed (<a href='https://github.com/Kludex/uvicorn/pull/755'>#755</a>)</li>
+</ul>
+<h3 id="changed_9">Changed<a class="headerlink" href="#changed_9" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Upgraded websockets requirements (<a href='https://github.com/Kludex/uvicorn/pull/1065'>#1065</a>)</li>
+<li>Switch to asyncio streams API (<a href='https://github.com/Kludex/uvicorn/pull/869'>#869</a>)</li>
+<li>Update httptools from 0.1.* to 0.2.* (<a href='https://github.com/Kludex/uvicorn/pull/1024'>#1024</a>)</li>
+<li>Allow Click 8.0, refs #1016 (<a href='https://github.com/Kludex/uvicorn/pull/1042'>#1042</a>)</li>
+<li>Add search for a trusted host in ProxyHeadersMiddleware (<a href='https://github.com/Kludex/uvicorn/pull/591'>#591</a>)</li>
+<li>Up wsproto to 1.0.0 (<a href='https://github.com/Kludex/uvicorn/pull/892'>#892</a>)</li>
+</ul>
+<h3 id="fixed_39">Fixed<a class="headerlink" href="#fixed_39" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Force reload_dirs to be a list (<a href='https://github.com/Kludex/uvicorn/pull/978'>#978</a>)</li>
+<li>Fix gunicorn worker not running if extras not installed (<a href='https://github.com/Kludex/uvicorn/pull/901'>#901</a>)</li>
+<li>Fix socket port 0 (<a href='https://github.com/Kludex/uvicorn/pull/975'>#975</a>)</li>
+<li>Prevent garbage collection of main lifespan task (<a href='https://github.com/Kludex/uvicorn/pull/972'>#972</a>)</li>
+</ul>
+<h2 id="0134-february-20-2021">0.13.4 (February 20, 2021)<a class="headerlink" href="#0134-february-20-2021" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_40">Fixed<a class="headerlink" href="#fixed_40" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Fixed wsgi middleware PATH_INFO encoding (<a href='https://github.com/Kludex/uvicorn/pull/962'>#962</a>)</li>
+<li>Fixed uvloop dependency  (<a href='https://github.com/Kludex/uvicorn/pull/952'>#952</a>) then (<a href='https://github.com/Kludex/uvicorn/pull/959'>#959</a>)</li>
+<li>Relax watchgod up bound (<a href='https://github.com/Kludex/uvicorn/pull/946'>#946</a>)</li>
+<li>Return 'connection: close' header in response (<a href='https://github.com/Kludex/uvicorn/pull/721'>#721</a>)</li>
+</ul>
+<h3 id="added_25">Added<a class="headerlink" href="#added_25" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Docs: Nginx + websockets (<a href='https://github.com/Kludex/uvicorn/pull/948'>#948</a>)</li>
+<li>Document the default value of 1 for workers (<a href='https://github.com/Kludex/uvicorn/pull/940'>#940</a>) (<a href='https://github.com/Kludex/uvicorn/pull/943'>#943</a>)</li>
+<li>Enabled permessage-deflate extension in websockets (<a href='https://github.com/Kludex/uvicorn/pull/764'>#764</a>)</li>
+</ul>
+<h2 id="0133-december-29-2020">0.13.3 (December 29, 2020)<a class="headerlink" href="#0133-december-29-2020" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_41">Fixed<a class="headerlink" href="#fixed_41" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Prevent swallowing of return codes from <code>subprocess</code> when running with Gunicorn by properly resetting signals. (<a href='https://github.com/Kludex/uvicorn/pull/895'>#895</a>)</li>
+<li>Tweak detection of app factories to be more robust. A warning is now logged when passing a factory without the <code>--factory</code> flag. (<a href='https://github.com/Kludex/uvicorn/pull/914'>#914</a>)</li>
+<li>Properly clean tasks when handshake is aborted when running with <code>--ws websockets</code>. (<a href='https://github.com/Kludex/uvicorn/pull/921'>#921</a>)</li>
+</ul>
+<h2 id="0132-december-12-2020">0.13.2 (December 12, 2020)<a class="headerlink" href="#0132-december-12-2020" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_42">Fixed<a class="headerlink" href="#fixed_42" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Log full exception traceback in case of invalid HTTP request. (#886 and #888)</li>
+</ul>
+<h2 id="0131-december-12-2020">0.13.1 (December 12, 2020)<a class="headerlink" href="#0131-december-12-2020" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_43">Fixed<a class="headerlink" href="#fixed_43" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Prevent exceptions when the ASGI application rejects a connection during the WebSocket handshake, when running on both <code>--ws wsproto</code> or <code>--ws websockets</code>. (#704 and #881)</li>
+<li>Ensure connection <code>scope</code> doesn't leak in logs when using JSON log formatters. (#859 and #884)</li>
+</ul>
+<h2 id="0130-december-8-2020">0.13.0 (December 8, 2020)<a class="headerlink" href="#0130-december-8-2020" title="Permanent link">&para;</a></h2>
+<h3 id="added_26">Added<a class="headerlink" href="#added_26" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Add <code>--factory</code> flag to support factory-style application imports. (<a href='https://github.com/Kludex/uvicorn/pull/875'>#875</a>)</li>
+<li>Skip installation of signal handlers when not in the main thread. Allows using <code>Server</code> in multithreaded contexts without having to override <code>.install_signal_handlers()</code>. (<a href='https://github.com/Kludex/uvicorn/pull/871'>#871</a>)</li>
+</ul>
+<h2 id="0123-november-21-2020">0.12.3 (November 21, 2020)<a class="headerlink" href="#0123-november-21-2020" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_44">Fixed<a class="headerlink" href="#fixed_44" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Fix race condition that leads Quart to hang with uvicorn (<a href='https://github.com/Kludex/uvicorn/pull/848'>#848</a>)</li>
+<li>Use latin1 when decoding X-Forwarded-* headers (<a href='https://github.com/Kludex/uvicorn/pull/701'>#701</a>)</li>
+<li>Rework IPv6 support (<a href='https://github.com/Kludex/uvicorn/pull/837'>#837</a>)</li>
+<li>Cancel old keepalive-trigger before setting new one. (<a href='https://github.com/Kludex/uvicorn/pull/832'>#832</a>)</li>
+</ul>
+<h2 id="0122-october-19-2020">0.12.2 (October 19, 2020)<a class="headerlink" href="#0122-october-19-2020" title="Permanent link">&para;</a></h2>
+<h3 id="added_27">Added<a class="headerlink" href="#added_27" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Adding ability to decrypt ssl key file (<a href='https://github.com/Kludex/uvicorn/pull/808'>#808</a>)</li>
+<li>Support .yml log config files (<a href='https://github.com/Kludex/uvicorn/pull/799'>#799</a>)</li>
+<li>Added python 3.9 support (<a href='https://github.com/Kludex/uvicorn/pull/804'>#804</a>)</li>
+</ul>
+<h3 id="fixed_45">Fixed<a class="headerlink" href="#fixed_45" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Fixes watchgod with common prefixes (<a href='https://github.com/Kludex/uvicorn/pull/817'>#817</a>)</li>
+<li>Fix reload with ipv6 host (<a href='https://github.com/Kludex/uvicorn/pull/803'>#803</a>)</li>
+<li>Added cli support for headers containing colon (<a href='https://github.com/Kludex/uvicorn/pull/813'>#813</a>)</li>
+<li>Sharing socket across workers on windows (<a href='https://github.com/Kludex/uvicorn/pull/802'>#802</a>)</li>
+<li>Note the need to configure trusted "ips" when using unix sockets (<a href='https://github.com/Kludex/uvicorn/pull/796'>#796</a>)</li>
+</ul>
+<h2 id="0121-september-30-2020">0.12.1 (September 30, 2020)<a class="headerlink" href="#0121-september-30-2020" title="Permanent link">&para;</a></h2>
+<h3 id="changed_10">Changed<a class="headerlink" href="#changed_10" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Pinning h11 and python-dotenv to min versions (<a href='https://github.com/Kludex/uvicorn/pull/789'>#789</a>)</li>
+<li>Get docs/index.md in sync with README.md (<a href='https://github.com/Kludex/uvicorn/pull/784'>#784</a>)</li>
+</ul>
+<h3 id="fixed_46">Fixed<a class="headerlink" href="#fixed_46" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Improve changelog by pointing out breaking changes (<a href='https://github.com/Kludex/uvicorn/pull/792'>#792</a>)</li>
+</ul>
+<h2 id="0120-september-28-2020">0.12.0 (September 28, 2020)<a class="headerlink" href="#0120-september-28-2020" title="Permanent link">&para;</a></h2>
+<h3 id="added_28">Added<a class="headerlink" href="#added_28" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Make reload delay configurable (<a href='https://github.com/Kludex/uvicorn/pull/774'>#774</a>)</li>
+<li>Upgrade maximum h11 dependency version to 0.10 (<a href='https://github.com/Kludex/uvicorn/pull/772'>#772</a>)</li>
+<li>Allow .json or .yaml --log-config files (<a href='https://github.com/Kludex/uvicorn/pull/665'>#665</a>)</li>
+<li>Add ASGI dict to the lifespan scope (<a href='https://github.com/Kludex/uvicorn/pull/754'>#754</a>)</li>
+<li>Upgrade wsproto to 0.15.0 (<a href='https://github.com/Kludex/uvicorn/pull/750'>#750</a>)</li>
+<li>Use optional package installs (<a href='https://github.com/Kludex/uvicorn/pull/666'>#666</a>)</li>
+</ul>
+<h3 id="changed_11">Changed<a class="headerlink" href="#changed_11" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Don't set log level for root logger (<a href='https://github.com/Kludex/uvicorn/pull/767'>#767</a>) 8/28/20 df81b168</li>
+<li>Uvicorn no longer ships extra dependencies <code>uvloop</code>, <code>websockets</code> and <code>httptools</code> as default.
+  To install these dependencies use <code>uvicorn[standard]</code>.</li>
+</ul>
+<h3 id="fixed_47">Fixed<a class="headerlink" href="#fixed_47" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Revert "Improve shutdown robustness when using <code>--reload</code> or multiprocessing (<a href='https://github.com/Kludex/uvicorn/pull/620'>#620</a>)" (<a href='https://github.com/Kludex/uvicorn/pull/756'>#756</a>)</li>
+<li>Fix terminate error in windows (<a href='https://github.com/Kludex/uvicorn/pull/744'>#744</a>)</li>
+<li>Fix bug where --log-config disables uvicorn loggers (<a href='https://github.com/Kludex/uvicorn/pull/512'>#512</a>)</li>
+</ul>
+<h2 id="0118-july-30-2020">0.11.8 (July 30, 2020)<a class="headerlink" href="#0118-july-30-2020" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Fix a regression that caused Uvicorn to crash when using <code>--interface=wsgi</code>. (<a href='https://github.com/Kludex/uvicorn/pull/730'>#730</a>)</li>
+<li>Fix a regression that caused Uvicorn to crash when using unix domain sockets. (<a href='https://github.com/Kludex/uvicorn/pull/729'>#729</a>)</li>
+</ul>
+<h2 id="0117-july-28-2020">0.11.7 (July 28, 2020)<a class="headerlink" href="#0117-july-28-2020" title="Permanent link">&para;</a></h2>
+<ul>
+<li>SECURITY FIX: Prevent sending invalid HTTP header names and values. (<a href='https://github.com/Kludex/uvicorn/pull/725'>#725</a>)</li>
+<li>SECURITY FIX: Ensure path value is escaped before logging to the console. (<a href='https://github.com/Kludex/uvicorn/pull/724'>#724</a>)</li>
+<li>Fix <code>--proxy-headers</code> client IP and host when using a Unix socket. (<a href='https://github.com/Kludex/uvicorn/pull/636'>#636</a>)</li>
+</ul>
+<h2 id="0116-july-17-2020">0.11.6 (July 17, 2020)<a class="headerlink" href="#0116-july-17-2020" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Fix overriding the root logger.</li>
+</ul>
+<h2 id="0115-april-29-2020">0.11.5 (April 29, 2020)<a class="headerlink" href="#0115-april-29-2020" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Revert "Watch all files, not just .py" due to unexpected side effects.</li>
+<li>Revert "Pass through gunicorn timeout config." due to unexpected side effects.</li>
+</ul>
+<h2 id="0114-april-28-2020">0.11.4 (April 28, 2020)<a class="headerlink" href="#0114-april-28-2020" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Use <code>watchgod</code>, if installed, for watching code changes.</li>
+<li>Watch all files, not just .py.</li>
+<li>Pass through gunicorn timeout config.</li>
+</ul>
+<h2 id="0113-february-17-2020">0.11.3 (February 17, 2020)<a class="headerlink" href="#0113-february-17-2020" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Update dependencies.</li>
+</ul>
+<h2 id="0112-january-20-2020">0.11.2 (January 20, 2020)<a class="headerlink" href="#0112-january-20-2020" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Don't open socket until after application startup.</li>
+<li>Support <code>--backlog</code>.</li>
+</ul>
+<h2 id="0111-december-20-2019">0.11.1 (December 20, 2019)<a class="headerlink" href="#0111-december-20-2019" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Use a more liberal <code>h11</code> dependency. Either <code>0.8.*</code> or `0.9.*``.</li>
+</ul>
+<h2 id="0110-december-20-2019">0.11.0 (December 20, 2019)<a class="headerlink" href="#0110-december-20-2019" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Fix reload/multiprocessing on Windows with Python 3.8.</li>
+<li>Drop IOCP support. (Required for fix above.)</li>
+<li>Add <code>uvicorn --version</code> flag.</li>
+<li>Add <code>--use-colors</code> and <code>--no-use-colors</code> flags.</li>
+<li>Display port correctly, when auto port selection isused with <code>--port=0</code>.</li>
+</ul>
+<h2 id="0108-november-12-2019">0.10.8 (November 12, 2019)<a class="headerlink" href="#0108-november-12-2019" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Fix reload/multiprocessing error.</li>
+</ul>
+<h2 id="0107-november-12-2019">0.10.7 (November 12, 2019)<a class="headerlink" href="#0107-november-12-2019" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Use resource_sharer.DupSocket to resolve socket sharing on Windows.</li>
+</ul>
+<h2 id="0106-november-12-2019">0.10.6 (November 12, 2019)<a class="headerlink" href="#0106-november-12-2019" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Exit if <code>workers</code> or <code>reload</code> are use without an app import string style.</li>
+<li>Reorganise supervisor processes to properly hand over sockets on windows.</li>
+</ul>
+<h2 id="0105-november-12-2019">0.10.5 (November 12, 2019)<a class="headerlink" href="#0105-november-12-2019" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Update uvloop dependency to 0.14+</li>
+</ul>
+<h2 id="0104-november-9-2019">0.10.4 (November 9, 2019)<a class="headerlink" href="#0104-november-9-2019" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Error clearly when <code>workers=&lt;NUM&gt;</code> is used with app instance, instead of an app import string.</li>
+<li>Switch <code>--reload-dir</code> to current working directory by default.</li>
+</ul>
+<h2 id="0103-november-1-2019">0.10.3 (November 1, 2019)<a class="headerlink" href="#0103-november-1-2019" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Add <code>`--log-level trace</code></li>
+</ul>
+<h2 id="0102-october-31-2019">0.10.2 (October 31, 2019)<a class="headerlink" href="#0102-october-31-2019" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Enable --proxy-headers by default.</li>
+</ul>
+<h2 id="0101-october-31-2019">0.10.1 (October 31, 2019)<a class="headerlink" href="#0101-october-31-2019" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Resolve issues with logging when using <code>--reload</code> or <code>--workers</code>.</li>
+<li>Setup up root logger to capture output for all logger instances, not just <code>uvicorn.error</code> and <code>uvicorn.access</code>.</li>
+</ul>
+<h2 id="0100-october-29-2019">0.10.0 (October 29, 2019)<a class="headerlink" href="#0100-october-29-2019" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Support for Python 3.8</li>
+<li>Separated out <code>uvicorn.error</code> and <code>uvicorn.access</code> logs.</li>
+<li>Coloured log output when connected to a terminal.</li>
+<li>Dropped <code>logger=</code> config setting.</li>
+<li>Added <code>--log-config [FILE]</code> and <code>log_config=[str|dict]</code>. May either be a Python logging config dictionary or the file name of a logging configuration.</li>
+<li>Added <code>--forwarded_allow_ips</code> and <code>forwarded_allow_ips</code>. Defaults to the value of the <code>$FORWARDED_ALLOW_IPS</code> environment variable or "127.0.0.1". The <code>--proxy-headers</code> flag now defaults to <code>True</code>, but only trusted IPs are used to populate forwarding info.</li>
+<li>The <code>--workers</code> setting now defaults to the value of the <code>$WEB_CONCURRENCY</code> environment variable.</li>
+<li>Added support for <code>--env-file</code>. Requires <code>python-dotenv</code>.</li>
+</ul>
+
+
+
+
+
+
+
+  
+  
+
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../deployment/docker/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Docker">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Docker
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../contributing/" class="md-footer__link md-footer__link--next" aria-label="Next: Contributing">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Contributing
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/Kludex/uvicorn" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M202.1 328.7c0 20.9-10.9 55.1-36.7 55.1s-36.7-34.2-36.7-55.1 10.9-55.1 36.7-55.1 36.7 34.2 36.7 55.1M496 278.2c0 31.9-3.2 65.7-17.5 95-37.9 76.6-142.1 74.8-216.7 74.8-75.8 0-186.2 2.7-225.6-74.8-14.6-29-20.2-63.1-20.2-95 0-41.9 13.9-81.5 41.5-113.6-5.2-15.8-7.7-32.4-7.7-48.8 0-21.5 4.9-32.3 14.6-51.8 45.3 0 74.3 9 108.8 36 29-6.9 58.8-10 88.7-10 27 0 54.2 2.9 80.4 9.2 34-26.7 63-35.2 107.8-35.2 9.8 19.5 14.6 30.3 14.6 51.8 0 16.4-2.6 32.7-7.7 48.2 27.5 32.4 39 72.3 39 114.2m-64.3 50.5c0-43.9-26.7-82.6-73.5-82.6-18.9 0-37 3.4-56 6-14.9 2.3-29.8 3.2-45.1 3.2-15.2 0-30.1-.9-45.1-3.2-18.7-2.6-37-6-56-6-46.8 0-73.5 38.7-73.5 82.6 0 87.8 80.4 101.3 150.4 101.3h48.2c70.3 0 150.6-13.4 150.6-101.3m-82.6-55.1c-25.8 0-36.7 34.2-36.7 55.1s10.9 55.1 36.7 55.1 36.7-34.2 36.7-55.1-10.9-55.1-36.7-55.1"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://discord.com/invite/RxKUF5JuHs" target="_blank" rel="noopener" title="discord.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M492.5 69.8c-.2-.3-.4-.6-.8-.7-38.1-17.5-78.4-30-119.7-37.1-.4-.1-.8 0-1.1.1s-.6.4-.8.8c-5.5 9.9-10.5 20.2-14.9 30.6-44.6-6.8-89.9-6.8-134.4 0-4.5-10.5-9.5-20.7-15.1-30.6-.2-.3-.5-.6-.8-.8s-.7-.2-1.1-.2C162.5 39 122.2 51.5 84.1 69c-.3.1-.6.4-.8.7C7.1 183.5-13.8 294.6-3.6 404.2c0 .3.1.5.2.8s.3.4.5.6c44.4 32.9 94 58 146.8 74.2.4.1.8.1 1.1 0s.7-.4.9-.7c11.3-15.4 21.4-31.8 30-48.8.1-.2.2-.5.2-.8s0-.5-.1-.8-.2-.5-.4-.6-.4-.3-.7-.4c-15.8-6.1-31.2-13.4-45.9-21.9-.3-.2-.5-.4-.7-.6s-.3-.6-.3-.9 0-.6.2-.9.3-.5.6-.7c3.1-2.3 6.2-4.7 9.1-7.1.3-.2.6-.4.9-.4s.7 0 1 .1c96.2 43.9 200.4 43.9 295.5 0 .3-.1.7-.2 1-.2s.7.2.9.4c2.9 2.4 6 4.9 9.1 7.2.2.2.4.4.6.7s.2.6.2.9-.1.6-.3.9-.4.5-.6.6c-14.7 8.6-30 15.9-45.9 21.8-.2.1-.5.2-.7.4s-.3.4-.4.7-.1.5-.1.8.1.5.2.8c8.8 17 18.8 33.3 30 48.8.2.3.6.6.9.7s.8.1 1.1 0c52.9-16.2 102.6-41.3 147.1-74.2.2-.2.4-.4.5-.6s.2-.5.2-.8c12.3-126.8-20.5-236.9-86.9-334.5zm-302 267.7c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.4 59.2-52.8 59.2m195.4 0c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.2 59.2-52.8 59.2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://x.com/marcelotryle" target="_blank" rel="noopener" title="x.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M459.4 151.7c.3 4.5.3 9.1.3 13.6 0 138.7-105.6 298.6-298.6 298.6-59.5 0-114.7-17.2-161.1-47.1 8.4 1 16.6 1.3 25.3 1.3 49.1 0 94.2-16.6 130.3-44.8-46.1-1-84.8-31.2-98.1-72.8 6.5 1 13 1.6 19.8 1.6 9.4 0 18.8-1.3 27.6-3.6-48.1-9.7-84.1-52-84.1-103v-1.3c14 7.8 30.2 12.7 47.4 13.3-28.3-18.8-46.8-51-46.8-87.4 0-19.5 5.2-37.4 14.3-53C87.4 130.8 165 172.4 252.1 176.9c-1.6-7.8-2.6-15.9-2.6-24C249.5 95.1 296.3 48 354.4 48c30.2 0 57.5 12.7 76.7 33.1 23.7-4.5 46.5-13.3 66.6-25.3-7.8 24.4-24.4 44.8-46.1 57.8 21.1-2.3 41.6-8.1 60.4-16.2-14.3 20.8-32.2 39.3-52.6 54.3"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://www.linkedin.com/in/marcelotryle" target="_blank" rel="noopener" title="www.linkedin.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M416 32H31.9C14.3 32 0 46.5 0 64.3v383.4C0 465.5 14.3 480 31.9 480H416c17.6 0 32-14.5 32-32.3V64.3c0-17.8-14.4-32.3-32-32.3M135.4 416H69V202.2h66.5V416zM102.2 96a38.5 38.5 0 1 1 0 77 38.5 38.5 0 1 1 0-77m282.1 320h-66.4V312c0-24.8-.5-56.7-34.5-56.7-34.6 0-39.9 27-39.9 54.9V416h-66.4V202.2h63.7v29.2h.9c8.9-16.8 30.6-34.5 62.9-34.5 67.2 0 79.7 44.3 79.7 101.9z"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://fastapiexpert.com" target="_blank" rel="noopener" title="fastapiexpert.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M351.9 280H161c2.9 64.5 17.2 123.9 37.5 167.4 11.4 24.5 23.7 41.8 35.1 52.4 11.2 10.5 18.9 12.2 22.9 12.2s11.7-1.7 22.9-12.2c11.4-10.6 23.7-28 35.1-52.4 20.3-43.5 34.6-102.9 37.5-167.4zm-191-48h190.9c-2.8-64.5-17.1-123.9-37.4-167.4-11.4-24.4-23.7-41.8-35.1-52.4C268.1 1.7 260.4 0 256.4 0s-11.7 1.7-22.9 12.2c-11.4 10.6-23.7 28-35.1 52.4-20.3 43.5-34.6 102.9-37.5 167.4m-48 0c3.5-85.6 25.6-165.1 57.9-217.3C78.7 47.3 10.9 131.2 1.5 232zM1.5 280c9.4 100.8 77.2 184.7 169.3 217.3-32.3-52.2-54.4-131.7-57.9-217.3zm398.4 0c-3.5 85.6-25.6 165.1-57.9 217.3 92.1-32.7 159.9-116.5 169.3-217.3zm111.4-48C501.9 131.2 434.1 47.3 342 14.7c32.3 52.2 54.4 131.7 57.9 217.3z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.code.annotate", "content.code.copy", "content.tabs.link", "navigation.footer", "navigation.path", "navigation.sections", "navigation.top", "navigation.tracking", "search.suggest", "search.highlight", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
