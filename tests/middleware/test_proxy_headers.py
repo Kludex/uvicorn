@@ -511,9 +511,7 @@ async def test_proxy_headers_empty_x_forwarded_for() -> None:
         ("127.0.0.1, 10.0.0.1", "1.2.3.4:5678, 10.0.0.1:9999", "https://1.2.3.4:5678"),
     ],
 )
-async def test_proxy_headers_xff_with_port(
-    trusted_hosts: str | list[str], forwarded_for: str, expected: str
-) -> None:
+async def test_proxy_headers_xff_with_port(trusted_hosts: str | list[str], forwarded_for: str, expected: str) -> None:
     async with make_httpx_client(trusted_hosts) as client:
         headers = {X_FORWARDED_FOR: forwarded_for, X_FORWARDED_PROTO: "https"}
         response = await client.get("/", headers=headers)
