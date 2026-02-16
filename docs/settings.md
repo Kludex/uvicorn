@@ -75,6 +75,7 @@ Using Uvicorn with watchfiles will enable the following options (which are other
 
 * `--workers <int>` - Number of worker processes. Defaults to the `$WEB_CONCURRENCY` environment variable if available, or 1. Not valid with `--reload`.
 * `--env-file <path>` - Environment configuration file for the ASGI application. **Default:** *None*.
+* `--timeout-worker-healthcheck <int>` - Maximum number of seconds to wait for a worker to respond to a healthcheck. **Default:** *5*.
 
 !!! note
     The `--reload` and `--workers` arguments are mutually exclusive. You cannot use both at the same time.
@@ -140,9 +141,10 @@ To understand more about the SSL context options, please refer to the [Python do
 
 * `--limit-concurrency <int>` - Maximum number of concurrent connections or tasks to allow, before issuing HTTP 503 responses. Useful for ensuring known memory usage patterns even under over-resourced loads.
 * `--limit-max-requests <int>` - Maximum number of requests to service before terminating the process. Useful when running together with a process manager, for preventing memory leaks from impacting long-running processes.
+* `--limit-max-requests-jitter <int>` - Maximum jitter to add to `limit-max-requests`. Each worker adds a random number in the range `[0, jitter]`, staggering restarts to avoid all workers restarting simultaneously. **Default:** *0*.
 * `--backlog <int>` - Maximum number of connections to hold in backlog. Relevant for heavy incoming traffic. **Default:** *2048*.
 
 ## Timeouts
 
-* `--timeout-keep-alive <int>` - Close Keep-Alive connections if no new data is received within this timeout. **Default:** *5*.
+* `--timeout-keep-alive <int>` - Close Keep-Alive connections if no new data is received within this timeout (in seconds). **Default:** *5*.
 * `--timeout-graceful-shutdown <int>` - Maximum number of seconds to wait for graceful shutdown. After this timeout, the server will start terminating requests.
