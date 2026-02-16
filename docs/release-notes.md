@@ -9,6 +9,10 @@ toc_depth: 2
 * Add `--limit-max-requests-jitter` to stagger worker restarts (#2707)
 * Add socket path to `scope["server"]` (#2561)
 
+### Changed
+
+* Rename `LifespanOn.error_occured` to `error_occurred` (#2776)
+
 ### Fixed
 
 * Ignore permission denied errors in watchfiles reloader (#2817)
