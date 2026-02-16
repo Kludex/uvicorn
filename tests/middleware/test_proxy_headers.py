@@ -493,3 +493,49 @@ async def test_proxy_headers_empty_x_forwarded_for() -> None:
         response = await client.get("/", headers=headers)
     assert response.status_code == 200
     assert response.text == "https://127.0.0.1:123"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("trusted_hosts", "forwarded_for", "expected"),
+    [
+        # IPv4 with port
+        ("127.0.0.1", "1.2.3.4:1024", "https://1.2.3.4:1024"),
+        # IPv4 without port (existing behavior)
+        ("127.0.0.1", "1.2.3.4", "https://1.2.3.4:0"),
+        # Bracketed IPv6 with port
+        ("127.0.0.1", "[::1]:8080", "https://::1:8080"),
+        # Bare IPv6 without port
+        ("127.0.0.1", "::1", "https://::1:0"),
+        # Trusted proxy with port in XFF should still be recognized
+        ("127.0.0.1, 10.0.0.1", "1.2.3.4:5678, 10.0.0.1:9999", "https://1.2.3.4:5678"),
+    ],
+)
+async def test_proxy_headers_xff_with_port(
+    trusted_hosts: str | list[str], forwarded_for: str, expected: str
+) -> None:
+    async with make_httpx_client(trusted_hosts) as client:
+        headers = {X_FORWARDED_FOR: forwarded_for, X_FORWARDED_PROTO: "https"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    assert response.text == expected
+
+
+@pytest.mark.parametrize(
+    ("host_str", "expected_host", "expected_port"),
+    [
+        ("1.2.3.4", "1.2.3.4", 0),
+        ("1.2.3.4:8080", "1.2.3.4", 8080),
+        ("[::1]:8080", "::1", 8080),
+        ("[::1]", "::1", 0),
+        ("::1", "::1", 0),
+        ("2001:db8::1", "2001:db8::1", 0),
+        ("1.2.3.4:notaport", "1.2.3.4", 0),
+    ],
+)
+def test_parse_host_and_port(host_str: str, expected_host: str, expected_port: int) -> None:
+    from uvicorn.middleware.proxy_headers import _parse_host_and_port
+
+    host, port = _parse_host_and_port(host_str)
+    assert host == expected_host
+    assert port == expected_port
