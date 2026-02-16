@@ -271,19 +271,17 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         try:
             result = await self.app(self.scope, self.receive, self.send)
         except ClientDisconnected:
-            self.transport.close()  # pragma: no cover
+            pass  # pragma: full coverage
         except BaseException:
             self.logger.exception("Exception in ASGI application\n")
             self.send_500_response()
-            self.transport.close()
         else:
             if not self.handshake_complete:
                 self.logger.error("ASGI callable returned without completing handshake.")
                 self.send_500_response()
-                self.transport.close()
             elif result is not None:
                 self.logger.error("ASGI callable should return None, but returned '%s'.", result)
-                self.transport.close()
+        self.transport.close()
 
     def send_500_response(self) -> None:
         if self.initial_response or self.handshake_complete:
