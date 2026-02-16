@@ -380,6 +380,102 @@ def test_log_config_file(
     mocked_logging_config_module.fileConfig.assert_called_once_with(config_file, disable_existing_loggers=False)
 
 
+def test_log_config_json_file_integration(tmp_path: Path) -> None:
+    """
+    Integration test: verify that the JSON logging config example from docs works.
+    """
+    json_config = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {
+                "()": "uvicorn.logging.DefaultFormatter",
+                "fmt": "%(levelprefix)s %(message)s",
+                "use_colors": None,
+            },
+            "access": {
+                "()": "uvicorn.logging.AccessFormatter",
+                "fmt": '%(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s',
+            },
+        },
+        "handlers": {
+            "default": {
+                "formatter": "default",
+                "class": "logging.StreamHandler",
+                "stream": "ext://sys.stderr",
+            },
+            "access": {
+                "formatter": "access",
+                "class": "logging.StreamHandler",
+                "stream": "ext://sys.stdout",
+            },
+        },
+        "loggers": {
+            "uvicorn": {"handlers": ["default"], "level": "INFO", "propagate": False},
+            "uvicorn.error": {"level": "INFO"},
+            "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": False},
+        },
+    }
+    config_file = tmp_path / "log_config.json"
+    config_file.write_text(json.dumps(json_config))
+
+    config = Config(app=asgi_app, log_config=str(config_file))
+    config.load()
+
+    # Verify loggers are configured correctly
+    assert logging.getLogger("uvicorn.error").level == logging.INFO
+    assert logging.getLogger("uvicorn.access").level == logging.INFO
+
+
+def test_log_config_yaml_file_integration(tmp_path: Path) -> None:
+    """
+    Integration test: verify that the YAML logging config example from docs works.
+    """
+    yaml_config = """
+version: 1
+disable_existing_loggers: false
+formatters:
+  default:
+    (): uvicorn.logging.DefaultFormatter
+    fmt: "%(levelprefix)s %(message)s"
+    use_colors: null
+  access:
+    (): uvicorn.logging.AccessFormatter
+    fmt: '%(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s'
+handlers:
+  default:
+    formatter: default
+    class: logging.StreamHandler
+    stream: ext://sys.stderr
+  access:
+    formatter: access
+    class: logging.StreamHandler
+    stream: ext://sys.stdout
+loggers:
+  uvicorn:
+    handlers:
+      - default
+    level: INFO
+    propagate: false
+  uvicorn.error:
+    level: INFO
+  uvicorn.access:
+    handlers:
+      - access
+    level: INFO
+    propagate: false
+"""
+    config_file = tmp_path / "log_config.yaml"
+    config_file.write_text(yaml_config)
+
+    config = Config(app=asgi_app, log_config=str(config_file))
+    config.load()
+
+    # Verify loggers are configured correctly
+    assert logging.getLogger("uvicorn.error").level == logging.INFO
+    assert logging.getLogger("uvicorn.access").level == logging.INFO
+
+
 @pytest.fixture(params=[0, 1])
 def web_concurrency(request: pytest.FixtureRequest) -> Iterator[int]:
     yield request.param
