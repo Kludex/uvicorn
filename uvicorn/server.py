@@ -77,6 +77,9 @@ class Server:
         if not config.loaded:
             config.load()
 
+        if sockets is None and config.bind is not None:
+            sockets = config.bind_sockets()
+
         self.lifespan = config.lifespan_class(config)
 
         message = "Started server process [%d]"
@@ -101,9 +104,6 @@ class Server:
 
         config = self.config
 
-        if sockets is None and config.bind is not None:
-            sockets = config.bind_sockets()
-
         def create_protocol(
             _loop: asyncio.AbstractEventLoop | None = None,
         ) -> asyncio.Protocol:
@@ -121,9 +121,7 @@ class Server:
             # Explicitly passed a list of open sockets.
             # We use this when the server is run from a Gunicorn worker.
 
-            def _share_socket(
-                sock: socket.SocketType,
-            ) -> socket.SocketType:  # pragma py-not-win32
+            def _share_socket(sock: socket.SocketType) -> socket.SocketType:  # pragma py-not-win32
                 # Windows requires the socket be explicitly shared across
                 # multiple workers (processes).
                 from socket import fromshare  # type: ignore[attr-defined]
