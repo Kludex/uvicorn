@@ -4,27 +4,23 @@ import contextlib
 import logging
 import socket
 import sys
-import typing
+from collections.abc import Iterator
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 import httpx
 import pytest
-import websockets
 import websockets.client
+from websockets.protocol import State
 
 from tests.utils import run_server
 from uvicorn import Config
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 
-if typing.TYPE_CHECKING:
+if TYPE_CHECKING:
     import sys
 
     from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol as _WSProtocol
-
-    if sys.version_info >= (3, 10):  # pragma: no cover
-        from typing import TypeAlias
-    else:  # pragma: no cover
-        from typing_extensions import TypeAlias
 
     WSProtocol: TypeAlias = "type[WebSocketProtocol | _WSProtocol]"
 
@@ -32,7 +28,7 @@ pytestmark = pytest.mark.anyio
 
 
 @contextlib.contextmanager
-def caplog_for_logger(caplog: pytest.LogCaptureFixture, logger_name: str) -> typing.Iterator[pytest.LogCaptureFixture]:
+def caplog_for_logger(caplog: pytest.LogCaptureFixture, logger_name: str) -> Iterator[pytest.LogCaptureFixture]:
     logger = logging.getLogger(logger_name)
     logger.propagate, old_propagate = False, logger.propagate
     logger.addHandler(caplog.handler)
@@ -49,7 +45,7 @@ async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
     await send({"type": "http.response.body", "body": b"", "more_body": False})
 
 
-async def test_trace_logging(caplog: pytest.LogCaptureFixture, logging_config, unused_tcp_port: int):
+async def test_trace_logging(caplog: pytest.LogCaptureFixture, logging_config: dict[str, Any], unused_tcp_port: int):
     config = Config(
         app=app,
         log_level="trace",
@@ -91,8 +87,8 @@ async def test_trace_logging_on_http_protocol(http_protocol_cls, caplog, logging
 
 async def test_trace_logging_on_ws_protocol(
     ws_protocol_cls: WSProtocol,
-    caplog,
-    logging_config,
+    caplog: pytest.LogCaptureFixture,
+    logging_config: dict[str, Any],
     unused_tcp_port: int,
 ):
     async def websocket_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
@@ -104,9 +100,9 @@ async def test_trace_logging_on_ws_protocol(
             elif message["type"] == "websocket.disconnect":
                 break
 
-    async def open_connection(url):
+    async def open_connection(url: str):
         async with websockets.client.connect(url) as websocket:
-            return websocket.open
+            return websocket.state is State.OPEN
 
     config = Config(
         app=websocket_app,
@@ -126,7 +122,9 @@ async def test_trace_logging_on_ws_protocol(
 
 
 @pytest.mark.parametrize("use_colors", [(True), (False), (None)])
-async def test_access_logging(use_colors: bool, caplog: pytest.LogCaptureFixture, logging_config, unused_tcp_port: int):
+async def test_access_logging(
+    use_colors: bool, caplog: pytest.LogCaptureFixture, logging_config: dict[str, Any], unused_tcp_port: int
+):
     config = Config(app=app, use_colors=use_colors, log_config=logging_config, port=unused_tcp_port)
     with caplog_for_logger(caplog, "uvicorn.access"):
         async with run_server(config):
@@ -140,7 +138,7 @@ async def test_access_logging(use_colors: bool, caplog: pytest.LogCaptureFixture
 
 @pytest.mark.parametrize("use_colors", [(True), (False)])
 async def test_default_logging(
-    use_colors: bool, caplog: pytest.LogCaptureFixture, logging_config, unused_tcp_port: int
+    use_colors: bool, caplog: pytest.LogCaptureFixture, logging_config: dict[str, Any], unused_tcp_port: int
 ):
     config = Config(app=app, use_colors=use_colors, log_config=logging_config, port=unused_tcp_port)
     with caplog_for_logger(caplog, "uvicorn.access"):

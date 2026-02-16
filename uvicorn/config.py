@@ -9,13 +9,14 @@ import os
 import socket
 import ssl
 import sys
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from configparser import RawConfigParser
 from pathlib import Path
-from typing import IO, Any, Callable, Literal
+from typing import IO, Any, Literal
 
 import click
 
+from uvicorn._compat import iscoroutinefunction
 from uvicorn._types import ASGIApplication
 from uvicorn.importer import ImportFromStringError, import_from_string
 from uvicorn.logging import TRACE_LOG_LEVEL
@@ -25,9 +26,9 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from uvicorn.middleware.wsgi import WSGIMiddleware
 
 HTTPProtocolType = Literal["auto", "h11", "httptools"]
-WSProtocolType = Literal["auto", "none", "websockets", "wsproto"]
+WSProtocolType = Literal["auto", "none", "websockets", "websockets-sansio", "wsproto"]
 LifespanType = Literal["auto", "on", "off"]
-LoopSetupType = Literal["none", "auto", "asyncio", "uvloop"]
+LoopFactoryType = Literal["none", "auto", "asyncio", "uvloop"]
 InterfaceType = Literal["auto", "asgi3", "asgi2", "wsgi"]
 
 LOG_LEVELS: dict[str, int] = {
@@ -38,27 +39,28 @@ LOG_LEVELS: dict[str, int] = {
     "debug": logging.DEBUG,
     "trace": TRACE_LOG_LEVEL,
 }
-HTTP_PROTOCOLS: dict[HTTPProtocolType, str] = {
+HTTP_PROTOCOLS: dict[str, str] = {
     "auto": "uvicorn.protocols.http.auto:AutoHTTPProtocol",
     "h11": "uvicorn.protocols.http.h11_impl:H11Protocol",
     "httptools": "uvicorn.protocols.http.httptools_impl:HttpToolsProtocol",
 }
-WS_PROTOCOLS: dict[WSProtocolType, str | None] = {
+WS_PROTOCOLS: dict[str, str | None] = {
     "auto": "uvicorn.protocols.websockets.auto:AutoWebSocketsProtocol",
     "none": None,
     "websockets": "uvicorn.protocols.websockets.websockets_impl:WebSocketProtocol",
+    "websockets-sansio": "uvicorn.protocols.websockets.websockets_sansio_impl:WebSocketsSansIOProtocol",
     "wsproto": "uvicorn.protocols.websockets.wsproto_impl:WSProtocol",
 }
-LIFESPAN: dict[LifespanType, str] = {
+LIFESPAN: dict[str, str] = {
     "auto": "uvicorn.lifespan.on:LifespanOn",
     "on": "uvicorn.lifespan.on:LifespanOn",
     "off": "uvicorn.lifespan.off:LifespanOff",
 }
-LOOP_SETUPS: dict[LoopSetupType, str | None] = {
+LOOP_FACTORIES: dict[str, str | None] = {
     "none": None,
-    "auto": "uvicorn.loops.auto:auto_loop_setup",
-    "asyncio": "uvicorn.loops.asyncio:asyncio_setup",
-    "uvloop": "uvicorn.loops.uvloop:uvloop_setup",
+    "auto": "uvicorn.loops.auto:auto_loop_factory",
+    "asyncio": "uvicorn.loops.asyncio:asyncio_loop_factory",
+    "uvloop": "uvicorn.loops.uvloop:uvloop_loop_factory",
 }
 INTERFACES: list[InterfaceType] = ["auto", "asgi3", "asgi2", "wsgi"]
 
@@ -181,9 +183,9 @@ class Config:
         port: int = 8000,
         uds: str | None = None,
         fd: int | None = None,
-        loop: LoopSetupType = "auto",
-        http: type[asyncio.Protocol] | HTTPProtocolType = "auto",
-        ws: type[asyncio.Protocol] | WSProtocolType = "auto",
+        loop: LoopFactoryType | str = "auto",
+        http: type[asyncio.Protocol] | HTTPProtocolType | str = "auto",
+        ws: type[asyncio.Protocol] | WSProtocolType | str = "auto",
         ws_max_size: int = 16 * 1024 * 1024,
         ws_max_queue: int = 32,
         ws_ping_interval: float | None = 20.0,
@@ -209,17 +211,19 @@ class Config:
         root_path: str = "",
         limit_concurrency: int | None = None,
         limit_max_requests: int | None = None,
+        limit_max_requests_jitter: int = 0,
         backlog: int = 2048,
         timeout_keep_alive: int = 5,
         timeout_notify: int = 30,
         timeout_graceful_shutdown: int | None = None,
+        timeout_worker_healthcheck: int = 5,
         callback_notify: Callable[..., Awaitable[None]] | None = None,
         ssl_keyfile: str | os.PathLike[str] | None = None,
         ssl_certfile: str | os.PathLike[str] | None = None,
         ssl_keyfile_password: str | None = None,
         ssl_version: int = SSL_PROTOCOL_VERSION,
         ssl_cert_reqs: int = ssl.CERT_NONE,
-        ssl_ca_certs: str | None = None,
+        ssl_ca_certs: str | os.PathLike[str] | None = None,
         ssl_ciphers: str = "TLSv1",
         headers: list[tuple[str, str]] | None = None,
         factory: bool = False,
@@ -253,10 +257,12 @@ class Config:
         self.root_path = root_path
         self.limit_concurrency = limit_concurrency
         self.limit_max_requests = limit_max_requests
+        self.limit_max_requests_jitter = limit_max_requests_jitter
         self.backlog = backlog
         self.timeout_keep_alive = timeout_keep_alive
         self.timeout_notify = timeout_notify
         self.timeout_graceful_shutdown = timeout_graceful_shutdown
+        self.timeout_worker_healthcheck = timeout_worker_healthcheck
         self.callback_notify = callback_notify
         self.ssl_keyfile = ssl_keyfile
         self.ssl_certfile = ssl_certfile
@@ -418,13 +424,13 @@ class Config:
         )
 
         if isinstance(self.http, str):
-            http_protocol_class = import_from_string(HTTP_PROTOCOLS[self.http])
+            http_protocol_class = import_from_string(HTTP_PROTOCOLS.get(self.http, self.http))
             self.http_protocol_class: type[asyncio.Protocol] = http_protocol_class
         else:
             self.http_protocol_class = self.http
 
         if isinstance(self.ws, str):
-            ws_protocol_class = import_from_string(WS_PROTOCOLS[self.ws])
+            ws_protocol_class = import_from_string(WS_PROTOCOLS.get(self.ws, self.ws))
             self.ws_protocol_class: type[asyncio.Protocol] | None = ws_protocol_class
         else:
             self.ws_protocol_class = self.ws
@@ -453,10 +459,10 @@ class Config:
             if inspect.isclass(self.loaded_app):
                 use_asgi_3 = hasattr(self.loaded_app, "__await__")
             elif inspect.isfunction(self.loaded_app):
-                use_asgi_3 = asyncio.iscoroutinefunction(self.loaded_app)
+                use_asgi_3 = iscoroutinefunction(self.loaded_app)
             else:
                 call = getattr(self.loaded_app, "__call__", None)
-                use_asgi_3 = asyncio.iscoroutinefunction(call)
+                use_asgi_3 = iscoroutinefunction(call)
             self.interface = "asgi3" if use_asgi_3 else "asgi2"
 
         if self.interface == "wsgi":
@@ -473,9 +479,24 @@ class Config:
         self.loaded = True
 
     def setup_event_loop(self) -> None:
-        loop_setup: Callable | None = import_from_string(LOOP_SETUPS[self.loop])
-        if loop_setup is not None:
-            loop_setup(use_subprocess=self.use_subprocess)
+        raise AttributeError(
+            "The `setup_event_loop` method was replaced by `get_loop_factory` in uvicorn 0.36.0.\n"
+            "None of those methods are supposed to be used directly. If you are doing it, please let me know here: "
+            "https://github.com/Kludex/uvicorn/discussions/2706. Thank you, and sorry for the inconvenience."
+        )
+
+    def get_loop_factory(self) -> Callable[[], asyncio.AbstractEventLoop] | None:
+        if self.loop in LOOP_FACTORIES:
+            loop_factory: Callable[..., Any] | None = import_from_string(LOOP_FACTORIES[self.loop])
+        else:
+            try:
+                return import_from_string(self.loop)
+            except ImportFromStringError as exc:
+                logger.error("Error loading custom loop setup function. %s" % exc)
+                sys.exit(1)
+        if loop_factory is None:
+            return None
+        return loop_factory(use_subprocess=self.use_subprocess)
 
     def bind_socket(self) -> socket.socket:
         logger_args: list[str | int]

@@ -6,7 +6,8 @@ import signal
 import socket
 import threading
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import pytest
 
@@ -29,12 +30,8 @@ def new_console_in_windows(test_function: Callable[[], Any]) -> Callable[[], Any
         name = test_function.__name__
 
         subprocess.check_call(
-            [
-                sys.executable,
-                "-c",
-                f"from {module} import {name}; {name}.__wrapped__()",
-            ],
-            creationflags=subprocess.CREATE_NO_WINDOW,  # type: ignore[attr-defined]
+            [sys.executable, "-c", f"from {module} import {name}; {name}.__wrapped__()"],
+            creationflags=subprocess.CREATE_NO_WINDOW,
         )
 
     return new_function
@@ -87,9 +84,10 @@ def test_multiprocess_health_check() -> None:
     process = supervisor.processes[0]
     process.kill()
     assert not process.is_alive()
-    time.sleep(1)
-    for p in supervisor.processes:
-        assert p.is_alive()
+    deadline = time.monotonic() + 10
+    while not all(p.is_alive() for p in supervisor.processes):  # pragma: no cover
+        assert time.monotonic() < deadline, "Timed out waiting for processes to be alive"
+        time.sleep(0.1)
     supervisor.signal_queue.append(signal.SIGINT)
     supervisor.join_all()
 
@@ -132,7 +130,13 @@ def test_multiprocess_sighup() -> None:
     time.sleep(1)
     pids = [p.pid for p in supervisor.processes]
     supervisor.signal_queue.append(signal.SIGHUP)
-    time.sleep(1)
+    # Poll instead of a fixed sleep — the supervisor loop runs on a 0.5s interval and `restart_all()` terminates/joins
+    # each worker sequentially, so the total time is non-deterministic.
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if [p.pid for p in supervisor.processes] != pids:
+            break
+        time.sleep(0.1)
     assert pids != [p.pid for p in supervisor.processes]
     supervisor.signal_queue.append(signal.SIGINT)
     supervisor.join_all()

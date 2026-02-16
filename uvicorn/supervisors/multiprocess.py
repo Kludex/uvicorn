@@ -4,9 +4,10 @@ import logging
 import os
 import signal
 import threading
+from collections.abc import Callable
 from multiprocessing import Pipe
 from socket import socket
-from typing import Any, Callable
+from typing import Any
 
 import click
 
@@ -164,7 +165,7 @@ class Multiprocess:
             return  # parent process is exiting, no need to keep subprocess alive
 
         for idx, process in enumerate(self.processes):
-            if process.is_alive():
+            if process.is_alive(timeout=self.config.timeout_worker_healthcheck):
                 continue
 
             process.kill()  # process is hung, kill it

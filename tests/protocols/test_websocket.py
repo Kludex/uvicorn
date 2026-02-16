@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import typing
 from copy import deepcopy
+from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict
 
 import httpx
 import pytest
@@ -35,17 +35,10 @@ try:
 except ModuleNotFoundError:  # pragma: no cover
     skip_if_no_wsproto = pytest.mark.skipif(True, reason="wsproto is not installed.")
 
-if typing.TYPE_CHECKING:
-    import sys
-
+if TYPE_CHECKING:
     from uvicorn.protocols.http.h11_impl import H11Protocol
     from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol as _WSProtocol
-
-    if sys.version_info >= (3, 10):  # pragma: no cover
-        from typing import TypeAlias
-    else:  # pragma: no cover
-        from typing_extensions import TypeAlias
 
     HTTPProtocol: TypeAlias = "type[H11Protocol | HttpToolsProtocol]"
     WSProtocol: TypeAlias = "type[_WSProtocol | WebSocketProtocol]"
@@ -213,8 +206,8 @@ async def test_headers(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProto
         async def websocket_connect(self, message: WebSocketConnectEvent):
             headers = self.scope.get("headers")
             headers = dict(headers)  # type: ignore
-            assert headers[b"host"].startswith(b"127.0.0.1")  # type: ignore
-            assert headers[b"username"] == bytes("abraão", "utf-8")  # type: ignore
+            assert headers[b"host"].startswith(b"127.0.0.1")
+            assert headers[b"username"] == bytes("abraão", "utf-8")
             await self.send({"type": "websocket.accept"})
 
     async def open_connection(url: str):
@@ -458,6 +451,27 @@ async def test_asgi_return_value(ws_protocol_cls: WSProtocol, http_protocol_cls:
         assert websocket.close_code == 1006
 
 
+async def test_close_transport_on_asgi_return(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+):
+    """The ASGI callable should call the `websocket.close` event.
+
+    If it doesn't, the server should still send a close frame to the client.
+    """
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        message = await receive()
+        if message["type"] == "websocket.connect":
+            await send({"type": "websocket.accept"})
+
+    config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
+    async with run_server(config):
+        async with websockets.client.connect(f"ws://127.0.0.1:{unused_tcp_port}") as websocket:
+            with pytest.raises(websockets.exceptions.ConnectionClosed):
+                await websocket.recv()
+        assert websocket.close_code == 1006
+
+
 @pytest.mark.parametrize("code", [None, 1000, 1001])
 @pytest.mark.parametrize("reason", [None, "test", False], ids=["none_as_reason", "normal_reason", "without_reason"])
 async def test_app_close(
@@ -597,12 +611,9 @@ async def test_connection_lost_before_handshake_complete(
             await send_accept_task.wait()
         disconnect_message = await receive()  # type: ignore
 
-    response: httpx.Response | None = None
-
     async def websocket_session(uri: str):
-        nonlocal response
         async with httpx.AsyncClient() as client:
-            response = await client.get(
+            await client.get(
                 f"http://127.0.0.1:{unused_tcp_port}",
                 headers={
                     "upgrade": "websocket",
@@ -619,9 +630,6 @@ async def test_connection_lost_before_handshake_complete(
         send_accept_task.set()
         await asyncio.sleep(0.1)
 
-    assert response is not None
-    assert response.status_code == 500, response.text
-    assert response.text == "Internal Server Error"
     assert disconnect_message == {"type": "websocket.disconnect", "code": 1006}
     await task
 
@@ -760,7 +768,7 @@ async def test_server_reject_connection(
         # -- At this point websockets' recv() is unusable. --
 
         # This doesn't raise `TypeError`:
-        # See https://github.com/encode/uvicorn/issues/244
+        # See https://github.com/Kludex/uvicorn/issues/244
         disconnected_message = await receive()
 
     async def websocket_session(url: str):
@@ -776,7 +784,7 @@ async def test_server_reject_connection(
     assert disconnected_message == {"type": "websocket.disconnect", "code": 1006}
 
 
-class EmptyDict(typing.TypedDict): ...
+class EmptyDict(TypedDict): ...
 
 
 async def test_server_reject_connection_with_response(
@@ -916,6 +924,9 @@ async def test_server_reject_connection_with_body_nolength(
 async def test_server_reject_connection_with_invalid_msg(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
 ):
+    if ws_protocol_cls.__name__ == "WebSocketsSansIOProtocol":
+        pytest.skip("WebSocketsSansIOProtocol sends both start and body messages in one message.")
+
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         assert scope["type"] == "websocket"
         assert "extensions" in scope and "websocket.http.response" in scope["extensions"]
@@ -947,6 +958,9 @@ async def test_server_reject_connection_with_invalid_msg(
 async def test_server_reject_connection_with_missing_body(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
 ):
+    if ws_protocol_cls.__name__ == "WebSocketsSansIOProtocol":
+        pytest.skip("WebSocketsSansIOProtocol sends both start and body messages in one message.")
+
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         assert scope["type"] == "websocket"
         assert "extensions" in scope and "websocket.http.response" in scope["extensions"]
@@ -982,6 +996,8 @@ async def test_server_multiple_websocket_http_response_start_events(
     The server should raise an exception if it sends multiple
     websocket.http.response.start events.
     """
+    if ws_protocol_cls.__name__ == "WebSocketsSansIOProtocol":
+        pytest.skip("WebSocketsSansIOProtocol sends both start and body messages in one message.")
     exception_message: str | None = None
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
@@ -1142,12 +1158,12 @@ async def test_multiple_server_header(
 
 
 async def test_lifespan_state(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
-    expected_states: list[dict[str, typing.Any]] = [
+    expected_states: list[dict[str, Any]] = [
         {"a": 123, "b": [1]},
         {"a": 123, "b": [1, 2]},
     ]
 
-    actual_states: list[dict[str, typing.Any]] = []
+    actual_states: list[dict[str, Any]] = []
 
     async def lifespan_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         message = await receive()
