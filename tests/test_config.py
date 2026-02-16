@@ -593,3 +593,88 @@ def test_setup_event_loop_is_removed(caplog: pytest.LogCaptureFixture) -> None:
         AttributeError, match="The `setup_event_loop` method was replaced by `get_loop_factory` in uvicorn 0.36.0."
     ):
         config.setup_event_loop()
+
+
+@pytest.mark.parametrize(
+    "bind_str, expected_family",
+    [
+        ("127.0.0.1:0", socket.AF_INET),
+        ("0.0.0.0:0", socket.AF_INET),
+        ("[::1]:0", socket.AF_INET6),
+        ("[::]:0", socket.AF_INET6),
+        ("localhost:0", socket.AF_INET),
+    ],
+    ids=["ipv4", "ipv4-wildcard", "ipv6", "ipv6-wildcard", "hostname"],
+)
+def test_bind_sockets_address_formats(bind_str: str, expected_family: socket.AddressFamily) -> None:
+    config = Config(app=asgi_app, bind=[bind_str])
+    sockets = config.bind_sockets()
+    assert len(sockets) == 1
+    assert sockets[0].family == expected_family
+    sockets[0].close()
+
+
+def test_bind_sockets_multiple() -> None:
+    config = Config(app=asgi_app, bind=["127.0.0.1:0", "127.0.0.1:0"])
+    sockets = config.bind_sockets()
+    assert len(sockets) == 2
+    for sock in sockets:
+        assert sock.family == socket.AF_INET
+        sock.close()
+
+
+def test_bind_sockets_default_port() -> None:
+    config = Config(app=asgi_app, bind=["127.0.0.1"])
+    sockets = config.bind_sockets()
+    assert len(sockets) == 1
+    assert sockets[0].getsockname()[1] == 8000
+    sockets[0].close()
+
+
+def test_bind_sockets_fallback() -> None:
+    config = Config(app=asgi_app, bind=None)
+    sockets = config.bind_sockets()
+    assert len(sockets) == 1
+    sockets[0].close()
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"host": "0.0.0.0"},
+        {"port": 9000},
+        {"uds": "/tmp/test.sock"},
+        {"fd": 3},
+    ],
+    ids=["host", "port", "uds", "fd"],
+)
+def test_bind_mutually_exclusive_with_other_params(kwargs: dict[str, Any]) -> None:
+    with pytest.raises(ValueError, match="'bind' is mutually exclusive with"):
+        Config(app=asgi_app, bind=["127.0.0.1:0"], **kwargs)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="requires unix sockets")
+def test_bind_sockets_unix() -> None:  # pragma: py-win32
+    sock_path = "/tmp/uvicorn_test_bind.sock"
+    try:
+        config = Config(app=asgi_app, bind=[f"unix:{sock_path}"])
+        sockets = config.bind_sockets()
+        assert len(sockets) == 1
+        assert sockets[0].family == socket.AF_UNIX
+        sockets[0].close()
+    finally:
+        if os.path.exists(sock_path):
+            os.unlink(sock_path)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="requires unix sockets")
+def test_bind_sockets_fd(tmp_path: Path) -> None:  # pragma: py-win32
+    # Create a socket, then bind via its file descriptor.
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    fd = listener.fileno()
+    config = Config(app=asgi_app, bind=[f"fd://{fd}"])
+    sockets = config.bind_sockets()
+    assert len(sockets) == 1
+    sockets[0].close()
+    listener.close()
