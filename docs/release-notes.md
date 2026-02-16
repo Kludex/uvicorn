@@ -2,6 +2,19 @@
 toc_depth: 2
 ---
 
+## 0.41.0 (February 16, 2026)
+
+### Added
+
+* Add `--limit-max-requests-jitter` to stagger worker restarts (#2707)
+* Add socket path to `scope["server"]` (#2561)
+
+### Fixed
+
+* Ignore permission denied errors in watchfiles reloader (#2817)
+* Ensure lifespan shutdown runs when `should_exit` is set during startup (#2812)
+* Reduce the log level of 'request limit exceeded' messages (#2788)
+
 ## 0.40.0 (December 21, 2025)
 
 ### Remove
