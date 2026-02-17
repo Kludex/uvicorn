@@ -49,6 +49,14 @@ def wsgi_app(environ: Environ, start_response: StartResponse) -> None:
     pass  # pragma: nocover
 
 
+def asgi_app_factory(**kwargs):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        pass  # pragma: nocover
+
+    app.factory_kwargs = kwargs  # type: ignore
+    return app
+
+
 @pytest.mark.parametrize(
     "app, expected_should_reload",
     [(asgi_app, False), ("tests.test_config:asgi_app", True)],
@@ -540,6 +548,19 @@ def test_warn_when_using_reload_and_workers(caplog: pytest.LogCaptureFixture) ->
     Config(app=asgi_app, reload=True, workers=2)
     assert len(caplog.records) == 1
     assert '"workers" flag is ignored when reloading is enabled.' in caplog.records[0].message
+
+
+def test_config_factory_kwargs():
+    config = Config(
+        app="tests.test_config:asgi_app_factory",
+        factory_kwargs={"alpha": 12, "beta": [3, 4, 5]},
+        factory=True,
+        workers=4,
+        proxy_headers=False,
+    )
+    config.load()
+
+    assert config.loaded_app.factory_kwargs == {"alpha": 12, "beta": [3, 4, 5]}
 
 
 @pytest.mark.parametrize(
