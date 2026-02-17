@@ -1118,3 +1118,60 @@ async def test_header_upgrade_is_websocket_depend_not_installed(
     assert msg in caplog.text
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
     assert b"Hello, world" in protocol.transport.buffer
+
+
+async def test_trailers(http_protocol_cls: type[HTTPProtocol]):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert scope["type"] == "http"
+        assert "extensions" in scope and "http.response.trailers" in scope["extensions"]
+
+        headers = iter([(b"x-test-header", b"test value 0")])
+        trailers1 = iter([(b"x-test-trailer1", b"test value 1")])
+        trailers2 = iter([(b"x-test-trailer2", b"test value 2")])
+        await send({"type": "http.response.start", "status": 200, "headers": headers, "trailers": True})
+        await send({"type": "http.response.body", "body": b"Hi"})
+        await send({"type": "http.response.trailers", "headers": trailers1, "more_trailers": True})
+        await send({"type": "http.response.trailers", "headers": trailers2, "more_trailers": False})
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    assert b"x-test-header: test value 0" in protocol.transport.buffer
+    assert b"Hi" in protocol.transport.buffer
+    assert b"x-test-trailer1: test value 1" in protocol.transport.buffer
+    assert b"x-test-trailer2: test value 2" in protocol.transport.buffer
+
+
+async def test_trailers_after_closed(http_protocol_cls: type[HTTPProtocol]):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        headers = iter([(b"x-test-header", b"test value 0")])
+        trailers1 = iter([(b"x-test-trailer1", b"test value 1")])
+        trailers2 = iter([(b"x-test-trailer2", b"test value 2")])
+        await send({"type": "http.response.start", "status": 200, "headers": headers, "trailers": True})
+        await send({"type": "http.response.body", "body": b"Hi"})
+        await send({"type": "http.response.trailers", "headers": trailers1, "more_trailers": False})
+        with pytest.raises(RuntimeError, match="response already completed"):
+            await send({"type": "http.response.trailers", "headers": trailers2, "more_trailers": False})
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    assert b"x-test-header: test value 0" in protocol.transport.buffer
+    assert b"Hi" in protocol.transport.buffer
+    assert b"x-test-trailer1: test value 1" in protocol.transport.buffer
+    assert b"x-test-trailer2: test value 2" not in protocol.transport.buffer
+
+
+async def test_body_after_trailers(http_protocol_cls: type[HTTPProtocol]):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        headers = iter([(b"x-test-header", b"test value 0")])
+        trailers = iter([(b"x-test-trailer1", b"test value 1")])
+        await send({"type": "http.response.start", "status": 200, "headers": headers, "trailers": True})
+        await send({"type": "http.response.body", "body": b"Hi"})
+        await send({"type": "http.response.trailers", "headers": trailers, "more_trailers": True})
+        with pytest.raises(RuntimeError, match="response already completed"):
+            await send({"type": "http.response.body", "body": b"Uh oh"})
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
