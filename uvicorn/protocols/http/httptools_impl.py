@@ -24,7 +24,7 @@ from uvicorn._types import (
 from uvicorn.config import Config
 from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.protocols.http.flow_control import CLOSE_HEADER, HIGH_WATER_LIMIT, FlowControl, service_unavailable
-from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
+from uvicorn.protocols.utils import get_local_addr, get_remote_addr, is_ssl
 from uvicorn.server import ServerState
 
 HEADER_RE = re.compile(b'[\x00-\x1f\x7f()<>@,;:[]={} \t\\"]')
@@ -409,6 +409,12 @@ class RequestResponseCycle:
         self.response_complete = False
         self.chunked_encoding: bool | None = None
         self.expected_content_length = 0
+        self.response_size = 0
+
+        # Timing
+        import time
+
+        self.start_time = time.perf_counter()
 
     # ASGI exception wrapper
     async def run_asgi(self, app: ASGI3Application) -> None:
@@ -474,20 +480,11 @@ class RequestResponseCycle:
             self.waiting_for_100_continue = False
 
             status_code = message["status"]
+            self.status_code = status_code
             headers = self.default_headers + list(message.get("headers", []))
 
             if CLOSE_HEADER in self.scope["headers"] and CLOSE_HEADER not in headers:
                 headers = headers + [CLOSE_HEADER]
-
-            if self.access_log:
-                self.access_logger.info(
-                    '%s - "%s %s HTTP/%s" %d',
-                    get_client_addr(self.scope),
-                    self.scope["method"],
-                    get_path_with_query_string(self.scope),
-                    self.scope["http_version"],
-                    status_code,
-                )
 
             # Write response status line and headers
             content = [STATUS_LINE[status_code]]
@@ -526,6 +523,9 @@ class RequestResponseCycle:
             body = cast(bytes, message.get("body", b""))
             more_body = message.get("more_body", False)
 
+            # Track response size
+            self.response_size += len(body)
+
             # Write response body
             if self.scope["method"] == "HEAD":
                 self.expected_content_length = 0
@@ -551,6 +551,38 @@ class RequestResponseCycle:
                     raise RuntimeError("Response content shorter than Content-Length")
                 self.response_complete = True
                 self.message_event.set()
+
+                if self.access_log:
+                    import time
+
+                    from uvicorn.logging import GunicornAccessFormatter
+
+                    response_time = time.perf_counter() - self.start_time
+
+                    if (
+                        hasattr(self.access_logger, "handlers")
+                        and self.access_logger.handlers
+                        and isinstance(self.access_logger.handlers[0].formatter, GunicornAccessFormatter)
+                    ):
+                        self.access_logger.info(
+                            "",
+                            self.scope,
+                            self.status_code,
+                            response_time,
+                            self.response_size if self.response_size > 0 else None,
+                        )
+                    else:
+                        from uvicorn.protocols.utils import get_client_addr, get_path_with_query_string
+
+                        self.access_logger.info(
+                            '%s - "%s %s HTTP/%s" %d',
+                            get_client_addr(self.scope),
+                            self.scope["method"],
+                            get_path_with_query_string(self.scope),
+                            self.scope["http_version"],
+                            self.status_code,
+                        )
+
                 if not self.keep_alive:
                     self.transport.close()
                 self.on_response()
