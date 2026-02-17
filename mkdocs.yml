@@ -54,6 +54,7 @@ nav:
   - Concepts:
       - ASGI: concepts/asgi.md
       - Lifespan: concepts/lifespan.md
+      - HTTP/2: concepts/http2.md
       - WebSockets: concepts/websockets.md
       - Event Loop: concepts/event-loop.md
   - Deployment:
