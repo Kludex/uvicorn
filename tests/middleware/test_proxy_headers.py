@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 from typing import TYPE_CHECKING
 
 import httpx
@@ -30,6 +31,8 @@ async def default_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISend
         client_addr = "NONE"  # pragma: no cover
     else:
         host, port = client
+        if ipaddress.ip_address(host).version == 6:
+            host = f"[{host}]"
         client_addr = f"{host}:{port}"
 
     response = Response(f"{scheme}://{client_addr}", media_type="text/plain")
@@ -421,6 +424,30 @@ async def test_proxy_headers_trusted_hosts_malformed(
 async def test_proxy_headers_multiple_proxies(trusted_hosts: str | list[str], expected: str) -> None:
     async with make_httpx_client(trusted_hosts) as client:
         headers = {X_FORWARDED_FOR: "1.2.3.4, 10.0.2.1, 192.168.0.2", X_FORWARDED_PROTO: "https"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    assert response.text == expected
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("trusted_hosts", "expected"),
+    [
+        # always trust
+        ("*", "https://1.2.3.4:1234"),
+        # all proxies are trusted
+        (["127.0.0.1", "2001:db8::", "192.168.0.2"], "https://1.2.3.4:1234"),
+        # order doesn't matter
+        (["2001:db8::", "192.168.0.2", "127.0.0.1"], "https://1.2.3.4:1234"),
+        # should set first untrusted as remote address
+        (["192.168.0.2", "127.0.0.1"], "https://[2001:db8::]:2012"),
+        # Mixed literals and networks
+        (["127.0.0.1", "2001:db8::/32", "192.168.0.2"], "https://1.2.3.4:1234"),
+    ],
+)
+async def test_proxy_headers_multiple_proxies_with_port(trusted_hosts: str | list[str], expected: str) -> None:
+    async with make_httpx_client(trusted_hosts) as client:
+        headers = {X_FORWARDED_FOR: "1.2.3.4:1234, [2001:db8::]:2012, 192.168.0.2:1025", X_FORWARDED_PROTO: "https"}
         response = await client.get("/", headers=headers)
     assert response.status_code == 200
     assert response.text == expected
