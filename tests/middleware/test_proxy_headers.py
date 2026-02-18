@@ -38,17 +38,30 @@ async def default_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISend
 
 def make_httpx_client(
     trusted_hosts: str | list[str],
-    client: tuple[str, int] = ("127.0.0.1", 123),
+    client: tuple[str, int] | None = ("127.0.0.1", 123),
+    server: tuple[str, int | None] | None = ("testserver", 80),
 ) -> httpx.AsyncClient:
     """Create async client for use in test cases.
 
     Args:
         trusted_hosts: trusted_hosts for proxy middleware
-        client: transport client to use
+        client: value of scope["client"] as seen by middleware
+        server: value of scope["server"] as seen by middleware
     """
 
     app = ProxyHeadersMiddleware(default_app, trusted_hosts)
-    transport = httpx.ASGITransport(app=app, client=client)  # type: ignore
+
+    async def wrapper(
+        scope: Scope,
+        receive: ASGIReceiveCallable,
+        send: ASGISendCallable,
+    ) -> None:
+        if scope["type"] != "lifespan":
+            scope["client"] = client
+            scope["server"] = server
+        return await app(scope, receive, send)
+
+    transport = httpx.ASGITransport(app=wrapper)  # type: ignore
     return httpx.AsyncClient(transport=transport, base_url="http://testserver")
 
 
@@ -439,6 +452,42 @@ async def test_proxy_headers_invalid_x_forwarded_for() -> None:
         response = await client.get("/", headers=headers)
     assert response.status_code == 200
     assert response.text == "https://1.2.3.4:0"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("trusted_hosts", "forwarded_for", "expected"),
+    [
+        ("*", "1.2.3.4, 10.0.2.1", "https://1.2.3.4:0"),
+        ("127.0.0.1", "1.2.3.4, 10.0.2.1", "http://NONE"),
+        ("unix:", "1.2.3.4, 10.0.2.1", "https://10.0.2.1:0"),
+        ("unix:", "1.2.3.4, 10.0.2.1, unix:", "https://10.0.2.1:0"),
+        (["unix:", "192.168.0.2"], "1.2.3.4, 10.0.2.1, 192.168.0.2", "https://10.0.2.1:0"),
+    ],
+)
+async def test_proxy_headers_unix_socket(trusted_hosts, forwarded_for, expected) -> None:
+    async with make_httpx_client(trusted_hosts, client=None, server=("/xsock", None)) as client:
+        headers = {X_FORWARDED_FOR: forwarded_for, X_FORWARDED_PROTO: "https"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    assert response.text == expected
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("trusted_hosts", "forwarded_for", "expected"),
+    [
+        ("*", "1.2.3.4, 10.0.2.1", "https://1.2.3.4:0"),
+        ("10.0.2.1", "1.2.3.4, 10.0.2.1", "http://NONE"),
+        ("unix:", "1.2.3.4, 10.0.2.1", "http://NONE"),
+    ],
+)
+async def test_proxy_headers_unknown_socket(trusted_hosts, forwarded_for, expected) -> None:
+    async with make_httpx_client(trusted_hosts, client=None, server=None) as client:
+        headers = {X_FORWARDED_FOR: forwarded_for, X_FORWARDED_PROTO: "https"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    assert response.text == expected
 
 
 @pytest.mark.anyio
