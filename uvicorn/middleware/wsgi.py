@@ -52,7 +52,7 @@ def build_environ(scope: HTTPScope, message: ASGIReceiveEvent, body: io.BytesIO)
     if server is None:
         server = ("localhost", 80)
     environ["SERVER_NAME"] = server[0]
-    environ["SERVER_PORT"] = server[1]
+    environ["SERVER_PORT"] = str(server[1]) if server[1] is not None else ""
 
     # Get client IP address
     client = scope.get("client")
