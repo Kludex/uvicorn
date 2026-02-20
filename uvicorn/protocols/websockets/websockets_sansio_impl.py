@@ -28,6 +28,7 @@ from uvicorn.config import Config
 from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.protocols.utils import (
     ClientDisconnected,
+    get_client_addr,
     get_local_addr,
     get_path_with_query_string,
     get_remote_addr,
@@ -187,14 +188,14 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         raw_path, _, query_string = event.path.partition("?")
         self.scope: WebSocketScope = {
             "type": "websocket",
-            "asgi": {"version": self.config.asgi_version, "spec_version": "2.3"},
+            "asgi": {"version": self.config.asgi_version, "spec_version": "2.4"},
             "http_version": "1.1",
             "scheme": self.scheme,
             "server": self.server,
             "client": self.client,
             "root_path": self.root_path,
-            "path": unquote(raw_path),
-            "raw_path": raw_path.encode("ascii"),
+            "path": self.root_path + unquote(raw_path),
+            "raw_path": self.root_path.encode("ascii") + raw_path.encode("ascii"),
             "query_string": query_string.encode("ascii"),
             "headers": headers,
             "subprotocols": event.headers.get_all("Sec-WebSocket-Protocol"),
@@ -301,11 +302,11 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 message = cast(WebSocketAcceptEvent, message)
                 self.logger.info(
                     '%s - "WebSocket %s" [accepted]',
-                    self.scope["client"],
+                    get_client_addr(self.scope),
                     get_path_with_query_string(self.scope),
                 )
                 headers = [
-                    (name.decode("latin-1").lower(), value.decode("latin-1").lower())
+                    (name.decode("latin-1").lower(), value.decode("latin-1"))
                     for name, value in (self.default_headers + list(message.get("headers", [])))
                 ]
                 accepted_subprotocol = message.get("subprotocol")
@@ -324,7 +325,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 self.queue.put_nowait({"type": "websocket.disconnect", "code": 1006})
                 self.logger.info(
                     '%s - "WebSocket %s" 403',
-                    self.scope["client"],
+                    get_client_addr(self.scope),
                     get_path_with_query_string(self.scope),
                 )
                 response = self.conn.reject(HTTPStatus.FORBIDDEN, "")
@@ -340,7 +341,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                     raise RuntimeError("Invalid HTTP status code '%d' in response." % message["status"])
                 self.logger.info(
                     '%s - "WebSocket %s" %d',
-                    self.scope["client"],
+                    get_client_addr(self.scope),
                     get_path_with_query_string(self.scope),
                     message["status"],
                 )
@@ -363,23 +364,24 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                     message = cast(WebSocketSendEvent, message)
                     bytes_data = message.get("bytes")
                     text_data = message.get("text")
-                    if text_data:
-                        self.conn.send_text(text_data.encode())
-                    elif bytes_data:
+                    if bytes_data is not None:
                         self.conn.send_binary(bytes_data)
+                    elif text_data is not None:
+                        self.conn.send_text(text_data.encode())
                     output = self.conn.data_to_send()
                     self.transport.write(b"".join(output))
 
-                elif message_type == "websocket.close" and not self.transport.is_closing():
-                    message = cast(WebSocketCloseEvent, message)
-                    code = message.get("code", 1000)
-                    reason = message.get("reason", "") or ""
-                    self.queue.put_nowait({"type": "websocket.disconnect", "code": code, "reason": reason})
-                    self.conn.send_close(code, reason)
-                    output = self.conn.data_to_send()
-                    self.transport.write(b"".join(output))
-                    self.close_sent = True
-                    self.transport.close()
+                elif message_type == "websocket.close":
+                    if not self.transport.is_closing():
+                        message = cast(WebSocketCloseEvent, message)
+                        code = message.get("code", 1000)
+                        reason = message.get("reason", "") or ""
+                        self.queue.put_nowait({"type": "websocket.disconnect", "code": code, "reason": reason})
+                        self.conn.send_close(code, reason)
+                        output = self.conn.data_to_send()
+                        self.transport.write(b"".join(output))
+                        self.close_sent = True
+                        self.transport.close()
                 else:
                     msg = "Expected ASGI message 'websocket.send' or 'websocket.close', but got '%s'."
                     raise RuntimeError(msg % message_type)
