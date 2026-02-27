@@ -681,7 +681,7 @@ async def test_root_path(http_protocol_cls: type[HTTPProtocol]):
     assert b"root_path=/app path=/app/" in protocol.transport.buffer
 
 
-async def test_asgi_root_path(http_protocol_cls: HTTPProtocol):
+async def test_asgi_root_path(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         assert scope["type"] == "http"
         root_path = scope.get("root_path", "")
@@ -704,7 +704,7 @@ async def test_asgi_root_path(http_protocol_cls: HTTPProtocol):
     assert b"root_path=/unrelated path=/one/two" in protocol.transport.buffer
 
 
-async def test_raw_path(http_protocol_cls: HTTPProtocol):
+async def test_raw_path(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         assert scope["type"] == "http"
         path = scope["path"]

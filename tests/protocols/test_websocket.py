@@ -257,9 +257,9 @@ async def test_path_and_raw_path(ws_protocol_cls: WSProtocol, http_protocol_cls:
 async def test_root_path(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
     class App(WebSocketResponse):
         async def websocket_connect(self, message: WebSocketConnectEvent):
-            assert self.scope["root_path"] == "/app"
-            assert self.scope["path"] == "/app/one/two"
-            assert self.scope["raw_path"] == b"/app/one%2Ftwo"
+            assert self.scope.get("root_path") == "/app"
+            assert self.scope.get("path") == "/app/one/two"
+            assert self.scope.get("raw_path") == b"/app/one%2Ftwo"
             await self.send({"type": "websocket.accept"})
 
     async def open_connection(url: str):
@@ -277,9 +277,9 @@ async def test_root_path(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPPro
 async def test_asgi_root_path(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
     class App(WebSocketResponse):
         async def websocket_connect(self, message: WebSocketConnectEvent):
-            assert self.scope["root_path"] == "/proxy"
-            assert self.scope["path"] == "/one/two"
-            assert self.scope["raw_path"] == b"/one%2Ftwo"
+            assert self.scope.get("root_path") == "/proxy"
+            assert self.scope.get("path") == "/one/two"
+            assert self.scope.get("raw_path") == b"/one%2Ftwo"
             await self.send({"type": "websocket.accept"})
 
     async def open_connection(url: str):
