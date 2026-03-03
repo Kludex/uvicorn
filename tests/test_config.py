@@ -276,6 +276,36 @@ def test_ssl_config(
     assert config.is_ssl is True
 
 
+def test_ssl_config_with_custom_context() -> None:
+    import ssl
+
+    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    config = Config(app=asgi_app, ssl_context=ssl_context)
+    config.load()
+
+    assert config.is_ssl is True
+    assert config.ssl is ssl_context
+
+
+def test_ssl_context_takes_precedence(
+    tls_ca_certificate_pem_path: str,
+    tls_ca_certificate_private_key_path: str,
+) -> None:
+    import ssl
+
+    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    config = Config(
+        app=asgi_app,
+        ssl_certfile=tls_ca_certificate_pem_path,
+        ssl_keyfile=tls_ca_certificate_private_key_path,
+        ssl_context=ssl_context,
+    )
+    config.load()
+
+    assert config.is_ssl is True
+    assert config.ssl is ssl_context
+
+
 def test_ssl_config_combined(tls_certificate_key_and_chain_path: str) -> None:
     config = Config(
         app=asgi_app,
