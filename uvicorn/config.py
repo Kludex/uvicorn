@@ -228,6 +228,7 @@ class Config:
         headers: list[tuple[str, str]] | None = None,
         factory: bool = False,
         h11_max_incomplete_event_size: int | None = None,
+        ssl_context: ssl.SSLContext | None = None,
     ):
         self.app = app
         self.host = host
@@ -271,6 +272,7 @@ class Config:
         self.ssl_cert_reqs = ssl_cert_reqs
         self.ssl_ca_certs = ssl_ca_certs
         self.ssl_ciphers = ssl_ciphers
+        self.ssl_context = ssl_context
         self.headers: list[tuple[str, str]] = headers or []
         self.encoded_headers: list[tuple[bytes, bytes]] = []
         self.factory = factory
@@ -355,7 +357,7 @@ class Config:
 
     @property
     def is_ssl(self) -> bool:
-        return bool(self.ssl_keyfile or self.ssl_certfile)
+        return bool(self.ssl_keyfile or self.ssl_certfile or self.ssl_context)
 
     @property
     def use_subprocess(self) -> bool:
@@ -402,9 +404,11 @@ class Config:
     def load(self) -> None:
         assert not self.loaded
 
-        if self.is_ssl:
+        if self.ssl_context is not None:
+            self.ssl: ssl.SSLContext | None = self.ssl_context
+        elif self.is_ssl:
             assert self.ssl_certfile
-            self.ssl: ssl.SSLContext | None = create_ssl_context(
+            self.ssl = create_ssl_context(
                 keyfile=self.ssl_keyfile,
                 certfile=self.ssl_certfile,
                 password=self.ssl_keyfile_password,
