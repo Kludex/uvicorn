@@ -121,6 +121,11 @@ class HTTPResponseBodyEvent(TypedDict):
     more_body: NotRequired[bool]
 
 
+class HTTPResponsePathSendEvent(TypedDict):
+    type: Literal["http.response.pathsend"]
+    path: str
+
+
 class HTTPResponseTrailersEvent(TypedDict):
     type: Literal["http.response.trailers"]
     headers: Iterable[tuple[bytes, bytes]]
@@ -244,6 +249,7 @@ ASGIReceiveEvent = (
 ASGISendEvent = (
     HTTPResponseStartEvent
     | HTTPResponseBodyEvent
+    | HTTPResponsePathSendEvent
     | HTTPResponseTrailersEvent
     | HTTPServerPushEvent
     | HTTPDisconnectEvent
