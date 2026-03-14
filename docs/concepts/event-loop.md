@@ -16,7 +16,7 @@ Since `uvloop` is not compatible with Windows or PyPy, it is not available on th
 On Windows, the asyncio implementation uses the standard [`ProactorEventLoop`][asyncio.ProactorEventLoop] in single-process mode.
 When running with `--reload` or multiple workers, it uses [`SelectorEventLoop`][asyncio.SelectorEventLoop] instead.
 
-??? info "Why does `SelectorEventLoop` not work with multiple processes on Windows?"
+??? info "Why can `ProactorEventLoop` fail with multiple processes on Windows?"
     If you want to know more about it, you can read the issue [#cpython/122240](https://github.com/python/cpython/issues/122240).
 
 ## Custom Event Loop
