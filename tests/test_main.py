@@ -85,6 +85,14 @@ def test_run_invalid_app_config_combination(caplog: pytest.LogCaptureFixture) ->
     )
 
 
+def test_run_invalid_root_path_config_combination(caplog: pytest.LogCaptureFixture) -> None:
+    with pytest.raises(SystemExit) as exit_exception:
+        run(app, root_path="/app", asgi_root_path="/proxy")
+    assert exit_exception.value.code == 1
+    assert caplog.records[-1].name == "uvicorn.error"
+    assert caplog.records[-1].message == "Setting both 'root_path' and 'asgi_root_path' is not supported."
+
+
 def test_run_startup_failure(caplog: pytest.LogCaptureFixture) -> None:
     async def app(scope, receive, send):
         assert scope["type"] == "lifespan"

@@ -254,6 +254,51 @@ async def test_path_and_raw_path(ws_protocol_cls: WSProtocol, http_protocol_cls:
         assert is_open
 
 
+async def test_root_path(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
+    class App(WebSocketResponse):
+        async def websocket_connect(self, message: WebSocketConnectEvent):
+            assert self.scope.get("root_path") == "/app"
+            assert self.scope.get("path") == "/app/one/two"
+            assert self.scope.get("raw_path") == b"/app/one%2Ftwo"
+            await self.send({"type": "websocket.accept"})
+
+    async def open_connection(url: str):
+        async with websockets.client.connect(url) as websocket:
+            return websocket.open
+
+    config = Config(
+        app=App, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port, root_path="/app"
+    )
+    async with run_server(config):
+        is_open = await open_connection(f"ws://127.0.0.1:{unused_tcp_port}/one%2Ftwo")
+        assert is_open
+
+
+async def test_asgi_root_path(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
+    class App(WebSocketResponse):
+        async def websocket_connect(self, message: WebSocketConnectEvent):
+            assert self.scope.get("root_path") == "/proxy"
+            assert self.scope.get("path") == "/one/two"
+            assert self.scope.get("raw_path") == b"/one%2Ftwo"
+            await self.send({"type": "websocket.accept"})
+
+    async def open_connection(url: str):
+        async with websockets.client.connect(url) as websocket:
+            return websocket.open
+
+    config = Config(
+        app=App,
+        ws=ws_protocol_cls,
+        http=http_protocol_cls,
+        lifespan="off",
+        port=unused_tcp_port,
+        asgi_root_path="/proxy",
+    )
+    async with run_server(config):
+        is_open = await open_connection(f"ws://127.0.0.1:{unused_tcp_port}/one%2Ftwo")
+        assert is_open
+
+
 async def test_send_text_data_to_client(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
 ):

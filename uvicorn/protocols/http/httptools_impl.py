@@ -70,6 +70,7 @@ class HttpToolsProtocol(asyncio.Protocol):
 
         self.ws_protocol_class = config.ws_protocol_class
         self.root_path = config.root_path
+        self.asgi_root_path = config.asgi_root_path
         self.limit_concurrency = config.limit_concurrency
         self.app_state = app_state
 
@@ -229,7 +230,7 @@ class HttpToolsProtocol(asyncio.Protocol):
             "server": self.server,
             "client": self.client,
             "scheme": self.scheme,  # type: ignore[typeddict-item]
-            "root_path": self.root_path,
+            "root_path": self.asgi_root_path,
             "headers": self.headers,
             "state": self.app_state.copy(),
         }

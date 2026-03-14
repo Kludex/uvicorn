@@ -74,6 +74,7 @@ class WebSocketProtocol(WebSocketServerProtocol):
         self.app = cast(ASGI3Application, config.loaded_app)
         self.loop = _loop or asyncio.get_event_loop()
         self.root_path = config.root_path
+        self.asgi_root_path = config.asgi_root_path
         self.app_state = app_state
 
         # Shared server state
@@ -188,7 +189,7 @@ class WebSocketProtocol(WebSocketServerProtocol):
             "scheme": self.scheme,
             "server": self.server,
             "client": self.client,
-            "root_path": self.root_path,
+            "root_path": self.asgi_root_path,
             "path": full_path,
             "raw_path": full_raw_path,
             "query_string": query_string.encode("ascii"),

@@ -253,7 +253,14 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     "--root-path",
     type=str,
     default="",
-    help="Set the ASGI 'root_path' for applications submounted below a given URL path.",
+    help="Serve the application under the provided root path.",
+)
+@click.option(
+    "--asgi-root-path",
+    type=str,
+    default="",
+    help="Set the ASGI 'root_path' for applications submounted below a given URL path. "
+    "This is useful for applications served on a sub-URL, such as behind a reverse proxy.",
 )
 @click.option(
     "--limit-concurrency",
@@ -410,6 +417,7 @@ def main(
     date_header: bool,
     forwarded_allow_ips: str,
     root_path: str,
+    asgi_root_path: str,
     limit_concurrency: int,
     backlog: int,
     limit_max_requests: int,
@@ -461,6 +469,7 @@ def main(
         date_header=date_header,
         forwarded_allow_ips=forwarded_allow_ips,
         root_path=root_path,
+        asgi_root_path=asgi_root_path,
         limit_concurrency=limit_concurrency,
         backlog=backlog,
         limit_max_requests=limit_max_requests,
@@ -515,6 +524,7 @@ def run(
     date_header: bool = True,
     forwarded_allow_ips: list[str] | str | None = None,
     root_path: str = "",
+    asgi_root_path: str = "",
     limit_concurrency: int | None = None,
     backlog: int = 2048,
     limit_max_requests: int | None = None,
@@ -569,6 +579,7 @@ def run(
         date_header=date_header,
         forwarded_allow_ips=forwarded_allow_ips,
         root_path=root_path,
+        asgi_root_path=asgi_root_path,
         limit_concurrency=limit_concurrency,
         backlog=backlog,
         limit_max_requests=limit_max_requests,
@@ -593,6 +604,10 @@ def run(
     if (config.reload or config.workers > 1) and not isinstance(app, str):
         logger = logging.getLogger("uvicorn.error")
         logger.warning("You must pass the application as an import string to enable 'reload' or 'workers'.")
+        sys.exit(1)
+
+    if root_path and asgi_root_path:
+        # Config did already log an error. Just quit.
         sys.exit(1)
 
     try:

@@ -1724,7 +1724,7 @@ requires-dist = [
     { name = "pyyaml", marker = "extra == 'standard'", specifier = ">=5.1" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'", specifier = ">=4.0" },
     { name = "uvloop", marker = "platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32' and extra == 'standard'", specifier = ">=0.15.1" },
-    { name = "watchfiles", marker = "extra == 'standard'", specifier = ">=0.13" },
+    { name = "watchfiles", marker = "extra == 'standard'", specifier = ">=0.20" },
     { name = "websockets", marker = "extra == 'standard'", specifier = ">=10.4" },
 ]
 provides-extras = ["standard"]

@@ -681,6 +681,29 @@ async def test_root_path(http_protocol_cls: type[HTTPProtocol]):
     assert b"root_path=/app path=/app/" in protocol.transport.buffer
 
 
+async def test_asgi_root_path(http_protocol_cls: type[HTTPProtocol]):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert scope["type"] == "http"
+        root_path = scope.get("root_path", "")
+        path = scope["path"]
+        response = Response(f"root_path={root_path} path={path}", media_type="text/plain")
+        await response(scope, receive, send)
+
+    protocol = get_connected_protocol(app, http_protocol_cls, asgi_root_path="/one")
+    protocol.data_received(GET_REQUEST_WITH_RAW_PATH)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"root_path=/one path=/one/two" in protocol.transport.buffer
+
+    # This is a misconfiguration, but it helps us confirm that asgi_root_path
+    # doesn't prefix the path like root_path does.
+    protocol = get_connected_protocol(app, http_protocol_cls, asgi_root_path="/unrelated")
+    protocol.data_received(GET_REQUEST_WITH_RAW_PATH)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"root_path=/unrelated path=/one/two" in protocol.transport.buffer
+
+
 async def test_raw_path(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         assert scope["type"] == "http"
