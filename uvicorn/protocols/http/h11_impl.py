@@ -471,10 +471,10 @@ class RequestResponseCycle:
             self.waiting_for_100_continue = False
 
             status = message["status"]
-            headers = self.default_headers + list(message.get("headers", []))
+            headers = [*self.default_headers, *message.get("headers", [])]
 
             if CLOSE_HEADER in self.scope["headers"] and CLOSE_HEADER not in headers:
-                headers = headers + [CLOSE_HEADER]
+                headers.append(CLOSE_HEADER)
 
             if self.access_log:
                 self.access_logger.info(

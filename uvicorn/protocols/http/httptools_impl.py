@@ -474,10 +474,7 @@ class RequestResponseCycle:
             self.waiting_for_100_continue = False
 
             status_code = message["status"]
-            headers = self.default_headers + list(message.get("headers", []))
-
-            if CLOSE_HEADER in self.scope["headers"] and CLOSE_HEADER not in headers:
-                headers = headers + [CLOSE_HEADER]
+            headers = message.get("headers", [])
 
             if self.access_log:
                 self.access_logger.info(
@@ -491,6 +488,10 @@ class RequestResponseCycle:
 
             # Write response status line and headers
             content = [STATUS_LINE[status_code]]
+            has_close_header = False
+
+            for name, value in self.default_headers:
+                content.extend([name, b": ", value, b"\r\n"])
 
             for name, value in headers:
                 if HEADER_RE.search(name):
@@ -507,7 +508,12 @@ class RequestResponseCycle:
                     self.chunked_encoding = True
                 elif name == b"connection" and value.lower() == b"close":
                     self.keep_alive = False
+                    has_close_header = True
                 content.extend([name, b": ", value, b"\r\n"])
+
+            if not has_close_header and CLOSE_HEADER in self.scope["headers"]:
+                content.extend([b"connection", b": ", b"close", b"\r\n"])
+                self.keep_alive = False
 
             if self.chunked_encoding is None and self.scope["method"] != "HEAD" and status_code not in (204, 304):
                 # Neither content-length nor transfer-encoding specified
