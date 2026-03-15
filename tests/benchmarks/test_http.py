@@ -7,6 +7,8 @@ import pytest
 from tests.benchmarks.http import (
     CONNECTION_CLOSE_REQUEST,
     FINISH_POST_REQUEST,
+    FRAGMENTED_BODY_CHUNKS,
+    FRAGMENTED_POST_HEADERS,
     HTTP10_GET_REQUEST,
     LARGE_POST_REQUEST,
     SIMPLE_GET_REQUEST,
@@ -88,6 +90,14 @@ async def test_bench_http10(http_protocol_cls: type[HTTPProtocol]) -> None:
 async def test_bench_connection_close(http_protocol_cls: type[HTTPProtocol]) -> None:
     protocol = get_connected_protocol(_plain_text_app, http_protocol_cls)
     protocol.data_received(CONNECTION_CLOSE_REQUEST)
+    await protocol.loop.run_one()
+
+
+async def test_bench_fragmented_body(http_protocol_cls: type[HTTPProtocol]) -> None:
+    protocol = get_connected_protocol(_plain_text_app, http_protocol_cls)
+    protocol.data_received(FRAGMENTED_POST_HEADERS)
+    for chunk in FRAGMENTED_BODY_CHUNKS:
+        protocol.data_received(chunk)
     await protocol.loop.run_one()
 
 
