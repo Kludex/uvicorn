@@ -335,6 +335,8 @@ async def test_invalid_header_name(http_protocol_cls: type[HTTPProtocol], name: 
     protocol = get_connected_protocol(app, http_protocol_cls)
     protocol.data_received(SIMPLE_GET_REQUEST)
     await protocol.loop.run_one()
+    # No 500 is sent because response_started is set before header validation,
+    # so the error handler just closes the connection.
     assert b"HTTP/1.1 500 Internal Server Error" not in protocol.transport.buffer
     assert name.encode() not in protocol.transport.buffer
     assert protocol.transport.is_closing()
