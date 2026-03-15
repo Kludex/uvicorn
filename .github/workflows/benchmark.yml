@@ -7,6 +7,10 @@ on:
   pull_request:
     branches: ["main"]
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   benchmarks:
     name: Run benchmarks
@@ -24,7 +28,7 @@ jobs:
         shell: bash
 
       - name: Run the benchmarks
-        uses: CodSpeedHQ/action@v4
+        uses: CodSpeedHQ/action@281164b0f014a4e7badd2c02cecad9b595b70537 # v4
         with:
           mode: instrumentation
           run: uv run pytest tests/benchmarks/ --codspeed
