@@ -27,7 +27,7 @@ from uvicorn.protocols.http.flow_control import CLOSE_HEADER, HIGH_WATER_LIMIT, 
 from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
 from uvicorn.server import ServerState
 
-HEADER_RE = re.compile(b'[\x00-\x1f\x7f()<>@,;:[]={} \t\\"]')
+HEADER_RE = re.compile(b'[\x00-\x1f\x7f()<>@,;:\\[\\]={} \t\\\\"]')
 HEADER_VALUE_RE = re.compile(b"[\x00-\x08\x0a-\x1f\x7f]")
 
 

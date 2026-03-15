@@ -306,6 +306,42 @@ async def test_header_value_allowed_characters(http_protocol_cls: type[HTTPProto
     assert b"Hello, world" in protocol.transport.buffer
 
 
+@pytest.mark.parametrize(
+    "name",
+    [
+        pytest.param("bad header", id="reject_space"),
+        pytest.param("bad\x00header", id="reject_null"),
+        pytest.param("bad(header", id="reject_open_paren"),
+        pytest.param("bad)header", id="reject_close_paren"),
+        pytest.param("bad<header", id="reject_less_than"),
+        pytest.param("bad>header", id="reject_greater_than"),
+        pytest.param("bad@header", id="reject_at"),
+        pytest.param("bad,header", id="reject_comma"),
+        pytest.param("bad;header", id="reject_semicolon"),
+        pytest.param("bad:header", id="reject_colon"),
+        pytest.param("bad[header", id="reject_open_bracket"),
+        pytest.param("bad]header", id="reject_close_bracket"),
+        pytest.param("bad{header", id="reject_open_brace"),
+        pytest.param("bad}header", id="reject_close_brace"),
+        pytest.param("bad=header", id="reject_equals"),
+        pytest.param('bad"header', id="reject_double_quote"),
+        pytest.param("bad\\header", id="reject_backslash"),
+        pytest.param("bad\theader", id="reject_tab"),
+        pytest.param("bad\x7fheader", id="reject_del"),
+    ],
+)
+async def test_invalid_header_name(http_protocol_cls: type[HTTPProtocol], name: str):
+    app = Response("Hello, world", media_type="text/plain", headers={name: "value"})
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    # No 500 is sent because `response_started` is set before header validation,
+    # so the error handler just closes the connection.
+    assert b"HTTP/1.1 500 Internal Server Error" not in protocol.transport.buffer
+    assert name.encode() not in protocol.transport.buffer
+    assert protocol.transport.is_closing()
+
+
 @pytest.mark.parametrize("path", ["/", "/?foo", "/?foo=bar", "/?foo=bar&baz=1"])
 async def test_request_logging(path: str, http_protocol_cls: type[HTTPProtocol], caplog: pytest.LogCaptureFixture):
     get_request_with_query_string = b"\r\n".join(
