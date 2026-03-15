@@ -62,6 +62,7 @@ class H11Protocol(asyncio.Protocol):
         )
         self.ws_protocol_class = config.ws_protocol_class
         self.root_path = config.root_path
+        self.root_path_encoded = config.root_path.encode("ascii")
         self.limit_concurrency = config.limit_concurrency
         self.app_state = app_state
 
@@ -199,7 +200,7 @@ class H11Protocol(asyncio.Protocol):
                 raw_path, _, query_string = event.target.partition(b"?")
                 path = unquote(raw_path.decode("ascii"))
                 full_path = self.root_path + path
-                full_raw_path = self.root_path.encode("ascii") + raw_path
+                full_raw_path = self.root_path_encoded + raw_path
                 self.scope = {
                     "type": "http",
                     "asgi": {"version": self.config.asgi_version, "spec_version": "2.3"},
