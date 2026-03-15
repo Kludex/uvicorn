@@ -488,6 +488,7 @@ class RequestResponseCycle:
 
             # Write response status line and headers
             content = [STATUS_LINE[status_code]]
+            has_close_header = False
 
             for name, value in self.default_headers:
                 content.extend([name, b": ", value, b"\r\n"])
@@ -507,9 +508,10 @@ class RequestResponseCycle:
                     self.chunked_encoding = True
                 elif name == b"connection" and value.lower() == b"close":
                     self.keep_alive = False
+                    has_close_header = True
                 content.extend([name, b": ", value, b"\r\n"])
 
-            if self.keep_alive and CLOSE_HEADER in self.scope["headers"]:
+            if not has_close_header and CLOSE_HEADER in self.scope["headers"]:
                 content.extend([b"connection", b": ", b"close", b"\r\n"])
                 self.keep_alive = False
 
