@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, TypeAlias
 from uvicorn._types import ASGIApplication, Scope
 from uvicorn.config import Config
 from uvicorn.lifespan.off import LifespanOff
-from uvicorn.lifespan.on import LifespanOn
 from uvicorn.protocols.http.h11_impl import H11Protocol
 from uvicorn.server import ServerState
 
@@ -158,16 +157,17 @@ class MockProtocol(asyncio.Protocol):
     scope: Scope
 
 
+def make_config(app: ASGIApplication, **kwargs: Any) -> Config:
+    return Config(app=app, **kwargs)
+
+
 def get_connected_protocol(
-    app: ASGIApplication,
+    config: Config,
     http_protocol_cls: type[HTTPProtocol],
-    lifespan: LifespanOff | LifespanOn | None = None,
-    **kwargs: Any,
 ) -> MockProtocol:
     loop = MockLoop()
     transport = MockTransport()
-    config = Config(app=app, **kwargs)
-    lifespan = lifespan or LifespanOff(config)
+    lifespan = LifespanOff(config)
     server_state = ServerState()
     protocol = http_protocol_cls(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)  # type: ignore
     protocol.connection_made(transport)  # type: ignore[arg-type]

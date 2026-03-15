@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, TypeAlias
 
 from tests.benchmarks.http import MockLoop, MockTransport
-from uvicorn._types import ASGIApplication
 from uvicorn.config import Config
 from uvicorn.lifespan.off import LifespanOff
 from uvicorn.server import ServerState
@@ -31,10 +30,9 @@ WS_TEXT_FRAME = b"\x81\x8d\x00\x00\x00\x00Hello, world!"
 WS_CLOSE_FRAME = b"\x88\x82\x00\x00\x00\x00\x03\xe8"
 
 
-def get_connected_ws_protocol(app: ASGIApplication, ws_protocol_cls: WSProtocolClass, **kwargs: Any) -> Any:
+def get_connected_ws_protocol(config: Config, ws_protocol_cls: WSProtocolClass) -> Any:
     loop = MockLoop()
     transport = MockTransport()
-    config = Config(app=app, access_log=False, **kwargs)
     lifespan = LifespanOff(config)
     server_state = ServerState()
     protocol = ws_protocol_cls(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)  # type: ignore[arg-type]
