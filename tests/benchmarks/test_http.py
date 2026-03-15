@@ -31,7 +31,7 @@ async def _body_echo_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGIS
     body = b""
     while True:
         message = await receive()
-        body += message.get("body", b"")
+        body += message.get("body", b"")  # type: ignore[operator]
         if not message.get("more_body", False):
             break
     headers = [(b"content-length", str(len(body)).encode())]
