@@ -401,7 +401,7 @@ class RequestResponseCycle:
         self.waiting_for_100_continue = expect_100_continue
 
         # Request state
-        self.body = b""
+        self.body = bytearray()
         self.more_body = True
 
         # Response state
@@ -572,6 +572,6 @@ class RequestResponseCycle:
 
         if self.disconnected or self.response_complete:
             return {"type": "http.disconnect"}
-        message: HTTPRequestEvent = {"type": "http.request", "body": self.body, "more_body": self.more_body}
-        self.body = b""
+        message: HTTPRequestEvent = {"type": "http.request", "body": bytes(self.body), "more_body": self.more_body}
+        self.body = bytearray()
         return message

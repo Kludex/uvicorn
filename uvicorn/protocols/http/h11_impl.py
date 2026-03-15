@@ -397,7 +397,7 @@ class RequestResponseCycle:
         self.waiting_for_100_continue = conn.they_are_waiting_for_100_continue
 
         # Request state
-        self.body = b""
+        self.body = bytearray()
         self.more_body = True
 
         # Response state
@@ -543,8 +543,8 @@ class RequestResponseCycle:
 
         message: HTTPRequestEvent = {
             "type": "http.request",
-            "body": self.body,
+            "body": bytes(self.body),
             "more_body": self.more_body,
         }
-        self.body = b""
+        self.body = bytearray()
         return message
