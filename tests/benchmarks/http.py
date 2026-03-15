@@ -61,20 +61,6 @@ START_POST_REQUEST = b"\r\n".join(
 
 FINISH_POST_REQUEST = b'{"hello": "world"}'
 
-BODY_CHUNK_SIZE = 256
-FRAGMENTED_BODY_SIZE = 100_000
-FRAGMENTED_POST_HEADERS = b"\r\n".join(
-    [
-        b"POST / HTTP/1.1",
-        b"Host: example.org",
-        b"Content-Type: application/octet-stream",
-        b"Content-Length: " + str(FRAGMENTED_BODY_SIZE).encode(),
-        b"",
-        b"",
-    ]
-)
-FRAGMENTED_BODY_CHUNKS = [b"x" * BODY_CHUNK_SIZE] * (FRAGMENTED_BODY_SIZE // BODY_CHUNK_SIZE)
-
 
 class MockTransport:
     def __init__(self) -> None:
