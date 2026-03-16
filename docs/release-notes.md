@@ -12,7 +12,6 @@ toc_depth: 2
 
 * Escape brackets and backslash in httptools `HEADER_RE` regex (#2824)
 * Fix multiple issues in websockets sans-io implementation (#2825)
-* Clarify Windows asyncio event loop selection in docs (#2843)
 
 ## 0.41.0 (February 16, 2026)
 
