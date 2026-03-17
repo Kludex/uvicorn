@@ -5,7 +5,7 @@ import contextvars
 import http
 import logging
 from collections.abc import Callable
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import unquote
 
 import h11
@@ -465,7 +465,8 @@ class RequestResponseCycle:
             if message_type != "http.response.start":
                 msg = "Expected ASGI message 'http.response.start', but got '%s'."
                 raise RuntimeError(msg % message_type)
-            message = cast("HTTPResponseStartEvent", message)
+            if TYPE_CHECKING:
+                message = cast("HTTPResponseStartEvent", message)
 
             self.response_started = True
             self.waiting_for_100_continue = False
@@ -497,7 +498,8 @@ class RequestResponseCycle:
             if message_type != "http.response.body":
                 msg = "Expected ASGI message 'http.response.body', but got '%s'."
                 raise RuntimeError(msg % message_type)
-            message = cast("HTTPResponseBodyEvent", message)
+            if TYPE_CHECKING:
+                message = cast("HTTPResponseBodyEvent", message)
 
             body = message.get("body", b"")
             more_body = message.get("more_body", False)

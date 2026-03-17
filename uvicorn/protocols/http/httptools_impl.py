@@ -9,7 +9,7 @@ import urllib
 from asyncio.events import TimerHandle
 from collections import deque
 from collections.abc import Callable
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import httptools
 
@@ -468,7 +468,8 @@ class RequestResponseCycle:
             if message_type != "http.response.start":
                 msg = "Expected ASGI message 'http.response.start', but got '%s'."
                 raise RuntimeError(msg % message_type)
-            message = cast("HTTPResponseStartEvent", message)
+            if TYPE_CHECKING:
+                message = cast("HTTPResponseStartEvent", message)
 
             self.response_started = True
             self.waiting_for_100_continue = False
@@ -523,7 +524,9 @@ class RequestResponseCycle:
                 msg = "Expected ASGI message 'http.response.body', but got '%s'."
                 raise RuntimeError(msg % message_type)
 
-            body = cast(bytes, message.get("body", b""))
+            body = message.get("body", b"")
+            if TYPE_CHECKING:
+                body = cast(bytes, body)
             more_body = message.get("more_body", False)
 
             # Write response body

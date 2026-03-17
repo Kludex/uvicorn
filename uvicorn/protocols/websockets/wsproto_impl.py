@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import unquote
 
 import wsproto
@@ -253,7 +253,8 @@ class WSProtocol(asyncio.Protocol):
 
         if not self.handshake_complete:
             if message_type == "websocket.accept":
-                message = cast(WebSocketAcceptEvent, message)
+                if TYPE_CHECKING:
+                    message = cast(WebSocketAcceptEvent, message)
                 self.logger.info(
                     '%s - "WebSocket %s" [accepted]',
                     get_client_addr(self.scope),
@@ -290,7 +291,8 @@ class WSProtocol(asyncio.Protocol):
                 self.transport.close()
 
             elif message_type == "websocket.http.response.start":
-                message = cast(WebSocketResponseStartEvent, message)
+                if TYPE_CHECKING:
+                    message = cast(WebSocketResponseStartEvent, message)
                 # ensure status code is in the valid range
                 if not (100 <= message["status"] < 600):
                     msg = "Invalid HTTP status code '%d' in response."
@@ -322,7 +324,8 @@ class WSProtocol(asyncio.Protocol):
         elif not self.close_sent and not self.response_started:
             try:
                 if message_type == "websocket.send":
-                    message = cast(WebSocketSendEvent, message)
+                    if TYPE_CHECKING:
+                        message = cast(WebSocketSendEvent, message)
                     bytes_data = message.get("bytes")
                     text_data = message.get("text")
                     data = text_data if bytes_data is None else bytes_data
@@ -331,7 +334,8 @@ class WSProtocol(asyncio.Protocol):
                         self.transport.write(output)
 
                 elif message_type == "websocket.close":
-                    message = cast(WebSocketCloseEvent, message)
+                    if TYPE_CHECKING:
+                        message = cast(WebSocketCloseEvent, message)
                     self.close_sent = True
                     code = message.get("code", 1000)
                     reason = message.get("reason", "") or ""
@@ -348,7 +352,8 @@ class WSProtocol(asyncio.Protocol):
                 raise ClientDisconnected from exc
         elif self.response_started:
             if message_type == "websocket.http.response.body":
-                message = cast("WebSocketResponseBodyEvent", message)
+                if TYPE_CHECKING:
+                    message = cast("WebSocketResponseBodyEvent", message)
                 body_finished = not message.get("more_body", False)
                 reject_data = events.RejectData(data=message["body"], body_finished=body_finished)
                 output = self.conn.send(reject_data)

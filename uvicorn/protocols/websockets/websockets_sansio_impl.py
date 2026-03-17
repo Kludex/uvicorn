@@ -5,7 +5,7 @@ import logging
 import sys
 from asyncio.transports import BaseTransport, Transport
 from http import HTTPStatus
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import unquote
 
 from websockets.exceptions import InvalidState
@@ -102,7 +102,8 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
 
     def connection_made(self, transport: BaseTransport) -> None:
         """Called when a connection is made."""
-        transport = cast(Transport, transport)
+        if TYPE_CHECKING:
+            transport = cast(Transport, transport)
         self.connections.add(self)
         self.transport = transport
         self.server = get_local_addr(transport)
@@ -299,7 +300,8 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
 
         if not self.handshake_complete and self.initial_response is None:
             if message_type == "websocket.accept":
-                message = cast(WebSocketAcceptEvent, message)
+                if TYPE_CHECKING:
+                    message = cast(WebSocketAcceptEvent, message)
                 self.logger.info(
                     '%s - "WebSocket %s" [accepted]',
                     get_client_addr(self.scope),
@@ -321,7 +323,8 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                     self.transport.write(b"".join(output))
 
             elif message_type == "websocket.close":
-                message = cast(WebSocketCloseEvent, message)
+                if TYPE_CHECKING:
+                    message = cast(WebSocketCloseEvent, message)
                 self.queue.put_nowait({"type": "websocket.disconnect", "code": 1006})
                 self.logger.info(
                     '%s - "WebSocket %s" 403',
@@ -336,7 +339,8 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 self.transport.write(b"".join(output))
                 self.transport.close()
             elif message_type == "websocket.http.response.start" and self.initial_response is None:
-                message = cast(WebSocketResponseStartEvent, message)
+                if TYPE_CHECKING:
+                    message = cast(WebSocketResponseStartEvent, message)
                 if not (100 <= message["status"] < 600):
                     raise RuntimeError("Invalid HTTP status code '%d' in response." % message["status"])
                 self.logger.info(
@@ -361,7 +365,8 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         elif not self.close_sent and self.initial_response is None:
             try:
                 if message_type == "websocket.send":
-                    message = cast(WebSocketSendEvent, message)
+                    if TYPE_CHECKING:
+                        message = cast(WebSocketSendEvent, message)
                     bytes_data = message.get("bytes")
                     text_data = message.get("text")
                     if bytes_data is not None:
@@ -373,7 +378,8 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
 
                 elif message_type == "websocket.close":
                     if not self.transport.is_closing():
-                        message = cast(WebSocketCloseEvent, message)
+                        if TYPE_CHECKING:
+                            message = cast(WebSocketCloseEvent, message)
                         code = message.get("code", 1000)
                         reason = message.get("reason", "") or ""
                         self.queue.put_nowait({"type": "websocket.disconnect", "code": code, "reason": reason})
@@ -389,7 +395,8 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 raise ClientDisconnected()
         elif self.initial_response is not None:
             if message_type == "websocket.http.response.body":
-                message = cast(WebSocketResponseBodyEvent, message)
+                if TYPE_CHECKING:
+                    message = cast(WebSocketResponseBodyEvent, message)
                 body = self.initial_response[2] + message["body"]
                 self.initial_response = self.initial_response[:2] + (body,)
                 if not message.get("more_body", False):

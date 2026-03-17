@@ -4,7 +4,7 @@ import asyncio
 import http
 import logging
 from collections.abc import Sequence
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import unquote
 
 import websockets
@@ -266,14 +266,18 @@ class WebSocketProtocol(WebSocketServerProtocol):
 
         if not self.handshake_started_event.is_set():
             if message_type == "websocket.accept":
-                message = cast("WebSocketAcceptEvent", message)
+                if TYPE_CHECKING:
+                    message = cast("WebSocketAcceptEvent", message)
                 self.logger.info(
                     '%s - "WebSocket %s" [accepted]',
                     get_client_addr(self.scope),
                     get_path_with_query_string(self.scope),
                 )
                 self.initial_response = None
-                self.accepted_subprotocol = cast(Subprotocol | None, message.get("subprotocol"))
+                if TYPE_CHECKING:
+                    self.accepted_subprotocol = cast(Subprotocol | None, message.get("subprotocol"))
+                else:
+                    self.accepted_subprotocol = message.get("subprotocol")
                 if "headers" in message:
                     self.extra_headers.extend(
                         # ASGI spec requires bytes
@@ -284,7 +288,8 @@ class WebSocketProtocol(WebSocketServerProtocol):
                 self.handshake_started_event.set()
 
             elif message_type == "websocket.close":
-                message = cast("WebSocketCloseEvent", message)
+                if TYPE_CHECKING:
+                    message = cast("WebSocketCloseEvent", message)
                 self.logger.info(
                     '%s - "WebSocket %s" 403',
                     get_client_addr(self.scope),
@@ -295,7 +300,8 @@ class WebSocketProtocol(WebSocketServerProtocol):
                 self.closed_event.set()
 
             elif message_type == "websocket.http.response.start":
-                message = cast("WebSocketResponseStartEvent", message)
+                if TYPE_CHECKING:
+                    message = cast("WebSocketResponseStartEvent", message)
                 self.logger.info(
                     '%s - "WebSocket %s" %d',
                     get_client_addr(self.scope),
@@ -322,14 +328,16 @@ class WebSocketProtocol(WebSocketServerProtocol):
 
             try:
                 if message_type == "websocket.send":
-                    message = cast("WebSocketSendEvent", message)
+                    if TYPE_CHECKING:
+                        message = cast("WebSocketSendEvent", message)
                     bytes_data = message.get("bytes")
                     text_data = message.get("text")
                     data = text_data if bytes_data is None else bytes_data
                     await self.send(data)  # type: ignore[arg-type]
 
                 elif message_type == "websocket.close":
-                    message = cast("WebSocketCloseEvent", message)
+                    if TYPE_CHECKING:
+                        message = cast("WebSocketCloseEvent", message)
                     code = message.get("code", 1000)
                     reason = message.get("reason", "") or ""
                     await self.close(code, reason)
@@ -343,7 +351,8 @@ class WebSocketProtocol(WebSocketServerProtocol):
 
         elif self.initial_response is not None:
             if message_type == "websocket.http.response.body":
-                message = cast("WebSocketResponseBodyEvent", message)
+                if TYPE_CHECKING:
+                    message = cast("WebSocketResponseBodyEvent", message)
                 body = self.initial_response[2] + message["body"]
                 self.initial_response = self.initial_response[:2] + (body,)
                 if not message.get("more_body", False):
