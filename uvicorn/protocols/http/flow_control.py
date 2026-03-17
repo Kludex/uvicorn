@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import dataclass, field
 
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 
@@ -7,12 +8,14 @@ CLOSE_HEADER = (b"connection", b"close")
 HIGH_WATER_LIMIT = 65536
 
 
+@dataclass(slots=True, repr=False, eq=False)
 class FlowControl:
-    def __init__(self, transport: asyncio.Transport) -> None:
-        self._transport = transport
-        self.read_paused = False
-        self.write_paused = False
-        self._is_writable_event = asyncio.Event()
+    _transport: asyncio.Transport
+    read_paused: bool = False
+    write_paused: bool = False
+    _is_writable_event: asyncio.Event = field(default_factory=asyncio.Event)
+
+    def __post_init__(self) -> None:
         self._is_writable_event.set()
 
     async def drain(self) -> None:

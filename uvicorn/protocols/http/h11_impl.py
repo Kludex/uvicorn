@@ -38,6 +38,33 @@ STATUS_PHRASES = {status_code: _get_status_phrase(status_code) for status_code i
 
 
 class H11Protocol(asyncio.Protocol):
+    __slots__ = (
+        "config",
+        "server_state",
+        "app_state",
+        "loop",
+        "app",
+        "logger",
+        "access_logger",
+        "access_log",
+        "conn",
+        "ws_protocol_class",
+        "root_path",
+        "limit_concurrency",
+        "timeout_keep_alive_task",
+        "timeout_keep_alive",
+        "connections",
+        "tasks",
+        "transport",
+        "flow",
+        "server",
+        "client",
+        "scheme",
+        "scope",
+        "headers",
+        "cycle",
+    )
+
     def __init__(
         self,
         config: Config,
