@@ -282,17 +282,17 @@ class H11Protocol(asyncio.Protocol):
             self.logger.log(TRACE_LOG_LEVEL, "%sUpgrading to WebSocket", prefix)
 
         self.connections.discard(self)
-        output = [event.method, b" ", event.target, b" HTTP/1.1\r\n"]
+        output = bytearray(event.method + b" " + event.target + b" HTTP/1.1\r\n")
         for name, value in self.headers:
-            output += [name, b": ", value, b"\r\n"]
-        output.append(b"\r\n")
+            output += name + b": " + value + b"\r\n"
+        output += b"\r\n"
         protocol = self.ws_protocol_class(  # type: ignore[call-arg, misc]
             config=self.config,
             server_state=self.server_state,
             app_state=self.app_state,
         )
         protocol.connection_made(self.transport)
-        protocol.data_received(b"".join(output))
+        protocol.data_received(bytes(output))
         self.transport.set_protocol(protocol)
 
     def send_400_response(self, msg: str) -> None:

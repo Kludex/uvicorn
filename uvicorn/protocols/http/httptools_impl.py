@@ -189,33 +189,30 @@ class HttpToolsProtocol(asyncio.Protocol):
 
         self.connections.discard(self)
         method = self.scope["method"].encode()
-        output = [method, b" ", self.url, b" HTTP/1.1\r\n"]
+        output = bytearray(method + b" " + self.url + b" HTTP/1.1\r\n")
         for name, value in self.scope["headers"]:
-            output += [name, b": ", value, b"\r\n"]
-        output.append(b"\r\n")
+            output += name + b": " + value + b"\r\n"
+        output += b"\r\n"
         protocol = self.ws_protocol_class(  # type: ignore[call-arg, misc]
             config=self.config,
             server_state=self.server_state,
             app_state=self.app_state,
         )
         protocol.connection_made(self.transport)
-        protocol.data_received(b"".join(output))
+        protocol.data_received(bytes(output))
         self.transport.set_protocol(protocol)
 
     def send_400_response(self, msg: str) -> None:
-        content = [STATUS_LINE[400]]
+        content = bytearray(STATUS_LINE[400])
         for name, value in self.server_state.default_headers:
-            content.extend([name, b": ", value, b"\r\n"])  # pragma: full coverage
-        content.extend(
-            [
-                b"content-type: text/plain; charset=utf-8\r\n",
-                b"content-length: " + str(len(msg)).encode("ascii") + b"\r\n",
-                b"connection: close\r\n",
-                b"\r\n",
-                msg.encode("ascii"),
-            ]
+            content += name + b": " + value + b"\r\n"  # pragma: full coverage
+        content += (
+            b"content-type: text/plain; charset=utf-8\r\n"
+            b"content-length: " + str(len(msg)).encode("ascii") + b"\r\n"
+            b"connection: close\r\n"
+            b"\r\n" + msg.encode("ascii")
         )
-        self.transport.write(b"".join(content))
+        self.transport.write(content)
         self.transport.close()
 
     def on_message_begin(self) -> None:
@@ -490,7 +487,7 @@ class RequestResponseCycle:
                 )
 
             # Write response status line and headers
-            content = [STATUS_LINE[status_code]]
+            content = bytearray(STATUS_LINE[status_code])
 
             for name, value in headers:
                 if HEADER_RE.search(name):
@@ -507,15 +504,15 @@ class RequestResponseCycle:
                     self.chunked_encoding = True
                 elif name == b"connection" and value.lower() == b"close":
                     self.keep_alive = False
-                content.extend([name, b": ", value, b"\r\n"])
+                content += name + b": " + value + b"\r\n"
 
             if self.chunked_encoding is None and self.scope["method"] != "HEAD" and status_code not in (204, 304):
                 # Neither content-length nor transfer-encoding specified
                 self.chunked_encoding = True
-                content.append(b"transfer-encoding: chunked\r\n")
+                content += b"transfer-encoding: chunked\r\n"
 
-            content.append(b"\r\n")
-            self.transport.write(b"".join(content))
+            content += b"\r\n"
+            self.transport.write(content)
 
         elif not self.response_complete:
             # Sending response body
@@ -531,12 +528,12 @@ class RequestResponseCycle:
                 self.expected_content_length = 0
             elif self.chunked_encoding:
                 if body:
-                    content = [b"%x\r\n" % len(body), body, b"\r\n"]
+                    content = bytearray(b"%x\r\n" % len(body) + body + b"\r\n")
                 else:
-                    content = []
+                    content = bytearray()
                 if not more_body:
-                    content.append(b"0\r\n\r\n")
-                self.transport.write(b"".join(content))
+                    content += b"0\r\n\r\n"
+                self.transport.write(content)
             else:
                 num_bytes = len(body)
                 if num_bytes > self.expected_content_length:
