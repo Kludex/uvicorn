@@ -376,7 +376,8 @@ class WebSocketProtocol(WebSocketServerProtocol):
         except ConnectionClosed:
             self.closed_event.set()
             if self.ws_server.closing:
-                code = self.close_code if self.close_code not in (None, 1005, 1006) else 1012
+                close_code = self.close_code
+                code: int = close_code if isinstance(close_code, int) and close_code not in (1005, 1006) else 1012
                 return {"type": "websocket.disconnect", "code": code}
             return {"type": "websocket.disconnect", "code": self.close_code or 1005, "reason": self.close_reason}
 
