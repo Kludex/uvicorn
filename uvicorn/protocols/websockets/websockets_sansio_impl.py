@@ -287,7 +287,10 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
     def send_500_response(self) -> None:
         if self.initial_response or self.handshake_complete:
             return
-        response = self.conn.reject(500, "Internal Server Error")
+        msg = "Internal Server Error"
+        response = self.conn.reject(500, msg)
+        response.headers["content-length"] = str(len(msg))
+        response.headers["connection"] = "close"
         self.conn.send_response(response)
         output = self.conn.data_to_send()
         self.transport.write(b"".join(output))
