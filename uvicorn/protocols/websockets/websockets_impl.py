@@ -340,7 +340,7 @@ class WebSocketProtocol(WebSocketServerProtocol):
                 else:
                     msg = "Expected ASGI message 'websocket.send' or 'websocket.close', but got '%s'."
                     raise RuntimeError(msg % message_type)
-            except ConnectionClosed as exc:
+            except ConnectionClosed as exc:  # pragma: full coverage
                 raise ClientDisconnected from exc
 
         elif self.initial_response is not None:
