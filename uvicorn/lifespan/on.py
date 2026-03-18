@@ -63,6 +63,7 @@ class LifespanOn:
 
     async def shutdown(self) -> None:
         if self.error_occurred:
+            self.logger.info("Skipping application shutdown (startup error already occurred).")
             return
         self.logger.info("Waiting for application shutdown.")
         shutdown_event: LifespanShutdownEvent = {"type": "lifespan.shutdown"}
@@ -88,8 +89,9 @@ class LifespanOn:
             self.asgi = None
             self.error_occurred = True
             if self.startup_failed or self.shutdown_failed:
+                self.logger.error("Exception in 'lifespan' protocol\n", exc_info=exc)
                 return
-            if self.config.lifespan == "auto":
+            if self.config.lifespan == "auto" and not self.startup_event.is_set():
                 msg = "ASGI 'lifespan' protocol appears unsupported."
                 self.logger.info(msg)
             else:
