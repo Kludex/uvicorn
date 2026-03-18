@@ -294,9 +294,13 @@ class HttpToolsProtocol(asyncio.Protocol):
             # as it can be polluted from previous ASGI runs.
             # See https://github.com/python/cpython/issues/140947 for details.
             if sys.version_info >= (3, 11):
-                task = self.loop.create_task(self.cycle.run_asgi(app), context=contextvars.Context())  # pragma: py-gte-311
+                task = self.loop.create_task(
+                    self.cycle.run_asgi(app), context=contextvars.Context()
+                )  # pragma: py-gte-311
             else:
-                task = contextvars.Context().run(self.loop.create_task, self.cycle.run_asgi(app))  # pragma: py-lt-311
+                task = contextvars.Context().run(  # pragma: py-lt-311
+                    self.loop.create_task, self.cycle.run_asgi(app)
+                )
             task.add_done_callback(self.tasks.discard)
             self.tasks.add(task)
         else:
