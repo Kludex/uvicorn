@@ -327,7 +327,7 @@ class WebSocketProtocol(WebSocketServerProtocol):
                     text_data = message.get("text")
                     data = text_data if bytes_data is None else bytes_data
                     if self.transport.is_closing():  # pragma: full coverage
-                        raise ClientDisconnected
+                        raise ClientDisconnected  # pragma: full coverage
                     await self.send(data)  # type: ignore[arg-type]
 
                 elif message_type == "websocket.close":
