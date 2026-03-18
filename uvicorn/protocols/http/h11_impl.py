@@ -116,7 +116,7 @@ class H11Protocol(asyncio.Protocol):
             try:
                 self.conn.send(event)
             except h11.LocalProtocolError:
-                if self.logger.level <= TRACE_LOG_LEVEL:
+                if self.logger.level <= TRACE_LOG_LEVEL:  # pragma: full coverage
                     prefix = "%s:%d - " % self.client if self.client else ""
                     self.logger.log(TRACE_LOG_LEVEL, "%sPremature client disconnect", prefix)
 
