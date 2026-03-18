@@ -234,7 +234,9 @@ class WSProtocol(asyncio.Protocol):
         try:
             result = await self.app(self.scope, self.receive, self.send)  # type: ignore[func-returns-value]
         except ClientDisconnected:
-            pass  # pragma: full coverage
+            if self.logger.level <= TRACE_LOG_LEVEL:
+                prefix = "%s:%d - " % self.client if self.client else ""
+                self.logger.log(TRACE_LOG_LEVEL, "%sWebSocket client disconnected during ASGI app", prefix)
         except BaseException:
             self.logger.exception("Exception in ASGI application\n")
             self.send_500_response()
