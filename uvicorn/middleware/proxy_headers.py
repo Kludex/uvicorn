@@ -45,16 +45,14 @@ class ProxyHeadersMiddleware:
 
             if b"x-forwarded-for" in headers:
                 x_forwarded_for = headers[b"x-forwarded-for"].decode("latin1")
-                host = self.trusted_hosts.get_trusted_client_host(x_forwarded_for)
+                host_str = self.trusted_hosts.get_trusted_client_host(x_forwarded_for)
 
-                if host:
+                if host_str:
                     # If the x-forwarded-for header is empty then host is an empty string.
                     # Only set the client if we actually got something usable.
                     # See: https://github.com/Kludex/uvicorn/issues/1068
 
-                    # We've lost the connecting client's port information by now,
-                    # so only include the host.
-                    port = 0
+                    host, port = _parse_host_port(host_str)
                     scope["client"] = (host, port)
 
         return await self.app(scope, receive, send)
@@ -62,6 +60,32 @@ class ProxyHeadersMiddleware:
 
 def _parse_raw_hosts(value: str) -> list[str]:
     return [item.strip() for item in value.split(",")]
+
+
+def _parse_host_port(value: str) -> tuple[str, int]:
+    """Parse host and port from X-Forwarded-For value (e.g. 1.1.1.1:8080 or [::1]:8080).
+    Returns (host, port) with port=0 if not present."""
+    value = value.strip()
+    if not value:
+        return ("", 0)
+
+    # IPv6: [address]:port
+    if value.startswith("["):
+        bracket_end = value.find("]")
+        if bracket_end != -1:
+            host = value[1:bracket_end]
+            rest = value[bracket_end + 1 :].strip()
+            if rest.startswith(":") and rest[1:].isdigit():
+                return (host, int(rest[1:]))
+            return (host, 0)
+
+    # IPv4: address:port
+    if ":" in value:
+        parts = value.rsplit(":", 1)
+        if len(parts) == 2 and parts[1].isdigit():
+            return (parts[0], int(parts[1]))
+
+    return (value, 0)
 
 
 class _TrustedHosts:
