@@ -23,13 +23,16 @@ from uvicorn._compat import asyncio_run
 from uvicorn.config import Config
 
 if TYPE_CHECKING:
+    from uvicorn.protocols.http.h2_impl import H2Protocol
     from uvicorn.protocols.http.h11_impl import H11Protocol
     from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
     from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
     from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol
 
-    Protocols: TypeAlias = H11Protocol | HttpToolsProtocol | WSProtocol | WebSocketProtocol | WebSocketsSansIOProtocol
+    Protocols: TypeAlias = (
+        H11Protocol | H2Protocol | HttpToolsProtocol | WSProtocol | WebSocketProtocol | WebSocketsSansIOProtocol
+    )
 
 HANDLED_SIGNALS = (
     signal.SIGINT,  # Unix signal 2. Sent by Ctrl+C.

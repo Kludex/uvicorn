@@ -593,3 +593,47 @@ def test_setup_event_loop_is_removed(caplog: pytest.LogCaptureFixture) -> None:
         AttributeError, match="The `setup_event_loop` method was replaced by `get_loop_factory` in uvicorn 0.36.0."
     ):
         config.setup_event_loop()
+
+
+def test_http2_with_ssl_sets_alpn(
+    tls_ca_certificate_pem_path: str,
+    tls_ca_certificate_private_key_path: str,
+) -> None:
+    """Test that http2=True with SSL configures ALPN protocols."""
+    config = Config(
+        app=asgi_app,
+        http2=True,
+        ssl_certfile=tls_ca_certificate_pem_path,
+        ssl_keyfile=tls_ca_certificate_private_key_path,
+    )
+    config.load()
+
+    assert config.is_ssl is True
+    assert config.ssl is not None
+    assert config.h2_protocol_class is not None
+
+
+def test_http2_as_string_path() -> None:
+    """Test that http2 can be specified as a string import path."""
+    config = Config(
+        app=asgi_app,
+        http2="uvicorn.protocols.http.h2_impl:H2Protocol",
+    )
+    config.load()
+
+    from uvicorn.protocols.http.h2_impl import H2Protocol
+
+    assert config.h2_protocol_class is H2Protocol
+
+
+def test_http2_as_class() -> None:
+    """Test that http2 can be specified as a protocol class directly."""
+    from uvicorn.protocols.http.h2_impl import H2Protocol
+
+    config = Config(
+        app=asgi_app,
+        http2=H2Protocol,
+    )
+    config.load()
+
+    assert config.h2_protocol_class is H2Protocol
