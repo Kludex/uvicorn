@@ -12,7 +12,7 @@ import socket
 import sys
 import threading
 import time
-from collections.abc import Generator, Sequence
+from collections.abc import Coroutine, Generator, Sequence
 from email.utils import formatdate
 from types import FrameType
 from typing import TYPE_CHECKING, TypeAlias
@@ -62,6 +62,7 @@ class Server:
         self.should_exit = False
         self.force_exit = False
         self.last_notified = 0.0
+        self.exit_event = asyncio.Event()
 
         self._captured_signals: list[int] = []
 
@@ -102,7 +103,7 @@ class Server:
             logger.info(message, process_id, extra={"color_message": color_message})
 
     async def startup(self, sockets: list[socket.socket] | None = None) -> None:
-        await self.lifespan.startup()
+        await self._wait_safe_lifespan(self.lifespan.startup())
         if self.lifespan.should_exit:
             self.should_exit = True
             return
@@ -298,7 +299,23 @@ class Server:
 
         # Send the lifespan shutdown event, and wait for application shutdown.
         if not self.force_exit:
-            await self.lifespan.shutdown()
+            await self._wait_safe_lifespan(self.lifespan.shutdown())
+
+    async def _wait_safe_lifespan(self, event: Coroutine[None, None, None]) -> None:
+        event_task = asyncio.create_task(event)
+        waiter_task = asyncio.create_task(self.exit_event.wait())
+        try:
+            await asyncio.wait(
+                [event_task, waiter_task],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        finally:
+            if waiter_task.done():  # pragma: no cover
+                event_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await event_task
+            else:
+                waiter_task.cancel()
 
     async def _wait_tasks_to_complete(self) -> None:
         # Wait for existing connections to finish sending responses.
@@ -340,7 +357,9 @@ class Server:
 
     def handle_exit(self, sig: int, frame: FrameType | None) -> None:
         self._captured_signals.append(sig)
-        if self.should_exit and sig == signal.SIGINT:
-            self.force_exit = True  # pragma: full coverage
+        if self.should_exit and sig == signal.SIGINT:  # pragma: full coverage
+            self.force_exit = True
+            loop = asyncio.get_running_loop()
+            loop.call_soon_threadsafe(self.exit_event.set)
         else:
             self.should_exit = True
