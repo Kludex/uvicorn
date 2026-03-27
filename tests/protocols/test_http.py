@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import socket
 import threading
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeAlias
 
 import pytest
@@ -225,6 +227,7 @@ class MockLoop:
     def __init__(self):
         self._tasks: list[asyncio.Task[Any]] = []
         self._later: list[MockTimerHandle] = []
+        self.sendfile_calls: list[dict[str, Any]] = []
 
     def create_task(self, coroutine: Any) -> Any:
         self._tasks.insert(0, coroutine)
@@ -237,6 +240,27 @@ class MockLoop:
 
     async def run_one(self):
         return await self._tasks.pop()
+
+    async def sendfile(
+        self,
+        transport: MockTransport,
+        file: Any,
+        offset: int = 0,
+        count: int | None = None,
+        *,
+        fallback: bool = True,
+    ) -> int:
+        self.sendfile_calls.append(
+            {
+                "offset": offset,
+                "count": count,
+                "fallback": fallback,
+            }
+        )
+        file.seek(offset)
+        data = file.read() if count is None else file.read(count)
+        transport.write(data)
+        return len(data)
 
     def run_later(self, with_delay: float) -> None:
         later: list[MockTimerHandle] = []
@@ -623,6 +647,83 @@ async def test_message_after_body_complete(http_protocol_cls: type[HTTPProtocol]
     protocol.data_received(SIMPLE_GET_REQUEST)
     await protocol.loop.run_one()
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert protocol.transport.is_closing()
+
+
+@skip_if_no_httptools
+async def test_pathsend_scope_extension_advertised(tmp_path: Path):
+    if not hasattr(os, "sendfile"):
+        pytest.skip("os.sendfile is unavailable")
+
+    expected_body = b"pathsend-content"
+    expected_path = tmp_path / "pathsend.txt"
+    expected_path.write_bytes(expected_body)
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert "extensions" in scope
+        assert "http.response.pathsend" in scope["extensions"]
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-length", str(len(expected_body)).encode("ascii"))],
+            }
+        )
+        await send({"type": "http.response.pathsend", "path": str(expected_path)})
+
+    protocol = get_connected_protocol(app, HttpToolsProtocol)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+
+    assert expected_body in protocol.transport.buffer
+    assert protocol.loop.sendfile_calls
+    assert protocol.loop.sendfile_calls[0]["fallback"] is False
+
+
+@skip_if_no_httptools
+async def test_pathsend_requires_content_length(tmp_path: Path):
+    if not hasattr(os, "sendfile"):
+        pytest.skip("os.sendfile is unavailable")
+
+    expected_body = b"pathsend-content"
+    expected_path = tmp_path / "pathsend-no-content-length.txt"
+    expected_path.write_bytes(expected_body)
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.pathsend", "path": str(expected_path)})
+
+    protocol = get_connected_protocol(app, HttpToolsProtocol)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+
+    assert protocol.transport.is_closing()
+
+
+@skip_if_no_httptools
+async def test_pathsend_cannot_mix_with_response_body(tmp_path: Path):
+    if not hasattr(os, "sendfile"):
+        pytest.skip("os.sendfile is unavailable")
+
+    expected_body = b"pathsend-content"
+    expected_path = tmp_path / "pathsend-mix.txt"
+    expected_path.write_bytes(expected_body)
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-length", str(len(expected_body)).encode("ascii"))],
+            }
+        )
+        await send({"type": "http.response.body", "body": b"", "more_body": True})
+        await send({"type": "http.response.pathsend", "path": str(expected_path)})
+
+    protocol = get_connected_protocol(app, HttpToolsProtocol)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+
     assert protocol.transport.is_closing()
 
 

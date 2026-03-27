@@ -4,6 +4,7 @@ import asyncio
 import contextvars
 import http
 import logging
+import os
 import re
 import urllib
 from asyncio.events import TimerHandle
@@ -18,6 +19,7 @@ from uvicorn._types import (
     ASGIReceiveEvent,
     ASGISendEvent,
     HTTPRequestEvent,
+    HTTPResponsePathSendEvent,
     HTTPResponseStartEvent,
     HTTPScope,
 )
@@ -72,6 +74,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.root_path = config.root_path
         self.limit_concurrency = config.limit_concurrency
         self.app_state = app_state
+        self.supports_pathsend = hasattr(os, "sendfile") and hasattr(self.loop, "sendfile")
 
         # Timeouts
         self.timeout_keep_alive_task: TimerHandle | None = None
@@ -262,6 +265,8 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.scope["path"] = full_path
         self.scope["raw_path"] = full_raw_path
         self.scope["query_string"] = parsed_url.query or b""
+        if self.supports_pathsend:
+            self.scope["extensions"] = {"http.response.pathsend": {}}
 
         # Handle 503 responses when 'limit_concurrency' is exceeded.
         if self.limit_concurrency is not None and (
@@ -277,6 +282,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.cycle = RequestResponseCycle(
             scope=self.scope,
             transport=self.transport,
+            loop=self.loop,
             flow=self.flow,
             logger=self.logger,
             access_logger=self.access_logger,
@@ -285,6 +291,7 @@ class HttpToolsProtocol(asyncio.Protocol):
             message_event=asyncio.Event(),
             expect_100_continue=self.expect_100_continue,
             keep_alive=http_version != "1.0",
+            supports_pathsend=self.supports_pathsend,
             on_response=self.on_response_complete,
         )
         if existing_cycle is None or existing_cycle.response_complete:
@@ -375,6 +382,7 @@ class RequestResponseCycle:
         self,
         scope: HTTPScope,
         transport: asyncio.Transport,
+        loop: asyncio.AbstractEventLoop,
         flow: FlowControl,
         logger: logging.Logger,
         access_logger: logging.Logger,
@@ -383,16 +391,19 @@ class RequestResponseCycle:
         message_event: asyncio.Event,
         expect_100_continue: bool,
         keep_alive: bool,
+        supports_pathsend: bool,
         on_response: Callable[..., None],
     ):
         self.scope = scope
         self.transport = transport
+        self.loop = loop
         self.flow = flow
         self.logger = logger
         self.access_logger = access_logger
         self.access_log = access_log
         self.default_headers = default_headers
         self.message_event = message_event
+        self.supports_pathsend = supports_pathsend
         self.on_response = on_response
 
         # Connection state
@@ -409,6 +420,28 @@ class RequestResponseCycle:
         self.response_complete = False
         self.chunked_encoding: bool | None = None
         self.expected_content_length = 0
+        self.response_body_sent = False
+        self.response_pathsend_sent = False
+
+    async def send_pathsend(self, path: str, expected_content_length: int | None) -> int:
+        if not self.supports_pathsend:
+            raise RuntimeError("ASGI path send is not supported on this platform.")
+        if not os.path.isabs(path):
+            raise RuntimeError("ASGI path send requires an absolute path.")
+
+        with open(path, "rb") as file:
+            file_size = os.fstat(file.fileno()).st_size
+            if expected_content_length is not None and file_size != expected_content_length:
+                raise RuntimeError("Path send file size must match Content-Length")
+            if self.scope["method"] == "HEAD":
+                return 0
+
+            try:
+                sent = await self.loop.sendfile(self.transport, file, 0, file_size, fallback=False)
+            except (asyncio.SendfileNotAvailableError, AttributeError, NotImplementedError) as exc:
+                raise RuntimeError("ASGI path send is not available for this event loop.") from exc
+
+            return int(file.tell() if sent is None else sent)
 
     # ASGI exception wrapper
     async def run_asgi(self, app: ASGI3Application) -> None:
@@ -518,42 +551,68 @@ class RequestResponseCycle:
             self.transport.write(b"".join(content))
 
         elif not self.response_complete:
-            # Sending response body
-            if message_type != "http.response.body":
-                msg = "Expected ASGI message 'http.response.body', but got '%s'."
-                raise RuntimeError(msg % message_type)
+            if message_type == "http.response.body":
+                # Sending response body
+                if self.response_pathsend_sent:
+                    raise RuntimeError("Path send and response body messages cannot be mixed")
 
-            body = cast(bytes, message.get("body", b""))
-            more_body = message.get("more_body", False)
+                body = cast(bytes, message.get("body", b""))
+                more_body = message.get("more_body", False)
+                self.response_body_sent = True
 
-            # Write response body
-            if self.scope["method"] == "HEAD":
-                self.expected_content_length = 0
-            elif self.chunked_encoding:
-                if body:
-                    content = [b"%x\r\n" % len(body), body, b"\r\n"]
+                # Write response body
+                if self.scope["method"] == "HEAD":
+                    self.expected_content_length = 0
+                elif self.chunked_encoding:
+                    if body:
+                        content = [b"%x\r\n" % len(body), body, b"\r\n"]
+                    else:
+                        content = []
+                    if not more_body:
+                        content.append(b"0\r\n\r\n")
+                    self.transport.write(b"".join(content))
                 else:
-                    content = []
+                    num_bytes = len(body)
+                    if num_bytes > self.expected_content_length:
+                        raise RuntimeError("Response content longer than Content-Length")
+                    else:
+                        self.expected_content_length -= num_bytes
+                    self.transport.write(body)
+
+                # Handle response completion
                 if not more_body:
-                    content.append(b"0\r\n\r\n")
-                self.transport.write(b"".join(content))
-            else:
-                num_bytes = len(body)
-                if num_bytes > self.expected_content_length:
-                    raise RuntimeError("Response content longer than Content-Length")
-                else:
-                    self.expected_content_length -= num_bytes
-                self.transport.write(body)
+                    if self.expected_content_length != 0:
+                        raise RuntimeError("Response content shorter than Content-Length")
+                    self.response_complete = True
+                    self.message_event.set()
+                    if not self.keep_alive:
+                        self.transport.close()
+                    self.on_response()
 
-            # Handle response completion
-            if not more_body:
-                if self.expected_content_length != 0:
-                    raise RuntimeError("Response content shorter than Content-Length")
+            elif message_type == "http.response.pathsend":
+                if self.response_body_sent:
+                    raise RuntimeError("Path send and response body messages cannot be mixed")
+                if self.response_pathsend_sent:
+                    raise RuntimeError("Path send message can only be sent once")
+
+                if self.scope["method"] != "HEAD" and self.chunked_encoding:
+                    raise RuntimeError("Path send requires a 'Content-Length' header")
+
+                message = cast("HTTPResponsePathSendEvent", message)
+                expected_content_length = None if self.scope["method"] == "HEAD" else self.expected_content_length
+                _ = await self.send_pathsend(message["path"], expected_content_length)
+
+                self.expected_content_length = 0
+                self.response_pathsend_sent = True
                 self.response_complete = True
                 self.message_event.set()
                 if not self.keep_alive:
                     self.transport.close()
                 self.on_response()
+
+            else:
+                msg = "Expected ASGI message 'http.response.body' or 'http.response.pathsend', but got '%s'."
+                raise RuntimeError(msg % message_type)
 
         else:
             # Response already sent
