@@ -181,6 +181,9 @@ class HttpToolsProtocol(asyncio.Protocol):
                 self.handle_websocket_upgrade()
             else:
                 self._unsupported_upgrade_warning()
+                if self.cycle is not None:
+                    self.cycle.more_body = False
+                    self.cycle.message_event.set()
 
     def handle_websocket_upgrade(self) -> None:
         if self.logger.level <= TRACE_LOG_LEVEL:
