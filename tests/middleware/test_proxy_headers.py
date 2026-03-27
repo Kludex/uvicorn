@@ -485,6 +485,38 @@ async def test_proxy_headers_websocket_x_forwarded_proto(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("forwarded_for", "expected"),
+    [
+        # IPv4 with port
+        ("1.2.3.4:1024", "https://1.2.3.4:1024"),
+        # IPv4 without port (existing behavior)
+        ("1.2.3.4", "https://1.2.3.4:0"),
+        # Bracketed IPv6 with port
+        ("[::1]:8080", "https://::1:8080"),
+        # Bare IPv6 without port
+        ("::1", "https://::1:0"),
+    ],
+)
+async def test_proxy_headers_x_forwarded_for_with_port(forwarded_for: str, expected: str) -> None:
+    async with make_httpx_client("*") as client:
+        headers = {X_FORWARDED_FOR: forwarded_for, X_FORWARDED_PROTO: "https"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    assert response.text == expected
+
+
+@pytest.mark.anyio
+async def test_proxy_headers_x_forwarded_for_port_with_trusted_proxy() -> None:
+    """When a proxy sends host:port in X-Forwarded-For, the trust check should still work."""
+    async with make_httpx_client(["127.0.0.1", "10.0.0.1"]) as client:
+        headers = {X_FORWARDED_FOR: "1.2.3.4:1024, 10.0.0.1:8080", X_FORWARDED_PROTO: "https"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    assert response.text == "https://1.2.3.4:1024"
+
+
+@pytest.mark.anyio
 async def test_proxy_headers_empty_x_forwarded_for() -> None:
     # fallback to the default behavior if x-forwarded-for is an empty list
     # https://github.com/Kludex/uvicorn/issues/1068#issuecomment-855371576

@@ -52,16 +52,48 @@ class ProxyHeadersMiddleware:
                     # Only set the client if we actually got something usable.
                     # See: https://github.com/Kludex/uvicorn/issues/1068
 
-                    # We've lost the connecting client's port information by now,
-                    # so only include the host.
-                    port = 0
-                    scope["client"] = (host, port)
+                    # The host may include a port (e.g. "1.2.3.4:8080").
+                    # Parse it out so we don't produce malformed client tuples.
+                    addr, port = _parse_host_and_port(host)
+                    scope["client"] = (addr, port)
 
         return await self.app(scope, receive, send)
 
 
 def _parse_raw_hosts(value: str) -> list[str]:
     return [item.strip() for item in value.split(",")]
+
+
+def _parse_host_and_port(host: str) -> tuple[str, int]:
+    """Parse a host string that may include a port number.
+
+    Handles IPv4 (``1.2.3.4:8080``), bracketed IPv6 (``[::1]:8080``),
+    and bare hosts without a port.  Returns ``(host, port)`` where *port*
+    is ``0`` when not present.
+    """
+    if host.startswith("["):
+        # Bracketed IPv6, e.g. [::1]:8080
+        bracket_end = host.find("]")
+        if bracket_end == -1:
+            return host, 0
+        ip_part = host[1:bracket_end]
+        remainder = host[bracket_end + 1 :]
+        if remainder.startswith(":"):
+            try:
+                return ip_part, int(remainder[1:])
+            except ValueError:
+                return ip_part, 0
+        return ip_part, 0
+
+    # IPv4 or hostname — only treat as host:port if there's exactly one colon
+    if host.count(":") == 1:
+        addr, _, port_str = host.partition(":")
+        try:
+            return addr, int(port_str)
+        except ValueError:
+            return host, 0
+
+    return host, 0
 
 
 class _TrustedHosts:
@@ -134,7 +166,8 @@ class _TrustedHosts:
 
         # Note: each proxy appends to the header list so check it in reverse order
         for host in reversed(x_forwarded_for_hosts):
-            if host not in self:
+            addr, _ = _parse_host_and_port(host)
+            if addr not in self:
                 return host
 
         # All hosts are trusted meaning that the client was also a trusted proxy
