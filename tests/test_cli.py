@@ -201,3 +201,75 @@ def test_set_app_via_environment_variable():
             args, _ = mock_run.call_args
             assert result.exit_code == 0
             assert args == (app_path,)
+
+
+def test_cli_bind_option() -> None:
+    runner = CliRunner()
+
+    with mock.patch.object(main, "run") as mock_run:
+        result = runner.invoke(cli, ["tests.test_cli:App", "--bind", "0.0.0.0:8000"])
+
+    assert result.output == ""
+    assert result.exit_code == 0
+    mock_run.assert_called_once()
+    assert mock_run.call_args[1]["bind"] == ["0.0.0.0:8000"]
+
+
+def test_cli_bind_multiple() -> None:
+    runner = CliRunner()
+
+    with mock.patch.object(main, "run") as mock_run:
+        result = runner.invoke(cli, ["tests.test_cli:App", "-b", "127.0.0.1:8000", "-b", "127.0.0.1:9000"])
+
+    assert result.output == ""
+    assert result.exit_code == 0
+    mock_run.assert_called_once()
+    assert mock_run.call_args[1]["bind"] == ["127.0.0.1:8000", "127.0.0.1:9000"]
+
+
+@pytest.mark.parametrize(
+    "extra_args",
+    [
+        ["--host", "0.0.0.0"],
+        ["--port", "9000"],
+        ["--uds", "/tmp/test.sock"],
+        ["--fd", "3"],
+    ],
+    ids=["host", "port", "uds", "fd"],
+)
+def test_cli_bind_mutually_exclusive(extra_args: list[str]) -> None:
+    runner = CliRunner()
+
+    with pytest.raises(ValueError, match="'bind' is mutually exclusive with.*"):
+        runner.invoke(cli, ["tests.test_cli:App", "-b", "127.0.0.1:8000", *extra_args], catch_exceptions=False)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
+def test_cli_bind_unix_cleanup() -> None:  # pragma: py-win32
+    sock_path = "/tmp/uvicorn_test_cleanup.sock"
+    runner = CliRunner()
+
+    try:
+        Path(sock_path).touch()
+        with mock.patch.object(Config, "bind_sockets") as mock_bind_sockets:
+            with mock.patch.object(Multiprocess, "run") as mock_run:
+                result = runner.invoke(cli, ["tests.test_cli:App", "--workers=2", "-b", f"unix:{sock_path}"])
+
+        assert result.exit_code == 0
+        mock_bind_sockets.assert_called_once()
+        mock_run.assert_called_once()
+        assert not Path(sock_path).exists()
+    finally:
+        if Path(sock_path).exists():  # pragma: no cover
+            os.remove(sock_path)
+
+
+def test_cli_bind_without_value_passes_none() -> None:
+    runner = CliRunner()
+
+    with mock.patch.object(main, "run") as mock_run:
+        result = runner.invoke(cli, ["tests.test_cli:App"])
+
+    assert result.exit_code in (0, 3)
+    mock_run.assert_called_once()
+    assert mock_run.call_args[1]["bind"] is None
