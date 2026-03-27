@@ -97,9 +97,20 @@ class Server:
         if self.started:
             await self.shutdown(sockets=sockets)
 
-            message = "Finished server process [%d]"
-            color_message = "Finished server process [" + click.style("%d", fg="cyan") + "]"
-            logger.info(message, process_id, extra={"color_message": color_message})
+            if self.lifespan.should_exit:  # pragma: full coverage
+                message = "Finished server process [%d] (shutdown failed)"
+                color_message = (
+                    "Finished server process ["
+                    + click.style("%d", fg="cyan")
+                    + "] ("
+                    + click.style("shutdown failed", fg="red")
+                    + ")"
+                )
+                logger.warning(message, process_id, extra={"color_message": color_message})
+            else:
+                message = "Finished server process [%d]"
+                color_message = "Finished server process [" + click.style("%d", fg="cyan") + "]"
+                logger.info(message, process_id, extra={"color_message": color_message})
 
     async def startup(self, sockets: list[socket.socket] | None = None) -> None:
         await self.lifespan.startup()
