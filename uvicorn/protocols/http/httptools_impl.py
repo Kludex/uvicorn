@@ -348,6 +348,8 @@ class HttpToolsProtocol(asyncio.Protocol):
             self.transport.close()
         else:
             self.cycle.keep_alive = False
+            self.cycle.shutting_down = True
+            self.cycle.message_event.set()
 
     def pause_writing(self) -> None:
         """
@@ -399,6 +401,7 @@ class RequestResponseCycle:
         self.disconnected = False
         self.keep_alive = keep_alive
         self.waiting_for_100_continue = expect_100_continue
+        self.shutting_down = False
 
         # Request state
         self.body = bytearray()
@@ -433,8 +436,9 @@ class RequestResponseCycle:
                 self.logger.error(msg)
                 await self.send_500_response()
             elif not self.response_complete and not self.disconnected:
-                msg = "ASGI callable returned without completing response."
-                self.logger.error(msg)
+                if not self.shutting_down:
+                    msg = "ASGI callable returned without completing response."
+                    self.logger.error(msg)
                 self.transport.close()
         finally:
             self.on_response = lambda: None
@@ -565,12 +569,12 @@ class RequestResponseCycle:
             self.transport.write(b"HTTP/1.1 100 Continue\r\n\r\n")
             self.waiting_for_100_continue = False
 
-        if not self.disconnected and not self.response_complete:
+        if not self.disconnected and not self.response_complete and not self.shutting_down:
             self.flow.resume_reading()
             await self.message_event.wait()
             self.message_event.clear()
 
-        if self.disconnected or self.response_complete:
+        if self.disconnected or self.response_complete or self.shutting_down:
             return {"type": "http.disconnect"}
         message: HTTPRequestEvent = {"type": "http.request", "body": bytes(self.body), "more_body": self.more_body}
         self.body = bytearray()
