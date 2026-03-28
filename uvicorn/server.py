@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import functools
 import logging
 import os
 import platform
@@ -13,6 +12,7 @@ import sys
 import threading
 import time
 from collections.abc import Generator, Sequence
+from dataclasses import dataclass, field
 from email.utils import formatdate
 from types import FrameType
 from typing import TYPE_CHECKING, TypeAlias
@@ -41,19 +41,32 @@ if sys.platform == "win32":  # pragma: py-not-win32
 logger = logging.getLogger("uvicorn.error")
 
 
+@dataclass(slots=True, repr=False, eq=False)
 class ServerState:
     """
     Shared servers state that is available between all protocol instances.
     """
 
-    def __init__(self) -> None:
-        self.total_requests = 0
-        self.connections: set[Protocols] = set()
-        self.tasks: set[asyncio.Task[None]] = set()
-        self.default_headers: list[tuple[bytes, bytes]] = []
+    total_requests: int = 0
+    connections: set[Protocols] = field(default_factory=set)
+    tasks: set[asyncio.Task[None]] = field(default_factory=set)
+    default_headers: list[tuple[bytes, bytes]] = field(default_factory=list)
 
 
 class Server:
+    __slots__ = (
+        "config",
+        "server_state",
+        "started",
+        "should_exit",
+        "force_exit",
+        "last_notified",
+        "_captured_signals",
+        "lifespan",
+        "servers",
+        "limit_max_requests",
+    )
+
     def __init__(self, config: Config) -> None:
         self.config = config
         self.server_state = ServerState()
@@ -65,8 +78,9 @@ class Server:
 
         self._captured_signals: list[int] = []
 
-    @functools.cached_property
-    def limit_max_requests(self) -> int | None:
+        self.limit_max_requests = self._limit_max_requests()
+
+    def _limit_max_requests(self) -> int | None:
         if self.config.limit_max_requests is None:
             return None
         return self.config.limit_max_requests + random.randint(0, self.config.limit_max_requests_jitter)

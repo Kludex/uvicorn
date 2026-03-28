@@ -43,6 +43,36 @@ STATUS_LINE = {status_code: _get_status_line(status_code) for status_code in ran
 
 
 class HttpToolsProtocol(asyncio.Protocol):
+    __slots__ = (
+        "config",
+        "server_state",
+        "app_state",
+        "loop",
+        "app",
+        "logger",
+        "access_logger",
+        "access_log",
+        "parser",
+        "ws_protocol_class",
+        "root_path",
+        "limit_concurrency",
+        "timeout_keep_alive_task",
+        "timeout_keep_alive",
+        "connections",
+        "tasks",
+        "transport",
+        "flow",
+        "server",
+        "client",
+        "scheme",
+        "pipeline",
+        "scope",
+        "headers",
+        "expect_100_continue",
+        "cycle",
+        "url",
+    )
+
     def __init__(
         self,
         config: Config,
