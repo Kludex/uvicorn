@@ -246,6 +246,7 @@ class H11Protocol(asyncio.Protocol):
                     logger=self.logger,
                     access_logger=self.access_logger,
                     access_log=self.access_log,
+                    access_log_format=self.config.access_log_format if hasattr(self.config, "access_log_format") else None,
                     default_headers=self.server_state.default_headers,
                     message_event=asyncio.Event(),
                     on_response=self.on_response_complete,
@@ -378,6 +379,7 @@ class RequestResponseCycle:
         logger: logging.Logger,
         access_logger: logging.Logger,
         access_log: bool,
+        access_log_format: str | None,
         default_headers: list[tuple[bytes, bytes]],
         message_event: asyncio.Event,
         on_response: Callable[..., None],
@@ -389,6 +391,7 @@ class RequestResponseCycle:
         self.logger = logger
         self.access_logger = access_logger
         self.access_log = access_log
+        self.access_log_format = access_log_format
         self.default_headers = default_headers
         self.message_event = message_event
         self.on_response = on_response
@@ -475,14 +478,35 @@ class RequestResponseCycle:
                 headers = headers + [CLOSE_HEADER]
 
             if self.access_log:
-                self.access_logger.info(
-                    '%s - "%s %s HTTP/%s" %d',
-                    get_client_addr(self.scope),
-                    self.scope["method"],
-                    get_path_with_query_string(self.scope),
-                    self.scope["http_version"],
-                    status,
-                )
+
+                if hasattr(self, 'access_log_format') and self.access_log_format and "gunicorn" in sys.modules:
+                    import gunicorn.glogging
+                    from datetime import datetime
+                    class MockReq:
+                        headers = self.scope.get("headers", [])
+                        def __init__(self, scope):
+                            self.environ = {k.decode('latin1'): v.decode('latin1') for k, v in scope.get("headers", [])}
+                    
+                    class MockResp:
+                        status = str(status)
+                        sent = 0
+                        response_length = sum(len(x) for x in self.headers) if hasattr(self, 'headers') else 0
+                    
+                    try:
+                        atoms = gunicorn.glogging.Logger.atoms(None, MockResp(), MockReq(self.scope), {}, datetime.now())
+                        self.access_logger.info(self.access_log_format % atoms)
+                    except Exception:
+                        self.access_logger.info('%s - "%s %s HTTP/%s" %d', get_client_addr(self.scope), self.scope["method"], get_path_with_query_string(self.scope), self.scope["http_version"], status)
+                else:
+                    self.access_logger.info(
+                        '%s - "%s %s HTTP/%s" %d',
+                        get_client_addr(self.scope),
+                        self.scope["method"],
+                        get_path_with_query_string(self.scope),
+                        self.scope["http_version"],
+                        status,
+                    )
+
 
             # Write response status line and headers
             reason = STATUS_PHRASES[status]
