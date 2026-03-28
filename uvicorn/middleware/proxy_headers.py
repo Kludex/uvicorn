@@ -29,7 +29,13 @@ class ProxyHeadersMiddleware:
             return await self.app(scope, receive, send)
 
         client_addr = scope.get("client")
-        client_host = client_addr[0] if client_addr else None
+        server_addr = scope.get("server")
+        if client_addr:
+            client_host = client_addr[0]
+        elif server_addr and server_addr[1] is None:
+            client_host = "unix:"
+        else:
+            client_host = None
 
         if client_host in self.trusted_hosts:
             headers = dict(scope["headers"])

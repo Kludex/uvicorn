@@ -239,7 +239,7 @@ Uvicorn can use these headers to correctly set the client and protocol in the re
 However as anyone can set these headers you must configure which "clients" you will trust to have set them correctly.
 
 Uvicorn can be configured to trust IP Addresses (e.g. `127.0.0.1`), IP Networks (e.g. `10.100.0.0/16`),
-or Literals (e.g. `/path/to/socket.sock`). When running from CLI these are configured using `--forwarded-allow-ips`.
+or Unix sockets (`unix:`). When running from CLI these are configured using `--forwarded-allow-ips`.
 
 !!! Warning "Only trust clients you can actually trust!"
     Incorrectly trusting other clients can lead to malicious actors spoofing their apparent client address to your application.
