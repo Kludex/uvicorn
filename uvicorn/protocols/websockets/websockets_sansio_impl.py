@@ -356,7 +356,8 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                     elif text_data is not None:
                         self.conn.send_text(text_data.encode())
                     output = self.conn.data_to_send()
-                    self.transport.write(b"".join(output))
+                    if not self.transport.is_closing():
+                        self.transport.write(b"".join(output))
 
                 elif message["type"] == "websocket.close":
                     if not self.transport.is_closing():
