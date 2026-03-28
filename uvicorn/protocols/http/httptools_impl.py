@@ -9,7 +9,7 @@ import urllib
 from asyncio.events import TimerHandle
 from collections import deque
 from collections.abc import Callable
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 import httptools
 
@@ -18,7 +18,6 @@ from uvicorn._types import (
     ASGIReceiveEvent,
     ASGISendEvent,
     HTTPRequestEvent,
-    HTTPResponseStartEvent,
     HTTPScope,
 )
 from uvicorn.config import Config
@@ -455,8 +454,6 @@ class RequestResponseCycle:
 
     # ASGI interface
     async def send(self, message: ASGISendEvent) -> None:
-        message_type = message["type"]
-
         if self.flow.write_paused and not self.disconnected:
             await self.flow.drain()  # pragma: full coverage
 
@@ -465,10 +462,8 @@ class RequestResponseCycle:
 
         if not self.response_started:
             # Sending response status line and headers
-            if message_type != "http.response.start":
-                msg = "Expected ASGI message 'http.response.start', but got '%s'."
-                raise RuntimeError(msg % message_type)
-            message = cast("HTTPResponseStartEvent", message)
+            if message["type"] != "http.response.start":
+                raise RuntimeError(f"Expected ASGI message 'http.response.start', but got '{message['type']}'.")
 
             self.response_started = True
             self.waiting_for_100_continue = False
@@ -519,11 +514,10 @@ class RequestResponseCycle:
 
         elif not self.response_complete:
             # Sending response body
-            if message_type != "http.response.body":
-                msg = "Expected ASGI message 'http.response.body', but got '%s'."
-                raise RuntimeError(msg % message_type)
+            if message["type"] != "http.response.body":
+                raise RuntimeError(f"Expected ASGI message 'http.response.body', but got '{message['type']}'.")
 
-            body = cast(bytes, message.get("body", b""))
+            body = message.get("body", b"")
             more_body = message.get("more_body", False)
 
             # Write response body
@@ -557,8 +551,7 @@ class RequestResponseCycle:
 
         else:
             # Response already sent
-            msg = "Unexpected ASGI message '%s' sent, after response already completed."
-            raise RuntimeError(msg % message_type)
+            raise RuntimeError(f"Unexpected ASGI message '{message['type']}' sent, after response already completed.")
 
     async def receive(self) -> ASGIReceiveEvent:
         if self.waiting_for_100_continue and not self.transport.is_closing():
