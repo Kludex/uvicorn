@@ -41,7 +41,7 @@ class FileFilter:
                     return True  # pragma: full coverage
 
                 for exclude_dir in self.exclude_dirs:
-                    if exclude_dir in path.parents:  # pragma: full coverage
+                    if exclude_dir in path.parents:
                         return False
 
                 for exclude_pattern in self.excludes:
