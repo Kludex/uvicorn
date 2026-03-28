@@ -1,4 +1,3 @@
----
 name: CodSpeed
 
 on:
@@ -17,11 +16,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd" # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7.3.1
         with:
           python-version: "3.13"
+          enable-cache: true
 
       - name: Install dependencies
         run: scripts/install
