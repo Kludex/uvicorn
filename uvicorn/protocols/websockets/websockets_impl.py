@@ -209,14 +209,13 @@ class WebSocketProtocol(WebSocketServerProtocol):
 
     def send_500_response(self) -> None:
         msg = b"Internal Server Error"
-        content = [
-            b"HTTP/1.1 500 Internal Server Error\r\ncontent-type: text/plain; charset=utf-8\r\n",
-            b"content-length: " + str(len(msg)).encode("ascii") + b"\r\n",
-            b"connection: close\r\n",
-            b"\r\n",
-            msg,
-        ]
-        self.transport.write(b"".join(content))
+        content = bytearray(
+            b"HTTP/1.1 500 Internal Server Error\r\ncontent-type: text/plain; charset=utf-8\r\n"
+            b"content-length: " + str(len(msg)).encode("ascii") + b"\r\n"
+            b"connection: close\r\n"
+            b"\r\n" + msg,
+        )
+        self.transport.write(content)
         # Allow handler task to terminate cleanly, as websockets doesn't cancel it by
         # itself (see https://github.com/Kludex/uvicorn/issues/920)
         self.handshake_started_event.set()
