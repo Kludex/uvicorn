@@ -51,13 +51,40 @@ class ProxyHeadersMiddleware:
                     # If the x-forwarded-for header is empty then host is an empty string.
                     # Only set the client if we actually got something usable.
                     # See: https://github.com/Kludex/uvicorn/issues/1068
-
-                    # We've lost the connecting client's port information by now,
-                    # so only include the host.
-                    port = 0
+                    host, port = _parse_host_port(host)
                     scope["client"] = (host, port)
 
         return await self.app(scope, receive, send)
+
+
+def _parse_host_port(host: str) -> tuple[str, int]:
+    """Parse host and port from an X-Forwarded-For entry.
+
+    Handles IPv4 (e.g. "1.2.3.4:8080"), IPv6 (e.g. "[::1]:8080"),
+    and plain hosts (e.g. "1.2.3.4", "::1").
+    """
+    port = 0
+    if host.startswith("["):
+        # IPv6 with port, e.g. "[::1]:8080" or "[::1]"
+        bracket_end = host.find("]")
+        if bracket_end != -1:
+            ip_part = host[1:bracket_end]
+            rest = host[bracket_end + 1:]
+            if rest.startswith(":"):
+                try:
+                    port = int(rest[1:])
+                except ValueError:
+                    pass
+            return ip_part, port
+    elif ":" in host:
+        parts = host.rsplit(":", 1)
+        try:
+            port = int(parts[1])
+            return parts[0], port
+        except ValueError:
+            # Likely an IPv6 address without port
+            pass
+    return host, port
 
 
 def _parse_raw_hosts(value: str) -> list[str]:

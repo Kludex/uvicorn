@@ -493,3 +493,31 @@ async def test_proxy_headers_empty_x_forwarded_for() -> None:
         response = await client.get("/", headers=headers)
     assert response.status_code == 200
     assert response.text == "https://127.0.0.1:123"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("forwarded_for", "expected"),
+    [
+        # IPv4 with port
+        ("1.2.3.4:1024", "https://1.2.3.4:1024"),
+        # IPv4 without port (original behavior)
+        ("1.2.3.4", "https://1.2.3.4:0"),
+        # IPv6 without port
+        ("::1", "https://::1"),
+        # IPv6 with port in bracket notation
+        ("[::1]:8080", "https://::1:8080"),
+        # Multiple proxies with port
+        ("1.2.3.4:1024, 10.0.0.1:2048", "https://1.2.3.4:1024"),
+    ],
+)
+async def test_proxy_headers_port_in_forwarded_for(
+    forwarded_for: str,
+    expected: str,
+) -> None:
+    # https://github.com/encode/uvicorn/issues/2789
+    async with make_httpx_client("*") as client:
+        headers = {X_FORWARDED_FOR: forwarded_for, X_FORWARDED_PROTO: "https"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    assert response.text == expected
