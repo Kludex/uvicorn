@@ -171,7 +171,48 @@ async def app(scope, receive, send):
     })
 ```
 
----
+### Sending trailers
+
+You can send trailing headers by indicating adding `"trailers": True` to the
+`http.response.start` message and sending `http.response.trailers` messages 
+after the body is completer.
+
+```python
+import asyncio
+
+
+async def app(scope, receive, send):
+    """
+    Send an HTTP response with headers and trailers.
+    """
+    await send({
+        'type': 'http.response.start',
+        'status': 200,
+        'headers': [
+            [b'content-type', b'text/plain'],
+        ],
+        "trailers": True
+    })
+    await send({
+        'type': 'http.response.body',
+        'body': b'Hello, world!',
+    })
+    await send({
+        'type': 'http.response.trailers',
+        'body': b'',
+        'headers': [
+            [b'x-app-status', b'1'],
+        ],
+        'more_trailers': True
+    })
+    await send({
+        'type': 'http.response.trailers',
+        'body': b'',
+        'headers': [
+            [b'x-app-details', b'failed'],
+        ]
+    })
+```
 
 ## Why ASGI?
 
