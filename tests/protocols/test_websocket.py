@@ -883,6 +883,8 @@ async def test_server_reject_connection_with_invalid_status(
         response = await wsresponse(url)
         assert response.status_code == 500
         assert response.content == b"Internal Server Error"
+        assert response.headers["content-length"] == "21"
+        assert response.headers["connection"] == "close"
 
     config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
     async with run_server(config):
