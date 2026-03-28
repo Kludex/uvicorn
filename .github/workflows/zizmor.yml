@@ -1,4 +1,4 @@
-name: GitHub Actions Security Analysis with zizmor 🌈
+name: GitHub Actions Security Analysis
 
 on:
   push:
@@ -10,7 +10,6 @@ permissions: {}
 
 jobs:
   zizmor:
-    name: Run zizmor 🌈
     runs-on: ubuntu-latest
 
     permissions:
