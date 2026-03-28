@@ -326,6 +326,8 @@ class WebSocketProtocol(WebSocketServerProtocol):
                     bytes_data = message.get("bytes")
                     text_data = message.get("text")
                     data = text_data if bytes_data is None else bytes_data
+                    if self.transport.is_closing():  # pragma: full coverage
+                        raise ClientDisconnected  # pragma: full coverage
                     await self.send(data)  # type: ignore[arg-type]
 
                 elif message_type == "websocket.close":
@@ -338,8 +340,8 @@ class WebSocketProtocol(WebSocketServerProtocol):
                 else:
                     msg = "Expected ASGI message 'websocket.send' or 'websocket.close', but got '%s'."
                     raise RuntimeError(msg % message_type)
-            except ConnectionClosed as exc:
-                raise ClientDisconnected from exc
+            except ConnectionClosed as exc:  # pragma: full coverage
+                raise ClientDisconnected from exc  # pragma: full coverage
 
         elif self.initial_response is not None:
             if message_type == "websocket.http.response.body":
