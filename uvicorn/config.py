@@ -111,6 +111,21 @@ def create_ssl_context(
     ca_certs: str | os.PathLike[str] | None,
     ciphers: str | None,
 ) -> ssl.SSLContext:
+    """Create and configure an ``ssl.SSLContext`` for serving over TLS.
+
+    Args:
+        certfile: Path to the SSL certificate file.
+        keyfile: Path to the SSL private key file.
+        password: Password for decrypting the SSL private key.
+        ssl_version: SSL protocol version constant (e.g. ``ssl.PROTOCOL_TLS_SERVER``).
+        cert_reqs: Whether client certificates are required
+            (e.g. ``ssl.CERT_NONE``).
+        ca_certs: Path to a CA certificates file for verifying client certificates.
+        ciphers: OpenSSL cipher string to restrict allowed ciphers.
+
+    Returns:
+        A configured ``ssl.SSLContext`` instance.
+    """
     ctx = ssl.SSLContext(ssl_version)
     get_password = (lambda: password) if password else None
     ctx.load_cert_chain(certfile, keyfile, get_password)
@@ -123,6 +138,11 @@ def create_ssl_context(
 
 
 def is_dir(path: Path) -> bool:
+    """Check whether *path* is an existing directory.
+
+    Relative paths are resolved before checking.  Returns ``False`` if an
+    ``OSError`` is raised (e.g. for permission errors).
+    """
     try:
         if not path.is_absolute():
             path = path.resolve()
@@ -132,6 +152,21 @@ def is_dir(path: Path) -> bool:
 
 
 def resolve_reload_patterns(patterns_list: list[str], directories_list: list[str]) -> tuple[list[str], list[Path]]:
+    """Resolve reload glob patterns into a deduplicated set of patterns and directories.
+
+    Glob patterns are expanded against the current working directory. If a
+    pattern matches an existing directory, it is added to the directory list.
+    Child directories that are already covered by a parent directory are removed.
+
+    Args:
+        patterns_list: Glob patterns to include for file watching.
+        directories_list: Explicit directory paths to watch.
+
+    Returns:
+        A tuple of ``(patterns, directories)`` where *patterns* is a
+        deduplicated list of glob strings and *directories* is a list of
+        resolved ``Path`` objects with redundant children removed.
+    """
     directories: list[Path] = list(set(map(Path, directories_list.copy())))
     patterns: list[str] = patterns_list.copy()
 
@@ -168,6 +203,11 @@ def resolve_reload_patterns(patterns_list: list[str], directories_list: list[str
 
 
 def _normalize_dirs(dirs: list[str] | str | None) -> list[str]:
+    """Normalize a directory argument into a deduplicated list of strings.
+
+    Accepts ``None``, a single string, or a list of strings and always returns
+    a list.
+    """
     if dirs is None:
         return []
     if isinstance(dirs, str):
@@ -176,6 +216,14 @@ def _normalize_dirs(dirs: list[str] | str | None) -> list[str]:
 
 
 class Config:
+    """Central configuration object for a Uvicorn server instance.
+
+    Holds all settings related to networking, SSL/TLS, logging, reloading,
+    protocol selection, and worker management.  Call :meth:`load` to resolve
+    the ASGI application and apply middleware before the server starts
+    accepting connections.
+    """
+
     def __init__(
         self,
         app: ASGIApplication | Callable[..., Any] | str,
@@ -346,6 +394,7 @@ class Config:
 
     @property
     def asgi_version(self) -> Literal["2.0", "3.0"]:
+        """Return the ASGI spec version string for the configured interface."""
         mapping: dict[str, Literal["2.0", "3.0"]] = {
             "asgi2": "2.0",
             "asgi3": "3.0",
@@ -355,13 +404,26 @@ class Config:
 
     @property
     def is_ssl(self) -> bool:
+        """Return ``True`` if an SSL key or certificate file has been configured."""
         return bool(self.ssl_keyfile or self.ssl_certfile)
 
     @property
     def use_subprocess(self) -> bool:
+        """Return ``True`` if the server will spawn child processes.
+
+        This is the case when reload is enabled or more than one worker is
+        configured.
+        """
         return bool(self.reload or self.workers > 1)
 
     def configure_logging(self) -> None:
+        """Apply the logging configuration.
+
+        Registers the custom ``TRACE`` log level, processes the
+        :attr:`log_config` (dict, JSON, YAML, or INI file), and adjusts
+        logger levels and handlers according to :attr:`log_level` and
+        :attr:`access_log`.
+        """
         logging.addLevelName(TRACE_LOG_LEVEL, "TRACE")
 
         if self.log_config is not None:
@@ -400,6 +462,19 @@ class Config:
             logging.getLogger("uvicorn.access").propagate = False
 
     def load(self) -> None:
+        """Resolve and prepare the ASGI application for serving.
+
+        This must be called exactly once before the server starts.  It
+        performs the following steps:
+
+        * Creates the SSL context when TLS is configured.
+        * Encodes custom response headers.
+        * Imports the HTTP, WebSocket, and lifespan protocol classes.
+        * Imports (and optionally calls) the ASGI application.
+        * Detects the ASGI interface version when set to ``"auto"``.
+        * Wraps the application in any required middleware (WSGI adapter,
+          ASGI2 adapter, proxy headers, message logger).
+        """
         assert not self.loaded
 
         if self.is_ssl:
@@ -486,6 +561,13 @@ class Config:
         )
 
     def get_loop_factory(self) -> Callable[[], asyncio.AbstractEventLoop] | None:
+        """Return a callable that creates the configured event loop, or ``None``.
+
+        When :attr:`loop` names a built-in factory (e.g. ``"auto"``,
+        ``"uvloop"``), the corresponding factory is imported and returned.
+        A custom import string is also accepted.  Returns ``None`` when the
+        loop setting is ``"none"``.
+        """
         if self.loop in LOOP_FACTORIES:
             loop_factory: Callable[..., Any] | None = import_from_string(LOOP_FACTORIES[self.loop])
         else:
@@ -499,6 +581,12 @@ class Config:
         return loop_factory(use_subprocess=self.use_subprocess)
 
     def bind_socket(self) -> socket.socket:
+        """Create, bind, and return a listening socket.
+
+        Handles UNIX domain sockets, file-descriptor sockets, and standard
+        TCP sockets (IPv4 and IPv6).  Logs the address the server is running
+        on.
+        """
         logger_args: list[str | int]
         if self.uds:  # pragma: py-win32
             path = self.uds
@@ -548,4 +636,5 @@ class Config:
 
     @property
     def should_reload(self) -> bool:
+        """Return ``True`` if auto-reload is enabled and the app is an import string."""
         return isinstance(self.app, str) and self.reload

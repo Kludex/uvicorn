@@ -54,6 +54,12 @@ class ServerState:
 
 
 class Server:
+    """The core asyncio server that manages the ASGI application lifecycle.
+
+    Handles binding to sockets, starting and stopping the event loop, signal
+    handling, graceful shutdown, and enforcing request limits.
+    """
+
     def __init__(self, config: Config) -> None:
         self.config = config
         self.server_state = ServerState()
@@ -72,9 +78,11 @@ class Server:
         return self.config.limit_max_requests + random.randint(0, self.config.limit_max_requests_jitter)
 
     def run(self, sockets: list[socket.socket] | None = None) -> None:
+        """Run the server synchronously, creating an event loop via the configured factory."""
         return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
 
     async def serve(self, sockets: list[socket.socket] | None = None) -> None:
+        """Start serving, capturing OS signals for graceful shutdown."""
         with self.capture_signals():
             await self._serve(sockets)
 
@@ -102,6 +110,7 @@ class Server:
             logger.info(message, process_id, extra={"color_message": color_message})
 
     async def startup(self, sockets: list[socket.socket] | None = None) -> None:
+        """Start the lifespan, bind to sockets, and begin accepting connections."""
         await self.lifespan.startup()
         if self.lifespan.should_exit:
             self.should_exit = True
@@ -195,6 +204,7 @@ class Server:
         self.started = True
 
     def _log_started_message(self, listeners: Sequence[socket.SocketType]) -> None:
+        """Log the address(es) the server is listening on."""
         config = self.config
 
         if config.fd is not None:  # pragma: py-win32
@@ -230,6 +240,7 @@ class Server:
             )
 
     async def main_loop(self) -> None:
+        """Poll :meth:`on_tick` every 100 ms until the server should exit."""
         counter = 0
         should_exit = await self.on_tick(counter)
         while not should_exit:
@@ -239,6 +250,12 @@ class Server:
             should_exit = await self.on_tick(counter)
 
     async def on_tick(self, counter: int) -> bool:
+        """Perform periodic bookkeeping and return ``True`` when the server should exit.
+
+        Called every 100 ms. Updates the ``Date`` header once per second,
+        invokes the ``callback_notify`` callback at the configured interval,
+        and checks whether the maximum request limit has been reached.
+        """
         # Update the default headers, once per second.
         if counter % 10 == 0:
             current_time = time.time()
@@ -269,6 +286,13 @@ class Server:
         return False
 
     async def shutdown(self, sockets: list[socket.socket] | None = None) -> None:
+        """Gracefully shut down the server.
+
+        Stops accepting new connections, requests shutdown on existing ones,
+        waits for in-flight tasks to complete (subject to
+        ``timeout_graceful_shutdown``), and finally triggers the lifespan
+        shutdown event.
+        """
         logger.info("Shutting down")
 
         # Stop accepting new connections.
@@ -320,6 +344,12 @@ class Server:
 
     @contextlib.contextmanager
     def capture_signals(self) -> Generator[None, None, None]:
+        """Context manager that installs signal handlers for graceful shutdown.
+
+        Restores the original handlers on exit and re-raises any captured
+        signals so that the calling process observes the expected termination
+        behaviour.
+        """
         # Signals can only be listened to from the main thread.
         if threading.current_thread() is not threading.main_thread():
             yield
@@ -339,6 +369,12 @@ class Server:
             signal.raise_signal(captured_signal)
 
     def handle_exit(self, sig: int, frame: FrameType | None) -> None:
+        """Signal handler that triggers graceful or forced shutdown.
+
+        The first signal sets :attr:`should_exit`.  A second ``SIGINT``
+        while already shutting down sets :attr:`force_exit` to skip waiting
+        for in-flight requests.
+        """
         self._captured_signals.append(sig)
         if self.should_exit and sig == signal.SIGINT:
             self.force_exit = True  # pragma: full coverage
