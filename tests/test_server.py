@@ -309,4 +309,7 @@ def test_handle_exit_sets_force_exit_on_second_signal(unused_tcp_port: int):
     assert server.force_exit is False
 
     server.handle_exit(sig=signal.SIGTERM, frame=None)
+    assert server.force_exit is False
+
+    server.handle_exit(sig=signal.SIGINT, frame=None)
     assert server.force_exit is True

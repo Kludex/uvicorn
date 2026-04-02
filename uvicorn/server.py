@@ -348,7 +348,7 @@ class Server:
 
     def handle_exit(self, sig: int, frame: FrameType | None) -> None:
         self._captured_signals.append(sig)
-        if self.should_exit:
+        if self.should_exit and sig == signal.SIGINT:
             self.force_exit = True  # pragma: full coverage
         else:
             self.should_exit = True
