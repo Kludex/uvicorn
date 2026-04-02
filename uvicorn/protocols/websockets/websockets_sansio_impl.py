@@ -130,12 +130,15 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
 
     def shutdown(self) -> None:
         if self.handshake_complete:
-            self.queue.put_nowait({"type": "websocket.disconnect", "code": 1012})
-            self.conn.send_close(1012)
-            output = self.conn.data_to_send()
-            self.transport.write(b"".join(output))
+            if self.conn.close_rcvd is None and self.conn.close_sent is None:
+                self.queue.put_nowait({"type": "websocket.disconnect", "code": 1012})
+                self.conn.send_close(1012)
+                output = self.conn.data_to_send()
+                self.transport.write(b"".join(output))
         else:
             self.send_500_response()
+
+    def abort(self) -> None:
         self.transport.close()
 
     def data_received(self, data: bytes) -> None:

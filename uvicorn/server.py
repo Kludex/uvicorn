@@ -293,8 +293,16 @@ class Server:
                 "Cancel %s running task(s), timeout graceful shutdown exceeded",
                 len(self.server_state.tasks),
             )
+            for connection in list(self.server_state.connections):
+                connection.abort()
             for t in self.server_state.tasks:
                 t.cancel(msg="Task cancelled, timeout graceful shutdown exceeded")
+        else:
+            if self.force_exit:
+                for connection in list(self.server_state.connections):
+                    connection.abort()
+                for t in self.server_state.tasks:
+                    t.cancel(msg="Task cancelled, shutdown aborted by signal")
 
         # Send the lifespan shutdown event, and wait for application shutdown.
         if not self.force_exit:
@@ -340,7 +348,7 @@ class Server:
 
     def handle_exit(self, sig: int, frame: FrameType | None) -> None:
         self._captured_signals.append(sig)
-        if self.should_exit and sig == signal.SIGINT:
+        if self.should_exit:
             self.force_exit = True  # pragma: full coverage
         else:
             self.should_exit = True

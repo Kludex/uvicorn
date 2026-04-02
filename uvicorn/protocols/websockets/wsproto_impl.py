@@ -150,11 +150,14 @@ class WSProtocol(asyncio.Protocol):
 
     def shutdown(self) -> None:
         if self.handshake_complete:
-            self.queue.put_nowait({"type": "websocket.disconnect", "code": 1012})
-            output = self.conn.send(wsproto.events.CloseConnection(code=1012))
-            self.transport.write(output)
+            if self.conn.state is ConnectionState.OPEN:
+                self.queue.put_nowait({"type": "websocket.disconnect", "code": 1012})
+                output = self.conn.send(wsproto.events.CloseConnection(code=1012))
+                self.transport.write(output)
         else:
             self.send_500_response()
+
+    def abort(self) -> None:
         self.transport.close()
 
     def on_task_complete(self, task: asyncio.Task[None]) -> None:

@@ -14,6 +14,7 @@ from websockets.exceptions import ConnectionClosed
 from websockets.extensions.base import ServerExtensionFactory
 from websockets.extensions.permessage_deflate import ServerPerMessageDeflateFactory
 from websockets.legacy.server import HTTPResponse
+from websockets.protocol import State
 from websockets.server import WebSocketServerProtocol
 from websockets.typing import Subprotocol
 
@@ -148,9 +149,12 @@ class WebSocketProtocol(WebSocketServerProtocol):
     def shutdown(self) -> None:
         self.ws_server.closing = True
         if self.handshake_completed_event.is_set():
-            self.fail_connection(1012)
+            if self.state is State.OPEN:
+                self.loop.create_task(self.close(code=1012))
         else:
             self.send_500_response()
+
+    def abort(self) -> None:
         self.transport.close()
 
     def on_task_complete(self, task: asyncio.Task[None]) -> None:

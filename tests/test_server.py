@@ -232,3 +232,81 @@ async def test_no_contextvars_pollution_asyncio(
     async with server(app=app, http_protocol_cls=http_protocol_cls, port=unused_tcp_port) as extract_json_body:
         assert await extract_json_body(large_request) == {}
         assert await extract_json_body(SIMPLE_GET_REQUEST) == {}
+
+
+async def test_shutdown_aborts_connections_after_grace_timeout(unused_tcp_port: int):
+    calls: list[str] = []
+
+    class Connection:
+        def shutdown(self) -> None:
+            calls.append("shutdown")
+
+        def abort(self) -> None:
+            calls.append("abort")
+
+    class Lifespan:
+        state = {}
+        should_exit = False
+
+        async def shutdown(self) -> None:
+            calls.append("lifespan")
+
+    config = Config(app=app, port=unused_tcp_port, timeout_graceful_shutdown=0.01)
+    server = Server(config=config)
+    server.servers = []
+    server.lifespan = Lifespan()
+    server.server_state.connections.add(Connection())  # type: ignore[arg-type]
+
+    async def never_finishes() -> None:
+        await asyncio.sleep(1)
+
+    server._wait_tasks_to_complete = never_finishes  # type: ignore[method-assign]
+
+    await server.shutdown()
+
+    assert calls == ["shutdown", "abort", "lifespan"]
+
+
+async def test_shutdown_does_not_abort_connections_that_finish_in_time(unused_tcp_port: int):
+    calls: list[str] = []
+
+    class Connection:
+        def shutdown(self) -> None:
+            calls.append("shutdown")
+
+        def abort(self) -> None:
+            calls.append("abort")
+
+    class Lifespan:
+        state = {}
+        should_exit = False
+
+        async def shutdown(self) -> None:
+            calls.append("lifespan")
+
+    config = Config(app=app, port=unused_tcp_port, timeout_graceful_shutdown=1)
+    server = Server(config=config)
+    server.servers = []
+    server.lifespan = Lifespan()
+    connection = Connection()
+    server.server_state.connections.add(connection)  # type: ignore[arg-type]
+
+    async def completes_in_time() -> None:
+        server.server_state.connections.discard(connection)  # type: ignore[arg-type]
+
+    server._wait_tasks_to_complete = completes_in_time  # type: ignore[method-assign]
+
+    await server.shutdown()
+
+    assert calls == ["shutdown", "lifespan"]
+
+
+def test_handle_exit_sets_force_exit_on_second_signal(unused_tcp_port: int):
+    server = Server(Config(app=app, port=unused_tcp_port))
+
+    server.handle_exit(sig=signal.SIGTERM, frame=None)
+    assert server.should_exit is True
+    assert server.force_exit is False
+
+    server.handle_exit(sig=signal.SIGTERM, frame=None)
+    assert server.force_exit is True
