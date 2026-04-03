@@ -1202,3 +1202,91 @@ async def test_lifespan_state(ws_protocol_cls: WSProtocol, http_protocol_cls: HT
         assert is_open
 
     assert expected_states == actual_states
+
+
+async def raw_ws_handshake(host: str, port: int) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+    """Raw TCP websocket handshake that does not automatically respond to pings."""
+    reader, writer = await asyncio.open_connection(host, port)
+    request = (
+        f"GET / HTTP/1.1\r\n"
+        f"Host: {host}:{port}\r\n"
+        f"Connection: Upgrade\r\n"
+        f"Upgrade: websocket\r\n"
+        f"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+        f"Sec-WebSocket-Version: 13\r\n"
+        f"\r\n"
+    )
+    writer.write(request.encode())
+    await writer.drain()
+    response = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=2)
+    # Switching Protocols (WebSocket handshake accepted)
+    assert b"101" in response
+    return reader, writer
+
+
+async def test_server_sends_keepalive_ping(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+):
+    if ws_protocol_cls.__name__ == "WSProtocol":
+        pytest.skip("wsproto does not support ws_ping_interval.")
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        while True:
+            message = await receive()
+            if message["type"] == "websocket.connect":
+                await send({"type": "websocket.accept"})
+            elif message["type"] == "websocket.disconnect":
+                break
+
+    config = Config(
+        app=app,
+        ws=ws_protocol_cls,
+        http=http_protocol_cls,
+        lifespan="off",
+        ws_ping_interval=0.1,
+        ws_ping_timeout=2.0,
+        port=unused_tcp_port,
+    )
+    async with run_server(config):
+        reader, writer = await raw_ws_handshake("127.0.0.1", unused_tcp_port)
+        data = await asyncio.wait_for(reader.read(4096), timeout=2)
+        assert len(data) >= 2
+        # 0x89 = FIN bit (0x80) | ping opcode (0x09)
+        assert data[0] == 0x89, f"Expected ping frame (0x89), got 0x{data[0]:02x}"
+        writer.close()
+
+
+async def test_server_keepalive_ping_timeout(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+):
+    if ws_protocol_cls.__name__ == "WSProtocol":
+        pytest.skip("wsproto does not support ws_ping_interval.")
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        while True:
+            message = await receive()
+            if message["type"] == "websocket.connect":
+                await send({"type": "websocket.accept"})
+            elif message["type"] == "websocket.disconnect":
+                break
+
+    config = Config(
+        app=app,
+        ws=ws_protocol_cls,
+        http=http_protocol_cls,
+        lifespan="off",
+        ws_ping_interval=0.1,
+        ws_ping_timeout=0.1,
+        port=unused_tcp_port,
+    )
+    async with run_server(config):
+        async with websockets.client.connect(
+            f"ws://127.0.0.1:{unused_tcp_port}",
+            ping_interval=None,
+        ) as websocket:
+            # Suppress all writes so the client never sends pong back.
+            websocket.transport.write = lambda data: None  # type: ignore[method-assign]
+            with pytest.raises(websockets.exceptions.ConnectionClosedError) as exc_info:
+                await asyncio.wait_for(websocket.recv(), timeout=2)
+            assert exc_info.value.rcvd is not None
+            assert exc_info.value.rcvd.code == 1011

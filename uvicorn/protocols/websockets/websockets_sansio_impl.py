@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
+import struct
 import sys
 from asyncio.transports import BaseTransport, Transport
 from http import HTTPStatus
@@ -92,6 +94,13 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.writable = asyncio.Event()
         self.writable.set()
 
+        # Keepalive state
+        self.ping_interval = config.ws_ping_interval
+        self.ping_timeout = config.ws_ping_timeout
+        self.keepalive_task: asyncio.Task[None] | None = None
+        self.pending_pings: dict[bytes, tuple[asyncio.Future[float], float]] = {}
+        self.latency: float = 0
+
         # Buffers
         self.bytes = b""
 
@@ -109,6 +118,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             self.logger.log(TRACE_LOG_LEVEL, "%sWebSocket connection made", prefix)
 
     def connection_lost(self, exc: Exception | None) -> None:
+        self.stop_keepalive()
         code = 1005 if self.handshake_complete else 1006
         self.queue.put_nowait({"type": "websocket.disconnect", "code": code})
         self.connections.remove(self)
@@ -125,6 +135,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         pass
 
     def shutdown(self) -> None:
+        self.stop_keepalive()
         if self.handshake_complete:
             self.queue.put_nowait({"type": "websocket.disconnect", "code": 1012})
             self.conn.send_close(1012)
@@ -155,7 +166,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 elif event.opcode == Opcode.PING:
                     self.handle_ping()
                 elif event.opcode == Opcode.PONG:
-                    pass  # pragma: no cover
+                    self.handle_pong(event)
                 elif event.opcode == Opcode.CLOSE:
                     self.handle_close(event)
                 else:
@@ -238,6 +249,83 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         output = self.conn.data_to_send()
         self.transport.write(b"".join(output))
 
+    def handle_pong(self, event: Frame) -> None:
+        data = bytes(event.data)
+        if data not in self.pending_pings:
+            return
+
+        pong_timestamp = self.loop.time()
+
+        ping_ids = []
+        for ping_id, (pong_received, ping_timestamp) in self.pending_pings.items():
+            ping_ids.append(ping_id)
+            latency = pong_timestamp - ping_timestamp
+            if not pong_received.done():
+                pong_received.set_result(latency)
+            if ping_id == data:
+                self.latency = latency
+                break
+
+        for ping_id in ping_ids:
+            del self.pending_pings[ping_id]
+
+    def start_keepalive(self) -> None:
+        if self.ping_interval is not None:
+            self.keepalive_task = self.loop.create_task(self.keepalive())
+
+    def stop_keepalive(self) -> None:
+        if self.keepalive_task is not None:
+            self.keepalive_task.cancel()
+            self.keepalive_task = None
+        for pong_received, _ping_timestamp in self.pending_pings.values():
+            if not pong_received.done():
+                pong_received.cancel()
+        self.pending_pings.clear()
+
+    async def keepalive(self) -> None:
+        assert self.ping_interval is not None
+        latency = 0.0
+        try:
+            while True:
+                await asyncio.sleep(self.ping_interval - latency)
+
+                if self.transport.is_closing():
+                    return
+
+                ping_data: bytes | None = None
+                while ping_data is None or ping_data in self.pending_pings:
+                    ping_data = struct.pack("!I", random.getrandbits(32))
+
+                pong_received: asyncio.Future[float] = self.loop.create_future()
+                ping_timestamp = self.loop.time()
+                self.pending_pings[ping_data] = (pong_received, ping_timestamp)
+
+                self.conn.send_ping(ping_data)
+                output = self.conn.data_to_send()
+                self.transport.write(b"".join(output))
+
+                if self.ping_timeout is not None:
+                    try:
+                        latency = await asyncio.wait_for(pong_received, self.ping_timeout)
+                    except TimeoutError:
+                        self.pending_pings.pop(ping_data, None)
+                        if self.logger.level <= TRACE_LOG_LEVEL:
+                            prefix = "%s:%d - " % self.client if self.client else ""
+                            self.logger.log(
+                                TRACE_LOG_LEVEL,
+                                "%sWebSocket keepalive ping timeout",
+                                prefix,
+                            )
+                        self.conn.fail(1011, "keepalive ping timeout")
+                        output = self.conn.data_to_send()
+                        self.transport.write(b"".join(output))
+                        self.transport.close()
+                        return
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            self.logger.error("keepalive ping failed", exc_info=True)
+
     def handle_close(self, event: Frame) -> None:
         if not self.close_sent and not self.transport.is_closing():
             assert self.conn.close_rcvd is not None
@@ -311,6 +399,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                     self.conn.send_response(self.response)
                     output = self.conn.data_to_send()
                     self.transport.write(b"".join(output))
+                    self.start_keepalive()
 
             elif message["type"] == "websocket.close":
                 self.queue.put_nowait({"type": "websocket.disconnect", "code": 1006})

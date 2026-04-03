@@ -48,8 +48,8 @@ async def _ws_send_text_app(scope: Scope, receive: ASGIReceiveCallable, send: AS
     await send({"type": "websocket.close", "code": 1000})
 
 
-_ws_accept_close_config = make_config(_ws_accept_close_app, access_log=False)
-_ws_send_text_config = make_config(_ws_send_text_app, access_log=False)
+_ws_accept_close_config = make_config(_ws_accept_close_app, access_log=False, ws_ping_interval=None)
+_ws_send_text_config = make_config(_ws_send_text_app, access_log=False, ws_ping_interval=None)
 
 
 async def test_bench_ws_handshake(ws_cls: WSProtocolClass) -> None:
