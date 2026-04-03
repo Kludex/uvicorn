@@ -2,6 +2,16 @@
 toc_depth: 2
 ---
 
+## 0.43.0 (April 3, 2026)
+
+You can quit Uvicorn now. We heard you, @pamelafox - all 47 of your Ctrl+C's (thanks for flagging it, and thanks to @tiangolo for the fix). [See the tweet](https://x.com/pamelafox/status/2039097686155227623).
+
+### Changed
+
+* Emit `http.disconnect` ASGI `receive()` event on server shutting down for streaming responses (#2829)
+* Use native `context` parameter for `create_task` on Python 3.11+ (#2859)
+* Drop cast in ASGI types (#2875)
+
 ## 0.42.0 (March 16, 2026)
 
 ### Changed
