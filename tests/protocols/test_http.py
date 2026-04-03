@@ -763,8 +763,6 @@ async def test_shutdown_during_streaming_sends_disconnect(http_protocol_cls: typ
 
     protocol = get_connected_protocol(app, http_protocol_cls)
     protocol.data_received(SIMPLE_GET_REQUEST)
-    # Let the app start and send initial response
-    await asyncio.sleep(0)
     # Trigger server shutdown while the app is streaming
     protocol.shutdown()  # type: ignore[attr-defined]
     await protocol.loop.run_one()
@@ -804,7 +802,6 @@ async def test_shutdown_during_streaming_allows_send_before_exit(http_protocol_c
 
     protocol = get_connected_protocol(app, http_protocol_cls)
     protocol.data_received(SIMPLE_GET_REQUEST)
-    await asyncio.sleep(0)
     protocol.shutdown()  # type: ignore[attr-defined]
     await protocol.loop.run_one()
     assert farewell_sent
