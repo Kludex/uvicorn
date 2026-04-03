@@ -1205,7 +1205,7 @@ async def test_lifespan_state(ws_protocol_cls: WSProtocol, http_protocol_cls: HT
 
 
 async def raw_ws_handshake(host: str, port: int) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
-    """Raw TCP websocket handshake that does not automatically respond to pings."""
+    """Raw TCP websocket handshake. Does not auto-respond to pings."""
     reader, writer = await asyncio.open_connection(host, port)
     request = (
         f"GET / HTTP/1.1\r\n"
@@ -1257,7 +1257,10 @@ async def test_server_sends_keepalive_ping(
 
 
 async def test_server_keepalive_ping_timeout(
-    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+    ws_protocol_cls: WSProtocol,
+    http_protocol_cls: HTTPProtocol,
+    unused_tcp_port: int,
+    caplog: pytest.LogCaptureFixture,
 ):
     if ws_protocol_cls.__name__ == "WSProtocol":
         pytest.skip("wsproto does not support ws_ping_interval.")
@@ -1277,6 +1280,7 @@ async def test_server_keepalive_ping_timeout(
         lifespan="off",
         ws_ping_interval=0.1,
         ws_ping_timeout=0.1,
+        log_level="trace",
         port=unused_tcp_port,
     )
     async with run_server(config):
@@ -1284,9 +1288,84 @@ async def test_server_keepalive_ping_timeout(
             f"ws://127.0.0.1:{unused_tcp_port}",
             ping_interval=None,
         ) as websocket:
-            # Suppress all writes so the client never sends pong back.
             websocket.transport.write = lambda data: None  # type: ignore[method-assign]
             with pytest.raises(websockets.exceptions.ConnectionClosedError) as exc_info:
                 await asyncio.wait_for(websocket.recv(), timeout=2)
             assert exc_info.value.rcvd is not None
             assert exc_info.value.rcvd.code == 1011
+
+    assert any("keepalive ping timeout" in r.message for r in caplog.records)
+
+
+async def test_server_keepalive_ping_pong(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+):
+    if ws_protocol_cls.__name__ == "WSProtocol":
+        pytest.skip("wsproto does not support ws_ping_interval.")
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        while True:
+            message = await receive()
+            if message["type"] == "websocket.connect":
+                await send({"type": "websocket.accept"})
+            elif message["type"] == "websocket.receive":
+                _text = message.get("text")
+                assert _text is not None
+                await send({"type": "websocket.send", "text": _text})
+            elif message["type"] == "websocket.disconnect":
+                break
+
+    config = Config(
+        app=app,
+        ws=ws_protocol_cls,
+        http=http_protocol_cls,
+        lifespan="off",
+        ws_ping_interval=0.1,
+        ws_ping_timeout=0.5,
+        port=unused_tcp_port,
+    )
+    async with run_server(config):
+        async with websockets.client.connect(
+            f"ws://127.0.0.1:{unused_tcp_port}",
+            ping_interval=None,
+        ) as websocket:
+            await asyncio.sleep(0.5)
+            await websocket.send("hello")
+            assert await asyncio.wait_for(websocket.recv(), timeout=1) == "hello"
+
+
+async def test_server_keepalive_close_during_sleep(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+):
+    if ws_protocol_cls.__name__ == "WSProtocol":
+        pytest.skip("wsproto does not support ws_ping_interval.")
+
+    disconnect_received = False
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        nonlocal disconnect_received
+        while True:
+            message = await receive()
+            if message["type"] == "websocket.connect":
+                await send({"type": "websocket.accept"})
+            elif message["type"] == "websocket.disconnect":
+                disconnect_received = True
+                break
+
+    config = Config(
+        app=app,
+        ws=ws_protocol_cls,
+        http=http_protocol_cls,
+        lifespan="off",
+        ws_ping_interval=10.0,
+        ws_ping_timeout=10.0,
+        port=unused_tcp_port,
+    )
+    async with run_server(config):
+        async with websockets.client.connect(
+            f"ws://127.0.0.1:{unused_tcp_port}",
+            ping_interval=None,
+        ) as websocket:
+            await websocket.close()
+
+    assert disconnect_received

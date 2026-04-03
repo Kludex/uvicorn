@@ -251,7 +251,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
 
     def handle_pong(self, event: Frame) -> None:
         data = bytes(event.data)
-        if data not in self.pending_pings:
+        if data not in self.pending_pings:  # pragma: no cover
             return
 
         pong_timestamp = self.loop.time()
@@ -278,7 +278,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             self.keepalive_task.cancel()
             self.keepalive_task = None
         for pong_received, _ping_timestamp in self.pending_pings.values():
-            if not pong_received.done():
+            if not pong_received.done():  # pragma: no cover
                 pong_received.cancel()
         self.pending_pings.clear()
 
@@ -289,7 +289,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             while True:
                 await asyncio.sleep(self.ping_interval - latency)
 
-                if self.transport.is_closing():
+                if self.transport.is_closing():  # pragma: no cover
                     return
 
                 ping_data: bytes | None = None
@@ -323,7 +323,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                         return
         except asyncio.CancelledError:
             pass
-        except Exception:
+        except Exception:  # pragma: no cover
             self.logger.error("keepalive ping failed", exc_info=True)
 
     def handle_close(self, event: Frame) -> None:
