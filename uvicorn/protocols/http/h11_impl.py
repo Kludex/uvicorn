@@ -4,8 +4,9 @@ import asyncio
 import contextvars
 import http
 import logging
+import sys
 from collections.abc import Callable
-from typing import Any, Literal, cast
+from typing import Any, Literal
 from urllib.parse import unquote
 
 import h11
@@ -252,9 +253,10 @@ class H11Protocol(asyncio.Protocol):
                 # For the asyncio loop, we need to explicitly start with an empty context
                 # as it can be polluted from previous ASGI runs.
                 # See https://github.com/python/cpython/issues/140947 for details.
-                task = contextvars.Context().run(self.loop.create_task, self.cycle.run_asgi(app))
-                # TODO: Replace the line above with the line below for Python >= 3.11
-                # task = self.loop.create_task(self.cycle.run_asgi(app), context=contextvars.Context())
+                if sys.version_info >= (3, 11):  # pragma: py-lt-311
+                    task = self.loop.create_task(self.cycle.run_asgi(app), context=contextvars.Context())
+                else:  # pragma: py-gte-311
+                    task = contextvars.Context().run(self.loop.create_task, self.cycle.run_asgi(app))
                 task.add_done_callback(self.tasks.discard)
                 self.tasks.add(task)
 
@@ -400,7 +402,7 @@ class RequestResponseCycle:
         self.shutting_down = False
 
         # Request state
-        self.body = b""
+        self.body = bytearray()
         self.more_body = True
 
         # Response state
@@ -456,8 +458,6 @@ class RequestResponseCycle:
 
     # ASGI interface
     async def send(self, message: ASGISendEvent) -> None:
-        message_type = message["type"]
-
         if self.flow.write_paused and not self.disconnected:
             await self.flow.drain()  # pragma: full coverage
 
@@ -466,10 +466,8 @@ class RequestResponseCycle:
 
         if not self.response_started:
             # Sending response status line and headers
-            if message_type != "http.response.start":
-                msg = "Expected ASGI message 'http.response.start', but got '%s'."
-                raise RuntimeError(msg % message_type)
-            message = cast("HTTPResponseStartEvent", message)
+            if message["type"] != "http.response.start":
+                raise RuntimeError(f"Expected ASGI message 'http.response.start', but got '{message['type']}'.")
 
             self.response_started = True
             self.waiting_for_100_continue = False
@@ -498,10 +496,8 @@ class RequestResponseCycle:
 
         elif not self.response_complete:
             # Sending response body
-            if message_type != "http.response.body":
-                msg = "Expected ASGI message 'http.response.body', but got '%s'."
-                raise RuntimeError(msg % message_type)
-            message = cast("HTTPResponseBodyEvent", message)
+            if message["type"] != "http.response.body":
+                raise RuntimeError(f"Expected ASGI message 'http.response.body', but got '{message['type']}'.")
 
             body = message.get("body", b"")
             more_body = message.get("more_body", False)
@@ -520,8 +516,7 @@ class RequestResponseCycle:
 
         else:
             # Response already sent
-            msg = "Unexpected ASGI message '%s' sent, after response already completed."
-            raise RuntimeError(msg % message_type)
+            raise RuntimeError(f"Unexpected ASGI message '{message['type']}' sent, after response already completed.")
 
         if self.response_complete:
             if self.conn.our_state is h11.MUST_CLOSE or not self.keep_alive:
@@ -545,10 +540,6 @@ class RequestResponseCycle:
         if self.disconnected or self.response_complete or self.shutting_down:
             return {"type": "http.disconnect"}
 
-        message: HTTPRequestEvent = {
-            "type": "http.request",
-            "body": self.body,
-            "more_body": self.more_body,
-        }
-        self.body = b""
+        message: HTTPRequestEvent = {"type": "http.request", "body": bytes(self.body), "more_body": self.more_body}
+        self.body = bytearray()
         return message

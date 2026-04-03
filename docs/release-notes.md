@@ -2,6 +2,17 @@
 toc_depth: 2
 ---
 
+## 0.42.0 (March 16, 2026)
+
+### Changed
+
+* Use `bytearray` for request body accumulation to avoid O(n^2) allocation on fragmented bodies (#2845)
+
+### Fixed
+
+* Escape brackets and backslash in httptools `HEADER_RE` regex (#2824)
+* Fix multiple issues in websockets sans-io implementation (#2825)
+
 ## 0.41.0 (February 16, 2026)
 
 ### Added
