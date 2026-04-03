@@ -307,7 +307,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 if self.ping_timeout is not None:
                     try:
                         latency = await asyncio.wait_for(pong_received, self.ping_timeout)
-                    except TimeoutError:
+                    except (TimeoutError, asyncio.TimeoutError):
                         self.pending_pings.pop(ping_data, None)
                         if self.logger.level <= TRACE_LOG_LEVEL:
                             prefix = "%s:%d - " % self.client if self.client else ""

@@ -1369,3 +1369,31 @@ async def test_server_keepalive_close_during_sleep(
             await websocket.close()
 
     assert disconnect_received
+
+
+async def test_server_eof_received(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
+    if ws_protocol_cls.__name__ != "WebSocketsSansIOProtocol":
+        pytest.skip("Only testing eof_received for websockets-sansio.")
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        while True:
+            message = await receive()
+            if message["type"] == "websocket.connect":
+                await send({"type": "websocket.accept"})
+            elif message["type"] == "websocket.disconnect":
+                break
+
+    config = Config(
+        app=app,
+        ws=ws_protocol_cls,
+        http=http_protocol_cls,
+        lifespan="off",
+        ws_ping_interval=None,
+        port=unused_tcp_port,
+    )
+    async with run_server(config):
+        reader, writer = await raw_ws_handshake("127.0.0.1", unused_tcp_port)
+        # TCP half-close: send FIN without a WebSocket close frame.
+        writer.write_eof()
+        await asyncio.sleep(0.1)
+        writer.close()
