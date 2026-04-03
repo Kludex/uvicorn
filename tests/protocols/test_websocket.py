@@ -1227,8 +1227,8 @@ async def raw_ws_handshake(host: str, port: int) -> tuple[asyncio.StreamReader, 
 async def test_server_sends_keepalive_ping(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
 ):
-    if ws_protocol_cls.__name__ == "WSProtocol":
-        pytest.skip("wsproto does not support ws_ping_interval.")
+    if ws_protocol_cls.__name__ != "WebSocketsSansIOProtocol":
+        pytest.skip("Keepalive tests only apply to websockets-sansio.")
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         while True:
@@ -1262,8 +1262,8 @@ async def test_server_keepalive_ping_timeout(
     unused_tcp_port: int,
     caplog: pytest.LogCaptureFixture,
 ):
-    if ws_protocol_cls.__name__ == "WSProtocol":
-        pytest.skip("wsproto does not support ws_ping_interval.")
+    if ws_protocol_cls.__name__ != "WebSocketsSansIOProtocol":
+        pytest.skip("Keepalive tests only apply to websockets-sansio.")
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         while True:
@@ -1300,8 +1300,8 @@ async def test_server_keepalive_ping_timeout(
 async def test_server_keepalive_ping_pong(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
 ):
-    if ws_protocol_cls.__name__ == "WSProtocol":
-        pytest.skip("wsproto does not support ws_ping_interval.")
+    if ws_protocol_cls.__name__ != "WebSocketsSansIOProtocol":
+        pytest.skip("Keepalive tests only apply to websockets-sansio.")
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         while True:
@@ -1337,8 +1337,8 @@ async def test_server_keepalive_ping_pong(
 async def test_server_keepalive_close_during_sleep(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
 ):
-    if ws_protocol_cls.__name__ == "WSProtocol":
-        pytest.skip("wsproto does not support ws_ping_interval.")
+    if ws_protocol_cls.__name__ != "WebSocketsSansIOProtocol":
+        pytest.skip("Keepalive tests only apply to websockets-sansio.")
 
     disconnect_received = False
 
