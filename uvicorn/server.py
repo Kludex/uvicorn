@@ -54,6 +54,13 @@ class ServerState:
 
 
 class Server:
+    """
+    ASGI server that manages the full lifecycle of a single server process.
+
+    Handles startup, the main request loop, graceful shutdown, and OS signal
+    capture.  Intended to be used directly or driven by a reload supervisor.
+    """
+
     def __init__(self, config: Config) -> None:
         self.config = config
         self.server_state = ServerState()
@@ -67,14 +74,35 @@ class Server:
 
     @functools.cached_property
     def limit_max_requests(self) -> int | None:
+        """
+        Effective request limit for this process, including a random jitter.
+
+        Returns ``None`` when no limit is configured, otherwise returns
+        ``limit_max_requests`` plus a random offset in
+        ``[0, limit_max_requests_jitter]`` so that multiple workers do not all
+        recycle at the same time.
+        """
         if self.config.limit_max_requests is None:
             return None
         return self.config.limit_max_requests + random.randint(0, self.config.limit_max_requests_jitter)
 
     def run(self, sockets: list[socket.socket] | None = None) -> None:
+        """
+        Run the server synchronously, blocking until the server exits.
+
+        Creates and manages the event loop using the loop factory specified in
+        the configuration.  This is the main entry point for running uvicorn
+        programmatically from synchronous code.
+        """
         return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
 
     async def serve(self, sockets: list[socket.socket] | None = None) -> None:
+        """
+        Coroutine entry point for running the server inside an existing event loop.
+
+        Wraps :meth:`_serve` with OS signal capture so that ``SIGINT``/``SIGTERM``
+        (and ``SIGBREAK`` on Windows) trigger a graceful shutdown.
+        """
         with self.capture_signals():
             await self._serve(sockets)
 
@@ -230,6 +258,12 @@ class Server:
             )
 
     async def main_loop(self) -> None:
+        """
+        Tick the server at 10 Hz until a shutdown condition is reached.
+
+        Delegates per-tick work (header refresh, notify callbacks, exit checks)
+        to :meth:`on_tick`.
+        """
         counter = 0
         should_exit = await self.on_tick(counter)
         while not should_exit:
@@ -239,6 +273,16 @@ class Server:
             should_exit = await self.on_tick(counter)
 
     async def on_tick(self, counter: int) -> bool:
+        """
+        Perform per-tick housekeeping and return whether the server should exit.
+
+        Called once every 100 ms by :meth:`main_loop`.  Every ten ticks (roughly
+        once per second) the ``Date`` response header and any custom encoded
+        headers are refreshed, and the optional ``callback_notify`` callable is
+        invoked if its timeout has elapsed.
+
+        Returns ``True`` when the server should stop accepting new requests.
+        """
         # Update the default headers, once per second.
         if counter % 10 == 0:
             current_time = time.time()
@@ -269,6 +313,14 @@ class Server:
         return False
 
     async def shutdown(self, sockets: list[socket.socket] | None = None) -> None:
+        """
+        Gracefully shut down the server.
+
+        Stops accepting new connections, requests shutdown on all active
+        connections, waits for in-flight tasks to complete (subject to
+        ``timeout_graceful_shutdown``), and finally sends the ASGI lifespan
+        shutdown event to the application.
+        """
         logger.info("Shutting down")
 
         # Stop accepting new connections.
@@ -320,6 +372,17 @@ class Server:
 
     @contextlib.contextmanager
     def capture_signals(self) -> Generator[None, None, None]:
+        """
+        Context manager that installs signal handlers for the duration of the server run.
+
+        Registers :meth:`handle_exit` for each signal in ``HANDLED_SIGNALS`` and
+        restores the previous handlers on exit.  When the server shuts down due to
+        a captured signal the original signal is re-raised so that the process
+        exits with the expected status.
+
+        Has no effect when called from a non-main thread (signal handling is
+        restricted to the main thread by the Python runtime).
+        """
         # Signals can only be listened to from the main thread.
         if threading.current_thread() is not threading.main_thread():
             yield
@@ -339,6 +402,13 @@ class Server:
             signal.raise_signal(captured_signal)
 
     def handle_exit(self, sig: int, frame: FrameType | None) -> None:
+        """
+        Signal handler that requests a graceful shutdown.
+
+        Sets :attr:`should_exit` on the first signal and :attr:`force_exit` on a
+        second ``SIGINT``, matching the common double-Ctrl+C idiom for immediate
+        termination.
+        """
         self._captured_signals.append(sig)
         if self.should_exit and sig == signal.SIGINT:
             self.force_exit = True  # pragma: full coverage
