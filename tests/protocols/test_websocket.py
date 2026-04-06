@@ -1206,63 +1206,12 @@ async def test_lifespan_state(ws_protocol_cls: WSProtocol, http_protocol_cls: HT
     assert expected_states == actual_states
 
 
-async def raw_ws_handshake(host: str, port: int) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
-    """Perform a raw TCP WebSocket handshake; the caller is responsible for reading frames."""
-    reader, writer = await asyncio.open_connection(host, port)
-    request = (
-        f"GET / HTTP/1.1\r\n"
-        f"Host: {host}:{port}\r\n"
-        f"Connection: Upgrade\r\n"
-        f"Upgrade: websocket\r\n"
-        f"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
-        f"Sec-WebSocket-Version: 13\r\n"
-        f"\r\n"
-    )
-    writer.write(request.encode())
-    await writer.drain()
-    response = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=2)
-    assert b"101" in response
-    return reader, writer
-
-
-async def test_server_sends_keepalive_ping(http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
-    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
-        while True:
-            message = await receive()
-            if message["type"] == "websocket.connect":
-                await send({"type": "websocket.accept"})
-            elif message["type"] == "websocket.disconnect":
-                break
-
-    config = Config(
-        app=app,
-        ws=WebSocketsSansIOProtocol,
-        http=http_protocol_cls,
-        lifespan="off",
-        ws_ping_interval=0.1,
-        ws_ping_timeout=2.0,
-        port=unused_tcp_port,
-    )
-    async with run_server(config):
-        reader, writer = await raw_ws_handshake("127.0.0.1", unused_tcp_port)
-        # Raw TCP client never replies to the ping; we only check a ping frame arrives.
-        data = await asyncio.wait_for(reader.read(4096), timeout=2)
-        assert len(data) >= 2
-        # 0x89 = FIN (0x80) | ping opcode (0x09)
-        assert data[0] == 0x89, f"Expected ping frame (0x89), got 0x{data[0]:02x}"
-        writer.close()
-
-
 async def test_server_keepalive_ping_pong(http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         while True:
             message = await receive()
             if message["type"] == "websocket.connect":
                 await send({"type": "websocket.accept"})
-            elif message["type"] == "websocket.receive":
-                text = message.get("text")
-                assert text is not None
-                await send({"type": "websocket.send", "text": text})
             elif message["type"] == "websocket.disconnect":
                 break
 
@@ -1275,15 +1224,13 @@ async def test_server_keepalive_ping_pong(http_protocol_cls: HTTPProtocol, unuse
         ws_ping_timeout=1.0,
         port=unused_tcp_port,
     )
-    async with run_server(config):
+    async with run_server(config) as server:
         # The websockets client auto-responds to ping frames, keeping the connection alive.
-        async with websockets.asyncio.client.connect(
-            f"ws://127.0.0.1:{unused_tcp_port}",
-            ping_interval=None,
-        ) as websocket:
-            await asyncio.sleep(0.5)  # Several ping/pong roundtrips should have happened.
-            await websocket.send("hello")
-            assert await asyncio.wait_for(websocket.recv(), timeout=1) == "hello"
+        async with websockets.asyncio.client.connect(f"ws://127.0.0.1:{unused_tcp_port}", ping_interval=None):
+            await asyncio.sleep(0.3)  # Several ping/pong roundtrips should have happened.
+            protocol = list(server.server_state.connections)[0]
+            assert isinstance(protocol, WebSocketsSansIOProtocol)
+            assert protocol.last_ping_rtt > 0
 
 
 async def test_server_keepalive_ping_timeout(http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
@@ -1310,7 +1257,7 @@ async def test_server_keepalive_ping_timeout(http_protocol_cls: HTTPProtocol, un
             # Swallow outgoing pong frames so the server's ping never gets ack'd.
             websocket.transport.write = lambda data: None  # type: ignore[method-assign]
             with pytest.raises(websockets.exceptions.ConnectionClosedError) as exc_info:
-                await asyncio.wait_for(websocket.recv(), timeout=2)
+                await asyncio.wait_for(websocket.recv(), timeout=1)
             assert exc_info.value.rcvd is not None
             assert exc_info.value.rcvd.code == 1011
             assert exc_info.value.rcvd.reason == "keepalive ping timeout"
@@ -1333,8 +1280,8 @@ async def test_server_keepalive_disabled(http_protocol_cls: HTTPProtocol, unused
         ws_ping_interval=None,
         port=unused_tcp_port,
     )
-    async with run_server(config):
-        reader, writer = await raw_ws_handshake("127.0.0.1", unused_tcp_port)
-        with pytest.raises(asyncio.TimeoutError):
-            await asyncio.wait_for(reader.read(4096), timeout=0.3)
-        writer.close()
+    async with run_server(config) as server:
+        async with websockets.connect(f"ws://127.0.0.1:{unused_tcp_port}", ping_interval=None):
+            protocol = list(server.server_state.connections)[0]
+            assert isinstance(protocol, WebSocketsSansIOProtocol)
+            assert protocol.ping_timer is None

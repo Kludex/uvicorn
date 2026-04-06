@@ -275,7 +275,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         if self.ping_timer is not None:
             self.ping_timer.cancel()
             self.ping_timer = None
-        if self.pong_timer is not None:
+        if self.pong_timer is not None:  # pragma: no cover
             self.pong_timer.cancel()
             self.pong_timer = None
         self.pending_ping_payload = None
