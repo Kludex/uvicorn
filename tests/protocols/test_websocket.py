@@ -1229,9 +1229,7 @@ async def test_server_keepalive_ping_pong(http_protocol_cls: HTTPProtocol, unuse
             protocol = list(server.server_state.connections)[0]
             assert isinstance(protocol, WebSocketsSansIOProtocol)
             # Wait until at least one ping/pong roundtrip completes.
-            deadline = asyncio.get_event_loop().time() + 2.0
-            while protocol.last_ping_rtt == 0.0 and asyncio.get_event_loop().time() < deadline:
-                await asyncio.sleep(0.05)
+            await asyncio.sleep(0.5)
             assert protocol.last_ping_rtt > 0
 
 
