@@ -259,13 +259,13 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
 
         self.last_ping_rtt = self.loop.time() - self.ping_sent_at
         self.pending_ping_payload = None
-        # The peer answered in time; cancel the deadline that would have torn down the connection, then chain the next
-        # ping. This `schedule_ping()` call is what keeps the keepalive loop running; without it, we would send exactly
-        # one ping per connection.
+        # The peer answered in time; cancel the pong deadline and chain the next ping. This `schedule_ping()` call is
+        # what keeps the keepalive loop running when ping_timeout is set. When ping_timeout is None the next ping is
+        # already scheduled by `send_keepalive_ping`, so we must not schedule a duplicate here.
         if self.pong_timer is not None:
             self.pong_timer.cancel()
             self.pong_timer = None
-        self.schedule_ping()
+            self.schedule_ping()
 
     def start_keepalive(self) -> None:
         if self.ping_interval is not None and self.ping_interval > 0:
