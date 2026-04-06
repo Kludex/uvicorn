@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict
 import httpx
 import pytest
 import websockets
-import websockets.asyncio.client
 import websockets.client
 import websockets.exceptions
 from websockets.extensions.permessage_deflate import ClientPerMessageDeflateFactory
@@ -1226,10 +1225,13 @@ async def test_server_keepalive_ping_pong(http_protocol_cls: HTTPProtocol, unuse
     )
     async with run_server(config) as server:
         # The websockets client auto-responds to ping frames, keeping the connection alive.
-        async with websockets.asyncio.client.connect(f"ws://127.0.0.1:{unused_tcp_port}", ping_interval=None):
-            await asyncio.sleep(0.3)  # Several ping/pong roundtrips should have happened.
+        async with websockets.connect(f"ws://127.0.0.1:{unused_tcp_port}", ping_interval=None):
             protocol = list(server.server_state.connections)[0]
             assert isinstance(protocol, WebSocketsSansIOProtocol)
+            # Wait until at least one ping/pong roundtrip completes.
+            deadline = asyncio.get_event_loop().time() + 2.0
+            while protocol.last_ping_rtt == 0.0 and asyncio.get_event_loop().time() < deadline:
+                await asyncio.sleep(0.05)
             assert protocol.last_ping_rtt > 0
 
 
