@@ -1234,7 +1234,7 @@ async def test_server_keepalive_ping_pong(http_protocol_cls: HTTPProtocol, unuse
                 while protocol.last_ping_rtt == 0.0:
                     await asyncio.sleep(0.1)
 
-            await asyncio.wait_for(ping_roundtrip(), timeout=10.0)
+            await asyncio.wait_for(ping_roundtrip(), timeout=5.0)
             assert protocol.last_ping_rtt > 0
 
 
