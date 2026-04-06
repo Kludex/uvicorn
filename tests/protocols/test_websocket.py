@@ -1228,6 +1228,7 @@ async def test_server_keepalive_ping_pong(http_protocol_cls: HTTPProtocol, unuse
         async with websockets.connect(f"ws://127.0.0.1:{unused_tcp_port}", ping_interval=None):
             protocol = list(server.server_state.connections)[0]
             assert isinstance(protocol, WebSocketsSansIOProtocol)
+
             # Wait until at least one ping/pong roundtrip completes.
             async def ping_roundtrip() -> None:
                 while protocol.last_ping_rtt == 0.0:
