@@ -1219,7 +1219,7 @@ async def test_server_keepalive_ping_pong(http_protocol_cls: HTTPProtocol, unuse
         ws=WebSocketsSansIOProtocol,
         http=http_protocol_cls,
         lifespan="off",
-        ws_ping_interval=1.0,
+        ws_ping_interval=0.1,
         ws_ping_timeout=5.0,
         port=unused_tcp_port,
     )
