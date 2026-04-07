@@ -78,6 +78,7 @@ docs = [
     "mkdocs-material==9.7.1",
     "mkdocstrings-python==2.0.2",
     "mkdocs-llmstxt==0.5.0",
+    "pygments<2.20.0"
 ]
 
 [tool.uv]
