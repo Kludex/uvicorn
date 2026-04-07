@@ -53,7 +53,7 @@ jobs:
         shell: bash
 
   docs-preview:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
 
     permissions:
@@ -73,7 +73,7 @@ jobs:
         uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
         with:
           python-version: "3.12"
-          enable-cache: true
+          enable-cache: false
 
       - name: Install dependencies
         run: scripts/install
