@@ -148,3 +148,23 @@ To understand more about the SSL context options, please refer to the [Python do
 
 * `--timeout-keep-alive <int>` - Close Keep-Alive connections if no new data is received within this timeout (in seconds). **Default:** *5*.
 * `--timeout-graceful-shutdown <int>` - Maximum number of seconds to wait for graceful shutdown. After this timeout, the server will start terminating requests.
+
+
+### Advanced Non-Blocking Logging Configuration
+
+You can configure logging passing a non-blocking dictionary setup:
+
+```python
+import logging.config
+
+LOGGING_CONFIG = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "async_console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+}
+uvicorn.run(app, log_config=LOGGING_CONFIG)
+```
