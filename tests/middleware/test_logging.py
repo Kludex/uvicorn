@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, TypeAlias
 
 import httpx
 import pytest
-import websockets.client
+import websockets.legacy.client
 from websockets.protocol import State
 
 from tests.utils import run_server
@@ -101,7 +101,7 @@ async def test_trace_logging_on_ws_protocol(
                 break
 
     async def open_connection(url: str):
-        async with websockets.client.connect(url) as websocket:
+        async with websockets.legacy.client.connect(url) as websocket:
             return websocket.state is State.OPEN
 
     config = Config(

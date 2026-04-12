@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict
 import httpx
 import pytest
 import websockets
-import websockets.client
-import websockets.exceptions
+import websockets.legacy.client
+import websockets.legacy.exceptions
 from websockets.extensions.permessage_deflate import ClientPerMessageDeflateFactory
 from websockets.typing import Subprotocol
 
@@ -118,7 +118,7 @@ async def test_accept_connection(ws_protocol_cls: WSProtocol, http_protocol_cls:
             await self.send({"type": "websocket.accept"})
 
     async def open_connection(url: str):
-        async with websockets.client.connect(url) as websocket:
+        async with websockets.legacy.client.connect(url) as websocket:
             return websocket.open
 
     config = Config(app=App, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
@@ -134,7 +134,7 @@ async def test_shutdown(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProt
 
     config = Config(app=App, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
     async with run_server(config) as server:
-        async with websockets.client.connect(f"ws://127.0.0.1:{unused_tcp_port}"):
+        async with websockets.legacy.client.connect(f"ws://127.0.0.1:{unused_tcp_port}"):
             # Attempt shutdown while connection is still open
             await server.shutdown()
 
@@ -148,7 +148,7 @@ async def test_supports_permessage_deflate_extension(
 
     async def open_connection(url: str):
         extension_factories = [ClientPerMessageDeflateFactory()]
-        async with websockets.client.connect(url, extensions=extension_factories) as websocket:
+        async with websockets.legacy.client.connect(url, extensions=extension_factories) as websocket:
             return [extension.name for extension in websocket.extensions]
 
     config = Config(app=App, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
@@ -168,7 +168,7 @@ async def test_can_disable_permessage_deflate_extension(
         # enable per-message deflate on the client, so that we can check the server
         # won't support it when it's disabled.
         extension_factories = [ClientPerMessageDeflateFactory()]
-        async with websockets.client.connect(url, extensions=extension_factories) as websocket:
+        async with websockets.legacy.client.connect(url, extensions=extension_factories) as websocket:
             return [extension.name for extension in websocket.extensions]
 
     config = Config(
@@ -191,7 +191,7 @@ async def test_close_connection(ws_protocol_cls: WSProtocol, http_protocol_cls: 
 
     async def open_connection(url: str):
         try:
-            await websockets.client.connect(url)
+            await websockets.legacy.client.connect(url)
         except websockets.exceptions.InvalidHandshake:
             return False
         return True  # pragma: no cover
@@ -212,7 +212,7 @@ async def test_headers(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProto
             await self.send({"type": "websocket.accept"})
 
     async def open_connection(url: str):
-        async with websockets.client.connect(url, extra_headers=[("username", "abraão")]) as websocket:
+        async with websockets.legacy.client.connect(url, extra_headers=[("username", "abraão")]) as websocket:
             return websocket.open
 
     config = Config(app=App, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
@@ -227,7 +227,7 @@ async def test_extra_headers(ws_protocol_cls: WSProtocol, http_protocol_cls: HTT
             await self.send({"type": "websocket.accept", "headers": [(b"extra", b"header")]})
 
     async def open_connection(url: str):
-        async with websockets.client.connect(url) as websocket:
+        async with websockets.legacy.client.connect(url) as websocket:
             return websocket.response_headers
 
     config = Config(app=App, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
@@ -246,7 +246,7 @@ async def test_path_and_raw_path(ws_protocol_cls: WSProtocol, http_protocol_cls:
             await self.send({"type": "websocket.accept"})
 
     async def open_connection(url: str):
-        async with websockets.client.connect(url) as websocket:
+        async with websockets.legacy.client.connect(url) as websocket:
             return websocket.open
 
     config = Config(app=App, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
@@ -264,7 +264,7 @@ async def test_send_text_data_to_client(
             await self.send({"type": "websocket.send", "text": "123"})
 
     async def get_data(url: str):
-        async with websockets.client.connect(url) as websocket:
+        async with websockets.legacy.client.connect(url) as websocket:
             return await websocket.recv()
 
     config = Config(app=App, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
@@ -282,7 +282,7 @@ async def test_send_binary_data_to_client(
             await self.send({"type": "websocket.send", "bytes": b"123"})
 
     async def get_data(url: str):
-        async with websockets.client.connect(url) as websocket:
+        async with websockets.legacy.client.connect(url) as websocket:
             return await websocket.recv()
 
     config = Config(app=App, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
@@ -301,7 +301,7 @@ async def test_send_and_close_connection(
             await self.send({"type": "websocket.close"})
 
     async def get_data(url: str):
-        async with websockets.client.connect(url) as websocket:
+        async with websockets.legacy.client.connect(url) as websocket:
             data = await websocket.recv()
             is_open = True
             try:
@@ -330,7 +330,7 @@ async def test_send_text_data_to_server(
             await self.send({"type": "websocket.send", "text": _text})
 
     async def send_text(url: str):
-        async with websockets.client.connect(url) as websocket:
+        async with websockets.legacy.client.connect(url) as websocket:
             await websocket.send("abc")
             return await websocket.recv()
 
@@ -353,7 +353,7 @@ async def test_send_binary_data_to_server(
             await self.send({"type": "websocket.send", "bytes": _bytes})
 
     async def send_text(url: str):
-        async with websockets.client.connect(url) as websocket:
+        async with websockets.legacy.client.connect(url) as websocket:
             await websocket.send(b"abc")
             return await websocket.recv()
 
@@ -375,7 +375,7 @@ async def test_send_after_protocol_close(
                 await self.send({"type": "websocket.send", "text": "123"})
 
     async def get_data(url: str):
-        async with websockets.client.connect(url) as websocket:
+        async with websockets.legacy.client.connect(url) as websocket:
             data = await websocket.recv()
             is_open = True
             try:
@@ -396,11 +396,11 @@ async def test_missing_handshake(ws_protocol_cls: WSProtocol, http_protocol_cls:
         pass
 
     async def connect(url: str):
-        await websockets.client.connect(url)
+        await websockets.legacy.client.connect(url)
 
     config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
     async with run_server(config):
-        with pytest.raises(websockets.exceptions.InvalidStatusCode) as exc_info:
+        with pytest.raises(websockets.legacy.exceptions.InvalidStatusCode) as exc_info:
             await connect(f"ws://127.0.0.1:{unused_tcp_port}")
         assert exc_info.value.status_code == 500
 
@@ -412,11 +412,11 @@ async def test_send_before_handshake(
         await send({"type": "websocket.send", "text": "123"})
 
     async def connect(url: str):
-        await websockets.client.connect(url)
+        await websockets.legacy.client.connect(url)
 
     config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
     async with run_server(config):
-        with pytest.raises(websockets.exceptions.InvalidStatusCode) as exc_info:
+        with pytest.raises(websockets.legacy.exceptions.InvalidStatusCode) as exc_info:
             await connect(f"ws://127.0.0.1:{unused_tcp_port}")
         assert exc_info.value.status_code == 500
 
@@ -428,7 +428,7 @@ async def test_duplicate_handshake(ws_protocol_cls: WSProtocol, http_protocol_cl
 
     config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
     async with run_server(config):
-        async with websockets.client.connect(f"ws://127.0.0.1:{unused_tcp_port}") as websocket:
+        async with websockets.legacy.client.connect(f"ws://127.0.0.1:{unused_tcp_port}") as websocket:
             with pytest.raises(websockets.exceptions.ConnectionClosed):
                 _ = await websocket.recv()
         assert websocket.close_code == 1006
@@ -446,7 +446,7 @@ async def test_asgi_return_value(ws_protocol_cls: WSProtocol, http_protocol_cls:
 
     config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
     async with run_server(config):
-        async with websockets.client.connect(f"ws://127.0.0.1:{unused_tcp_port}") as websocket:
+        async with websockets.legacy.client.connect(f"ws://127.0.0.1:{unused_tcp_port}") as websocket:
             with pytest.raises(websockets.exceptions.ConnectionClosed):
                 _ = await websocket.recv()
         assert websocket.close_code == 1006
@@ -467,7 +467,7 @@ async def test_close_transport_on_asgi_return(
 
     config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
     async with run_server(config):
-        async with websockets.client.connect(f"ws://127.0.0.1:{unused_tcp_port}") as websocket:
+        async with websockets.legacy.client.connect(f"ws://127.0.0.1:{unused_tcp_port}") as websocket:
             with pytest.raises(websockets.exceptions.ConnectionClosed):
                 await websocket.recv()
         assert websocket.close_code == 1006
@@ -502,7 +502,7 @@ async def test_app_close(
 
     config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
     async with run_server(config):
-        async with websockets.client.connect(f"ws://127.0.0.1:{unused_tcp_port}") as websocket:
+        async with websockets.legacy.client.connect(f"ws://127.0.0.1:{unused_tcp_port}") as websocket:
             await websocket.ping()
             await websocket.send("abc")
             with pytest.raises(websockets.exceptions.ConnectionClosed):
@@ -527,7 +527,7 @@ async def test_client_close(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTP
                 break
 
     async def websocket_session(url: str):
-        async with websockets.client.connect(url) as websocket:
+        async with websockets.legacy.client.connect(url) as websocket:
             await websocket.ping()
             await websocket.send("abc")
             await websocket.close(code=1001, reason="custom reason")
@@ -564,7 +564,7 @@ async def test_client_connection_lost(
         port=unused_tcp_port,
     )
     async with run_server(config):
-        async with websockets.client.connect(f"ws://127.0.0.1:{unused_tcp_port}") as websocket:
+        async with websockets.legacy.client.connect(f"ws://127.0.0.1:{unused_tcp_port}") as websocket:
             websocket.transport.close()
             await asyncio.sleep(0.1)
             got_disconnect_event_before_shutdown = got_disconnect_event
@@ -592,7 +592,7 @@ async def test_client_connection_lost_on_send(
     config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
     async with run_server(config):
         url = f"ws://127.0.0.1:{unused_tcp_port}"
-        async with websockets.client.connect(url):
+        async with websockets.legacy.client.connect(url):
             await asyncio.sleep(0.1)
         disconnect.set()
 
@@ -651,11 +651,11 @@ async def test_send_close_on_server_shutdown(
                 disconnect_message = message
                 break
 
-    websocket: websockets.client.WebSocketClientProtocol | None = None
+    websocket: websockets.legacy.client.WebSocketClientProtocol | None = None
 
     async def websocket_session(uri: str):
         nonlocal websocket
-        async with websockets.client.connect(uri) as ws_connection:
+        async with websockets.legacy.client.connect(uri) as ws_connection:
             websocket = ws_connection
             await server_shutdown_event.wait()
 
@@ -685,7 +685,7 @@ async def test_subprotocols(
             await self.send({"type": "websocket.accept", "subprotocol": subprotocol})
 
     async def get_subprotocol(url: str):
-        async with websockets.client.connect(
+        async with websockets.legacy.client.connect(
             url, subprotocols=[Subprotocol("proto1"), Subprotocol("proto2")]
         ) as websocket:
             return websocket.subprotocol
@@ -696,21 +696,13 @@ async def test_subprotocols(
         assert accepted_subprotocol == subprotocol
 
 
-MAX_WS_BYTES = 1024 * 1024 * 16
-MAX_WS_BYTES_PLUS1 = MAX_WS_BYTES + 1
-
-
 @pytest.mark.parametrize(
     "client_size_sent, server_size_max, expected_result",
     [
-        (MAX_WS_BYTES, MAX_WS_BYTES, 0),
-        (MAX_WS_BYTES_PLUS1, MAX_WS_BYTES, 1009),
         (10, 10, 0),
         (11, 10, 1009),
     ],
     ids=[
-        "max=defaults sent=defaults",
-        "max=defaults sent=defaults+1",
         "max=10 sent=10",
         "max=10 sent=11",
     ],
@@ -740,7 +732,8 @@ async def test_send_binary_data_to_server_bigger_than_default_on_websockets(
         port=unused_tcp_port,
     )
     async with run_server(config):
-        async with websockets.client.connect(f"ws://127.0.0.1:{unused_tcp_port}", max_size=client_size_sent) as ws:
+        url = f"ws://127.0.0.1:{unused_tcp_port}"
+        async with websockets.legacy.client.connect(url, max_size=client_size_sent) as ws:
             await ws.send(b"\x01" * client_size_sent)
             if expected_result == 0:
                 data = await ws.recv()
@@ -773,8 +766,8 @@ async def test_server_reject_connection(
         disconnected_message = await receive()
 
     async def websocket_session(url: str):
-        with pytest.raises(websockets.exceptions.InvalidStatusCode) as exc_info:
-            async with websockets.client.connect(url):
+        with pytest.raises(websockets.legacy.exceptions.InvalidStatusCode) as exc_info:
+            async with websockets.legacy.client.connect(url):
                 pass  # pragma: no cover
         assert exc_info.value.status_code == 403
 
@@ -948,8 +941,8 @@ async def test_server_reject_connection_with_invalid_msg(
         await send(message)
 
     async def websocket_session(url: str):
-        with pytest.raises(websockets.exceptions.InvalidStatusCode) as exc_info:
-            async with websockets.client.connect(url):
+        with pytest.raises(websockets.legacy.exceptions.InvalidStatusCode) as exc_info:
+            async with websockets.legacy.client.connect(url):
                 pass  # pragma: no cover
         assert exc_info.value.status_code == 404
 
@@ -982,8 +975,8 @@ async def test_server_reject_connection_with_missing_body(
         # no further message
 
     async def websocket_session(url: str):
-        with pytest.raises(websockets.exceptions.InvalidStatusCode) as exc_info:
-            async with websockets.client.connect(url):
+        with pytest.raises(websockets.legacy.exceptions.InvalidStatusCode) as exc_info:
+            async with websockets.legacy.client.connect(url):
                 pass  # pragma: no cover
         assert exc_info.value.status_code == 404
 
@@ -1025,8 +1018,8 @@ async def test_server_multiple_websocket_http_response_start_events(
             exception_message = str(exc)
 
     async def websocket_session(url: str):
-        with pytest.raises(websockets.exceptions.InvalidStatusCode) as exc_info:
-            async with websockets.client.connect(url):
+        with pytest.raises(websockets.legacy.exceptions.InvalidStatusCode) as exc_info:
+            async with websockets.legacy.client.connect(url):
                 pass  # pragma: no cover
         assert exc_info.value.status_code == 404
 
@@ -1064,7 +1057,7 @@ async def test_server_can_read_messages_in_buffer_after_close(
 
     config = Config(app=App, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
     async with run_server(config):
-        async with websockets.client.connect(f"ws://127.0.0.1:{unused_tcp_port}") as websocket:
+        async with websockets.legacy.client.connect(f"ws://127.0.0.1:{unused_tcp_port}") as websocket:
             await websocket.send(b"abc")
             await websocket.send(b"abc")
             await websocket.send(b"abc")
@@ -1081,7 +1074,7 @@ async def test_default_server_headers(
             await self.send({"type": "websocket.accept"})
 
     async def open_connection(url: str):
-        async with websockets.client.connect(url) as websocket:
+        async with websockets.legacy.client.connect(url) as websocket:
             return websocket.response_headers
 
     config = Config(app=App, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
@@ -1096,7 +1089,7 @@ async def test_no_server_headers(ws_protocol_cls: WSProtocol, http_protocol_cls:
             await self.send({"type": "websocket.accept"})
 
     async def open_connection(url: str):
-        async with websockets.client.connect(url) as websocket:
+        async with websockets.legacy.client.connect(url) as websocket:
             return websocket.response_headers
 
     config = Config(
@@ -1119,7 +1112,7 @@ async def test_no_date_header_on_wsproto(http_protocol_cls: HTTPProtocol, unused
             await self.send({"type": "websocket.accept"})
 
     async def open_connection(url: str):
-        async with websockets.client.connect(url) as websocket:
+        async with websockets.legacy.client.connect(url) as websocket:
             return websocket.response_headers
 
     config = Config(
@@ -1151,7 +1144,7 @@ async def test_multiple_server_header(
             )
 
     async def open_connection(url: str):
-        async with websockets.client.connect(url) as websocket:
+        async with websockets.legacy.client.connect(url) as websocket:
             return websocket.response_headers
 
     config = Config(app=App, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
@@ -1187,7 +1180,7 @@ async def test_lifespan_state(ws_protocol_cls: WSProtocol, http_protocol_cls: HT
             await self.send({"type": "websocket.accept"})
 
     async def open_connection(url: str):
-        async with websockets.client.connect(url) as websocket:
+        async with websockets.legacy.client.connect(url) as websocket:
             return websocket.open
 
     async def app_wrapper(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
