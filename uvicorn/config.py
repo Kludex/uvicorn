@@ -179,6 +179,10 @@ def _normalize_dirs(dirs: list[str] | str | None) -> list[str]:
 
 
 def is_free_threaded_runtime() -> bool:
+    # CPython documents these as separate checks:
+    # - `sysconfig.get_config_var("Py_GIL_DISABLED")` for whether the build supports free threading
+    # - `sys._is_gil_enabled()` for whether the GIL is actually disabled in the running process
+    # https://docs.python.org/3/howto/free-threading-python.html#identifying-free-threaded-python
     if sys.version_info < (3, 14):
         return False
     if sysconfig.get_config_var("Py_GIL_DISABLED") != 1:
