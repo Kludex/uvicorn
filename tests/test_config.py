@@ -536,10 +536,22 @@ def test_config_use_subprocess(reload: bool, workers: int, expected: bool):
     assert config.use_subprocess == expected
 
 
+def test_config_use_subprocess_with_thread_worker_class(mocker: MockerFixture) -> None:
+    mocker.patch("uvicorn.config.is_free_threaded_runtime", return_value=True)
+    config = Config(app=asgi_app, workers=2, worker_class="thread")
+    config.load()
+    assert config.use_subprocess is False
+
+
 def test_warn_when_using_reload_and_workers(caplog: pytest.LogCaptureFixture) -> None:
     Config(app=asgi_app, reload=True, workers=2)
     assert len(caplog.records) == 1
     assert '"workers" flag is ignored when reloading is enabled.' in caplog.records[0].message
+
+
+def test_thread_worker_class_requires_free_threaded_runtime() -> None:
+    with pytest.raises(ValueError, match='Worker class "thread" requires a free-threaded Python 3.14 runtime'):
+        Config(app=asgi_app, worker_class="thread")
 
 
 @pytest.mark.parametrize(

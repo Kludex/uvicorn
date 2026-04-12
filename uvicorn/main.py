@@ -21,19 +21,22 @@ from uvicorn.config import (
     LOG_LEVELS,
     LOGGING_CONFIG,
     SSL_PROTOCOL_VERSION,
+    WORKER_CLASSES,
     Config,
     HTTPProtocolType,
     InterfaceType,
     LifespanType,
     LoopFactoryType,
+    WorkerClassType,
     WSProtocolType,
 )
 from uvicorn.server import Server
-from uvicorn.supervisors import ChangeReload, Multiprocess
+from uvicorn.supervisors import ChangeReload, Multiprocess, Multithread
 
 LEVEL_CHOICES = click.Choice(list(LOG_LEVELS.keys()))
 LIFESPAN_CHOICES = click.Choice(list(LIFESPAN.keys()))
 INTERFACE_CHOICES = click.Choice(INTERFACES)
+WORKER_CLASS_CHOICES = click.Choice(WORKER_CLASSES)
 
 
 def _metavar_from_type(_type: Any) -> str:
@@ -113,8 +116,15 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     "--workers",
     default=None,
     type=int,
-    help="Number of worker processes. Defaults to the $WEB_CONCURRENCY environment"
+    help="Number of worker instances. Defaults to the $WEB_CONCURRENCY environment"
     " variable if available, or 1. Not valid with --reload.",
+)
+@click.option(
+    "--worker-class",
+    type=WORKER_CLASS_CHOICES,
+    default="process",
+    help="Worker implementation to use when running multiple workers.",
+    show_default=True,
 )
 @click.option(
     "--loop",
@@ -401,6 +411,7 @@ def main(
     reload_excludes: list[str],
     reload_delay: float,
     workers: int,
+    worker_class: WorkerClassType,
     env_file: str,
     log_config: str,
     log_level: str,
@@ -456,6 +467,7 @@ def main(
         reload_excludes=reload_excludes or None,
         reload_delay=reload_delay,
         workers=workers,
+        worker_class=worker_class,
         proxy_headers=proxy_headers,
         server_header=server_header,
         date_header=date_header,
@@ -506,6 +518,7 @@ def run(
     reload_excludes: list[str] | str | None = None,
     reload_delay: float = 0.25,
     workers: int | None = None,
+    worker_class: WorkerClassType = "process",
     env_file: str | os.PathLike[str] | None = None,
     log_config: dict[str, Any] | str | RawConfigParser | IO[Any] | None = LOGGING_CONFIG,
     log_level: str | int | None = None,
@@ -560,6 +573,7 @@ def run(
         reload_excludes=reload_excludes,
         reload_delay=reload_delay,
         workers=workers,
+        worker_class=worker_class,
         env_file=env_file,
         log_config=log_config,
         log_level=log_level,
@@ -601,7 +615,10 @@ def run(
             ChangeReload(config, target=server.run, sockets=[sock]).run()
         elif config.workers > 1:
             sock = config.bind_socket()
-            Multiprocess(config, target=server.run, sockets=[sock]).run()
+            if config.worker_class == "process":
+                Multiprocess(config, target=server.run, sockets=[sock]).run()
+            else:
+                Multithread(config, target=server.run, sockets=[sock]).run()
         else:
             server.run()
     except KeyboardInterrupt:

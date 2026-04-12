@@ -73,12 +73,20 @@ Using Uvicorn with watchfiles will enable the following options (which are other
 
 ## Production
 
-* `--workers <int>` - Number of worker processes. Defaults to the `$WEB_CONCURRENCY` environment variable if available, or 1. Not valid with `--reload`.
+* `--workers <int>` - Number of worker instances. Defaults to the `$WEB_CONCURRENCY` environment variable if available, or 1. Not valid with `--reload`.
+* `--worker-class [process|thread]` - Worker implementation to use when running multiple workers. `process` is the default. `thread` was built specifically for free-threaded Python 3.14 runtimes and requires `Py_GIL_DISABLED=1` with the GIL disabled at runtime.
 * `--env-file <path>` - Environment configuration file for the ASGI application. **Default:** *None*.
 * `--timeout-worker-healthcheck <int>` - Maximum number of seconds to wait for a worker to respond to a healthcheck. **Default:** *5*.
 
 !!! note
     The `--reload` and `--workers` arguments are mutually exclusive. You cannot use both at the same time.
+
+!!! note
+    The `thread` worker class was built specifically for free-threaded Python 3.14.
+    It uses cooperative healthchecks to detect and replace stale worker threads.
+    Unlike the `process` worker class, it cannot force-kill a hung thread.
+    When a thread fails its healthcheck, Uvicorn starts a replacement thread and
+    lets the previous thread continue draining if it is still running.
 
 ## Logging
 

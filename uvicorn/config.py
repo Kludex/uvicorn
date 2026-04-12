@@ -9,6 +9,7 @@ import os
 import socket
 import ssl
 import sys
+import sysconfig
 from collections.abc import Awaitable, Callable
 from configparser import RawConfigParser
 from pathlib import Path
@@ -30,6 +31,7 @@ WSProtocolType = Literal["auto", "none", "websockets", "websockets-sansio", "wsp
 LifespanType = Literal["auto", "on", "off"]
 LoopFactoryType = Literal["none", "auto", "asyncio", "uvloop"]
 InterfaceType = Literal["auto", "asgi3", "asgi2", "wsgi"]
+WorkerClassType = Literal["process", "thread"]
 
 LOG_LEVELS: dict[str, int] = {
     "critical": logging.CRITICAL,
@@ -63,6 +65,7 @@ LOOP_FACTORIES: dict[str, str | None] = {
     "uvloop": "uvicorn.loops.uvloop:uvloop_loop_factory",
 }
 INTERFACES: list[InterfaceType] = ["auto", "asgi3", "asgi2", "wsgi"]
+WORKER_CLASSES: list[WorkerClassType] = ["process", "thread"]
 
 SSL_PROTOCOL_VERSION: int = ssl.PROTOCOL_TLS_SERVER
 
@@ -175,6 +178,17 @@ def _normalize_dirs(dirs: list[str] | str | None) -> list[str]:
     return list(set(dirs))
 
 
+def is_free_threaded_runtime() -> bool:
+    if sys.version_info < (3, 14):
+        return False
+    if sysconfig.get_config_var("Py_GIL_DISABLED") != 1:
+        return False
+    is_gil_enabled = getattr(sys, "_is_gil_enabled", None)
+    if is_gil_enabled is None:
+        return True
+    return not is_gil_enabled()
+
+
 class Config:
     def __init__(
         self,
@@ -204,6 +218,7 @@ class Config:
         reload_includes: list[str] | str | None = None,
         reload_excludes: list[str] | str | None = None,
         workers: int | None = None,
+        worker_class: WorkerClassType = "process",
         proxy_headers: bool = True,
         server_header: bool = True,
         date_header: bool = True,
@@ -251,6 +266,7 @@ class Config:
         self.reload = reload
         self.reload_delay = reload_delay
         self.workers = workers or 1
+        self.worker_class = worker_class
         self.proxy_headers = proxy_headers
         self.server_header = server_header
         self.date_header = date_header
@@ -344,6 +360,11 @@ class Config:
         if self.reload and self.workers > 1:
             logger.warning('"workers" flag is ignored when reloading is enabled.')
 
+        if self.worker_class == "thread" and not is_free_threaded_runtime():
+            raise ValueError(
+                'Worker class "thread" requires a free-threaded Python 3.14 runtime (Py_GIL_DISABLED=1, GIL off).'
+            )
+
     @property
     def asgi_version(self) -> Literal["2.0", "3.0"]:
         mapping: dict[str, Literal["2.0", "3.0"]] = {
@@ -359,7 +380,7 @@ class Config:
 
     @property
     def use_subprocess(self) -> bool:
-        return bool(self.reload or self.workers > 1)
+        return bool(self.reload or (self.workers > 1 and self.worker_class == "process"))
 
     def configure_logging(self) -> None:
         logging.addLevelName(TRACE_LOG_LEVEL, "TRACE")
