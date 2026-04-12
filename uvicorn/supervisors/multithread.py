@@ -20,17 +20,6 @@ from uvicorn.supervisors.multiprocess import SIGNALS
 logger = logging.getLogger("uvicorn.error")
 
 
-class ThreadServer(Server):
-    def __init__(self, config: Config, worker_thread: Thread) -> None:
-        super().__init__(config)
-        self.worker_thread = worker_thread
-
-    async def on_tick(self, counter: int) -> bool:
-        if counter % 10 == 0:
-            self.worker_thread.record_heartbeat()
-        return await super().on_tick(counter)
-
-
 class Thread:
     def __init__(
         self,
@@ -47,7 +36,8 @@ class Thread:
 
     def _get_target(self) -> Callable[[list[socket] | None], None]:
         if inspect.ismethod(self.real_target) and isinstance(self.real_target.__self__, Server):
-            self.server = ThreadServer(config=self.config, worker_thread=self)
+            self.config.callback_progress = self.record_heartbeat
+            self.server = Server(config=self.config)
             return self.server.run
         return self.real_target
 
@@ -79,6 +69,9 @@ class Thread:
 
     def is_healthy(self, timeout: float) -> bool:
         return time.monotonic() - self.last_heartbeat <= timeout
+
+    def is_ready_for_healthcheck(self) -> bool:
+        return self.server is None or self.server.started
 
 
 class Multithread:
@@ -149,6 +142,9 @@ class Multithread:
 
             if not thread.is_alive():
                 self._replace_thread(idx, thread, reason="Child thread died")
+                continue
+
+            if not thread.is_ready_for_healthcheck():
                 continue
 
             if not thread.is_healthy(timeout=self.config.timeout_worker_healthcheck):

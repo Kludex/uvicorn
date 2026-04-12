@@ -237,6 +237,7 @@ class Config:
         timeout_graceful_shutdown: int | None = None,
         timeout_worker_healthcheck: int = 5,
         callback_notify: Callable[..., Awaitable[None]] | None = None,
+        callback_progress: Callable[[], None] | None = None,
         ssl_keyfile: str | os.PathLike[str] | None = None,
         ssl_certfile: str | os.PathLike[str] | None = None,
         ssl_keyfile_password: str | None = None,
@@ -284,6 +285,7 @@ class Config:
         self.timeout_graceful_shutdown = timeout_graceful_shutdown
         self.timeout_worker_healthcheck = timeout_worker_healthcheck
         self.callback_notify = callback_notify
+        self.callback_progress = callback_progress
         self.ssl_keyfile = ssl_keyfile
         self.ssl_certfile = ssl_certfile
         self.ssl_keyfile_password = ssl_keyfile_password

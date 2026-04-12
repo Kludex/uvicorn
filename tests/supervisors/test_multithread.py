@@ -11,7 +11,7 @@ from pytest_mock import MockerFixture
 from uvicorn import Config
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.server import Server
-from uvicorn.supervisors.multithread import Multithread, Thread, ThreadServer
+from uvicorn.supervisors.multithread import Multithread, Thread
 
 
 async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
@@ -34,12 +34,16 @@ class FakeThread:
         self.joined = False
         self.healthy = True
         self.join_result = True
+        self.ready_for_healthcheck = True
 
     def is_alive(self) -> bool:
         return self.alive
 
     def is_healthy(self, timeout: float) -> bool:
         return self.healthy
+
+    def is_ready_for_healthcheck(self) -> bool:
+        return self.ready_for_healthcheck
 
     def start(self) -> None:
         self.started = True
@@ -80,9 +84,12 @@ def test_thread_terminate_sets_server_exit_flag() -> None:
     target = thread._get_target()
 
     assert thread.server is not None
-    assert isinstance(thread.server, ThreadServer)
+    assert isinstance(thread.server, Server)
     assert target.__self__ is thread.server
     assert thread.server.should_exit is False
+    assert thread.config.callback_progress is not None
+    assert thread.config.callback_progress.__self__ is thread
+    assert thread.config.callback_progress.__func__ is thread.record_heartbeat.__func__
 
     thread.terminate()
 
@@ -101,9 +108,10 @@ def test_thread_record_heartbeat_and_is_healthy() -> None:
 
 
 @pytest.mark.anyio
-async def test_thread_server_records_heartbeat_on_tick() -> None:
+async def test_server_progress_callback_records_heartbeat_on_tick() -> None:
     thread = Thread(Config(app=app), target=lambda sockets: None, sockets=[])
-    server = ThreadServer(config=Config(app=app), worker_thread=thread)
+    config = Config(app=app, callback_progress=thread.record_heartbeat)
+    server = Server(config=config)
     before = thread.last_heartbeat
 
     thread.last_heartbeat -= 5
@@ -191,6 +199,20 @@ def test_multithread_keep_subthread_alive_replaces_unhealthy_thread(mocker: Mock
 
     assert supervisor.threads[0] is not unhealthy_thread
     assert supervisor.threads[0].started is True
+
+
+def test_multithread_keep_subthread_alive_skips_healthcheck_until_ready(mocker: MockerFixture) -> None:
+    mocker.patch("uvicorn.supervisors.multithread.Thread", FakeThread)
+    supervisor = Multithread(Config(app=app, workers=1), target=lambda sockets: None, sockets=[])
+    supervisor.init_threads()
+
+    thread = supervisor.threads[0]
+    thread.healthy = False
+    thread.ready_for_healthcheck = False
+
+    supervisor.keep_subthread_alive()
+
+    assert supervisor.threads[0] is thread
 
 
 def test_multithread_keep_subthread_alive_replaces_unhealthy_thread_without_blocking_join(
