@@ -53,7 +53,7 @@ dev = [
     # We add uvicorn[standard] so `uv sync` considers the extras.
     "uvicorn[standard]",
     "ruff==0.15.1",
-    "pytest==9.0.2",
+    "pytest==9.0.3",
     "pytest-mock==3.15.1",
     "pytest-xdist[psutil]==3.8.0",
     "pytest-codspeed>=4.1.1",
