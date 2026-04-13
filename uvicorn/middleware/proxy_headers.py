@@ -9,15 +9,16 @@ class ProxyHeadersMiddleware:
     """Middleware for handling known proxy headers
 
     This middleware can be used when a known proxy is fronting the application,
-    and is trusted to be properly setting the `X-Forwarded-Proto` and
-    `X-Forwarded-For` headers with the connecting client information.
+    and is trusted to be properly setting the `X-Forwarded-Proto`, `X-Forwarded-For`,
+    and `X-Forwarded-Host` headers with the connecting client information.
 
-    Modifies the `client` and `scheme` information so that they reference
+    Modifies the `client`, `scheme`, and `server` information so that they reference
     the connecting client, rather that the connecting proxy.
 
     References:
     - <https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers#Proxies>
     - <https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For>
+    - <https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-Host>
     """
 
     def __init__(self, app: ASGI3Application, trusted_hosts: list[str] | str = "127.0.0.1") -> None:
@@ -56,6 +57,23 @@ class ProxyHeadersMiddleware:
                     # so only include the host.
                     port = 0
                     scope["client"] = (host, port)
+
+            if b"x-forwarded-host" in headers:
+                x_forwarded_host = headers[b"x-forwarded-host"].decode("latin1").strip()
+                if x_forwarded_host:
+                    port = 443 if scope.get("scheme") in ("https", "wss") else 80
+
+                    # "]" to check for IPv6 address without port
+                    if ":" in x_forwarded_host and not x_forwarded_host.endswith("]"):
+                        forwarded_host, forwarded_port = x_forwarded_host.rsplit(":", 1)
+                        scope["server"] = (forwarded_host, int(forwarded_port) if forwarded_port else None)
+                    else:
+                        scope["server"] = (x_forwarded_host, port)
+
+                    # Update or add the Host header
+                    new_headers = [(name, value) for name, value in scope["headers"] if name != b"host"]
+                    new_headers.append((b"host", x_forwarded_host.encode("latin1")))
+                    scope["headers"] = new_headers
 
         return await self.app(scope, receive, send)
 
