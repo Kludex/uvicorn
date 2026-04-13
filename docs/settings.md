@@ -115,7 +115,7 @@ Note that WSGI mode always disables WebSocket support, as it is not supported by
 
 * `--root-path <str>` - Set the ASGI `root_path` for applications submounted below a given URL path. **Default:** *""*.
 * `--proxy-headers / --no-proxy-headers` - Enable/Disable X-Forwarded-Proto, X-Forwarded-For to populate remote address info. Defaults to enabled, but is restricted to only trusting connecting IPs in the `forwarded-allow-ips` configuration.
-* `--forwarded-allow-ips <comma-separated-list>` - Comma separated list of IP Addresses, IP Networks, or literals (e.g. UNIX Socket path) to trust with proxy headers. Defaults to the `$FORWARDED_ALLOW_IPS` environment variable if available, or '127.0.0.1'. The literal `'*'` means trust everything.
+* `--forwarded-allow-ips <comma-separated-list>` - Comma separated list of IP Addresses, IP Networks, or literals to trust with proxy headers. The literal `'unix:'` represents a Unix domain socket. Defaults to the `$FORWARDED_ALLOW_IPS` environment variable if available, or `'127.0.0.1'`. The literal `'*'` means trust everything.
 * `--server-header / --no-server-header` - Enable/Disable default `Server` header. **Default:** *True*.
 * `--date-header / --no-date-header` - Enable/Disable default `Date` header. **Default:** *True*.
 * `--header <name:value>` - Specify custom default HTTP response headers as a Name:Value pair. May be used multiple times.
