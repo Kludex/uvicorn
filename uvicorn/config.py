@@ -183,6 +183,7 @@ class Config:
         port: int = 8000,
         uds: str | None = None,
         fd: int | None = None,
+        bind: list[str] | None = None,
         loop: LoopFactoryType | str = "auto",
         http: type[asyncio.Protocol] | HTTPProtocolType | str = "auto",
         ws: type[asyncio.Protocol] | WSProtocolType | str = "auto",
@@ -234,6 +235,7 @@ class Config:
         self.port = port
         self.uds = uds
         self.fd = fd
+        self.bind = bind
         self.loop = loop
         self.http = http
         self.ws = ws
@@ -344,13 +346,23 @@ class Config:
         if self.reload and self.workers > 1:
             logger.warning('"workers" flag is ignored when reloading is enabled.')
 
+        if self.bind is not None:
+            # Only flag options explicitly set to non-default values.
+            conflicting: list[str] = []
+            if self.host != "127.0.0.1":  # default host
+                conflicting.append("host")
+            if self.port != 8000:  # default port
+                conflicting.append("port")
+            if self.uds is not None:
+                conflicting.append("uds")
+            if self.fd is not None:
+                conflicting.append("fd")
+            if conflicting:
+                raise ValueError(f"'bind' is mutually exclusive with {', '.join(map(repr, conflicting))}")
+
     @property
     def asgi_version(self) -> Literal["2.0", "3.0"]:
-        mapping: dict[str, Literal["2.0", "3.0"]] = {
-            "asgi2": "2.0",
-            "asgi3": "3.0",
-            "wsgi": "3.0",
-        }
+        mapping: dict[str, Literal["2.0", "3.0"]] = {"asgi2": "2.0", "asgi3": "3.0", "wsgi": "3.0"}
         return mapping[self.interface]
 
     @property
@@ -498,25 +510,29 @@ class Config:
             return None
         return loop_factory(use_subprocess=self.use_subprocess)
 
-    def bind_socket(self) -> socket.socket:
+    def _bind_one(
+        self,
+        *,
+        uds: str | None = None,
+        fd: int | None = None,
+        host: str = "127.0.0.1",
+        port: int = 8000,
+    ) -> socket.socket:
         logger_args: list[str | int]
-        if self.uds:  # pragma: py-win32
-            path = self.uds
+        if uds:  # pragma: py-win32
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             try:
-                sock.bind(path)
-                uds_perms = 0o666
-                os.chmod(self.uds, uds_perms)
+                sock.bind(uds)
+                os.chmod(uds, 0o666)
             except OSError as exc:  # pragma: full coverage
                 logger.error(exc)
                 sys.exit(1)
-
             message = "Uvicorn running on unix socket %s (Press CTRL+C to quit)"
             sock_name_format = "%s"
             color_message = "Uvicorn running on " + click.style(sock_name_format, bold=True) + " (Press CTRL+C to quit)"
-            logger_args = [self.uds]
-        elif self.fd:  # pragma: py-win32
-            sock = socket.fromfd(self.fd, socket.AF_UNIX, socket.SOCK_STREAM)
+            logger_args = [uds]
+        elif fd is not None:  # pragma: py-win32
+            sock = socket.fromfd(fd, socket.AF_UNIX, socket.SOCK_STREAM)
             message = "Uvicorn running on socket %s (Press CTRL+C to quit)"
             fd_name_format = "%s"
             color_message = "Uvicorn running on " + click.style(fd_name_format, bold=True) + " (Press CTRL+C to quit)"
@@ -524,27 +540,52 @@ class Config:
         else:
             family = socket.AF_INET
             addr_format = "%s://%s:%d"
-
-            if self.host and ":" in self.host:  # pragma: full coverage
-                # It's an IPv6 address.
+            if host and ":" in host:  # pragma: full coverage
                 family = socket.AF_INET6
                 addr_format = "%s://[%s]:%d"
-
             sock = socket.socket(family=family)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
-                sock.bind((self.host, self.port))
+                sock.bind((host, port))
             except OSError as exc:  # pragma: full coverage
                 logger.error(exc)
                 sys.exit(1)
-
             message = f"Uvicorn running on {addr_format} (Press CTRL+C to quit)"
             color_message = "Uvicorn running on " + click.style(addr_format, bold=True) + " (Press CTRL+C to quit)"
             protocol_name = "https" if self.is_ssl else "http"
-            logger_args = [protocol_name, self.host, sock.getsockname()[1]]
+            logger_args = [protocol_name, host, sock.getsockname()[1]]
         logger.info(message, *logger_args, extra={"color_message": color_message})
         sock.set_inheritable(True)
         return sock
+
+    def bind_socket(self) -> socket.socket:
+        return self._bind_one(uds=self.uds, fd=self.fd, host=self.host, port=self.port)
+
+    def bind_sockets(self) -> list[socket.socket]:
+        if self.bind is None:
+            return [self.bind_socket()]
+
+        sockets: list[socket.socket] = []
+        for bind_str in self.bind:
+            if bind_str.startswith("unix:"):  # pragma: py-win32
+                sock = self._bind_one(uds=bind_str[5:])
+            elif bind_str.startswith("fd://"):  # pragma: py-win32
+                sock = self._bind_one(fd=int(bind_str[5:]))
+            else:
+                # Strip brackets for IPv6, then rsplit on last colon.
+                raw = bind_str.replace("[", "").replace("]", "")
+                try:
+                    host, port_str = raw.rsplit(":", 1)
+                    port = int(port_str)
+                except (ValueError, IndexError):
+                    host, port = raw, 8000
+                sock = self._bind_one(host=host, port=port)
+            sockets.append(sock)
+        return sockets
+
+    @property
+    def bind_unix_paths(self) -> list[str]:  # pragma: py-win32
+        return [b[5:] for b in (self.bind or []) if b.startswith("unix:")]
 
     @property
     def should_reload(self) -> bool:
