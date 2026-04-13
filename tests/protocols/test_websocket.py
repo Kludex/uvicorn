@@ -27,6 +27,7 @@ from uvicorn._types import (
 )
 from uvicorn.config import Config
 from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
+from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
 
 try:
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol as _WSProtocol
@@ -883,6 +884,8 @@ async def test_server_reject_connection_with_invalid_status(
         response = await wsresponse(url)
         assert response.status_code == 500
         assert response.content == b"Internal Server Error"
+        assert response.headers["content-length"] == "21"
+        assert response.headers["connection"] == "close"
 
     config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
     async with run_server(config):
@@ -1200,3 +1203,90 @@ async def test_lifespan_state(ws_protocol_cls: WSProtocol, http_protocol_cls: HT
         assert is_open
 
     assert expected_states == actual_states
+
+
+async def test_server_keepalive_ping_pong(http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        while True:
+            message = await receive()
+            if message["type"] == "websocket.connect":
+                await send({"type": "websocket.accept"})
+            elif message["type"] == "websocket.disconnect":
+                break
+
+    config = Config(
+        app=app,
+        ws=WebSocketsSansIOProtocol,
+        http=http_protocol_cls,
+        lifespan="off",
+        ws_ping_interval=0.1,
+        ws_ping_timeout=5.0,
+        port=unused_tcp_port,
+    )
+    async with run_server(config) as server:
+        # The websockets client auto-responds to ping frames, keeping the connection alive.
+        async with websockets.connect(f"ws://127.0.0.1:{unused_tcp_port}", ping_interval=None):
+            protocol = list(server.server_state.connections)[0]
+            assert isinstance(protocol, WebSocketsSansIOProtocol)
+
+            # Wait until at least one ping/pong roundtrip completes.
+            async def ping_roundtrip() -> None:
+                while protocol.last_ping_rtt == 0.0:
+                    await asyncio.sleep(0.1)
+
+            await asyncio.wait_for(ping_roundtrip(), timeout=5.0)
+            assert protocol.last_ping_rtt > 0
+
+
+async def test_server_keepalive_ping_timeout(http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        while True:
+            message = await receive()
+            if message["type"] == "websocket.connect":
+                await send({"type": "websocket.accept"})
+            elif message["type"] == "websocket.disconnect":
+                break
+
+    config = Config(
+        app=app,
+        ws=WebSocketsSansIOProtocol,
+        http=http_protocol_cls,
+        lifespan="off",
+        ws_ping_interval=0.1,
+        ws_ping_timeout=0.1,
+        log_level="trace",
+        port=unused_tcp_port,
+    )
+    async with run_server(config):
+        async with websockets.connect(f"ws://127.0.0.1:{unused_tcp_port}", ping_interval=None) as websocket:
+            # Swallow outgoing pong frames so the server's ping never gets ack'd.
+            websocket.transport.write = lambda data: None  # type: ignore[method-assign]
+            with pytest.raises(websockets.exceptions.ConnectionClosedError) as exc_info:
+                await asyncio.wait_for(websocket.recv(), timeout=1)
+            assert exc_info.value.rcvd is not None
+            assert exc_info.value.rcvd.code == 1011
+            assert exc_info.value.rcvd.reason == "keepalive ping timeout"
+
+
+async def test_server_keepalive_disabled(http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        while True:
+            message = await receive()
+            if message["type"] == "websocket.connect":
+                await send({"type": "websocket.accept"})
+            elif message["type"] == "websocket.disconnect":
+                break
+
+    config = Config(
+        app=app,
+        ws=WebSocketsSansIOProtocol,
+        http=http_protocol_cls,
+        lifespan="off",
+        ws_ping_interval=None,
+        port=unused_tcp_port,
+    )
+    async with run_server(config) as server:
+        async with websockets.connect(f"ws://127.0.0.1:{unused_tcp_port}", ping_interval=None):
+            protocol = list(server.server_state.connections)[0]
+            assert isinstance(protocol, WebSocketsSansIOProtocol)
+            assert protocol.ping_timer is None
