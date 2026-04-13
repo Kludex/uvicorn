@@ -95,21 +95,16 @@ class AccessFormatter(ColourizedFormatter):
         return status_and_phrase
 
     def formatMessage(self, record: logging.LogRecord) -> str:
-        recordcopy = copy(record)
-        (
-            client_addr,
-            method,
-            full_path,
-            http_version,
-            status_code,
-        ) = recordcopy.args  # type: ignore[misc]
-        status_code = self.get_status_code(int(status_code))  # type: ignore[arg-type]
+        status_code = self.get_status_code(int(record.__dict__["status"]))
+        method = record.__dict__["method"]
+        full_path = record.__dict__["full_path"]
+        http_version = record.__dict__["http_version"]
         request_line = f"{method} {full_path} HTTP/{http_version}"
         if self.use_colors:
             request_line = click.style(request_line, bold=True)
+        recordcopy = copy(record)
         recordcopy.__dict__.update(
             {
-                "client_addr": client_addr,
                 "request_line": request_line,
                 "status_code": status_code,
             }
