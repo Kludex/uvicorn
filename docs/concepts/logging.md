@@ -221,8 +221,7 @@ uvicorn.run("main:app", log_config=log_config)
 
 ### Writing Logs to a File
 
-To write logs to a file in addition to (or instead of) the console, add a
-`FileHandler`:
+To write Uvicorn's server logs to a file in addition to the console, add a `FileHandler` to the `uvicorn` logger:
 
 ```yaml
 version: 1
@@ -265,6 +264,9 @@ loggers:
     level: INFO
     propagate: false
 ```
+
+In this example, `uvicorn.access` still writes to stdout only. To write access
+logs to the file as well, add `file` to the `uvicorn.access.handlers` list.
 
 ### Disabling Access Logs
 
