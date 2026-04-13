@@ -28,7 +28,7 @@ class Process:
         self,
         config: Config,
         target: Callable[[list[socket] | None], None],
-        sockets: list[socket],
+        sockets: list[socket] | list[Callable[[], socket]],
     ) -> None:
         self.real_target = target
 
@@ -105,7 +105,7 @@ class Multiprocess:
         self,
         config: Config,
         target: Callable[[list[socket] | None], None],
-        sockets: list[socket],
+        sockets: list[socket] | list[Callable[[], socket]],
     ) -> None:
         self.config = config
         self.target = target
