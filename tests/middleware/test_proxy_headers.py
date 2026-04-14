@@ -32,8 +32,8 @@ async def default_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISend
     else:
         host, port = client
         with contextlib.suppress(ValueError):
-        if ipaddress.ip_address(host).version == 6:
-            host = f"[{host}]"
+            if ipaddress.ip_address(host).version == 6:
+                host = f"[{host}]"
         client_addr = f"{host}:{port}"
 
     response = Response(f"{scheme}://{client_addr}", media_type="text/plain")

@@ -45,7 +45,7 @@ class ProxyHeadersMiddleware:
 
             if b"x-forwarded-for" in headers:
                 x_forwarded_for = headers[b"x-forwarded-for"].decode("latin1")
-                host, port = self.trusted_hosts.get_trusted_client_host(x_forwarded_for)
+                host, port = self.trusted_hosts.get_trusted_client_address(x_forwarded_for)
 
                 if host:
                     # If the x-forwarded-for header is empty then host is an empty string.
@@ -153,8 +153,8 @@ class _TrustedHosts:
         except ValueError:
             return host in self.trusted_literals
 
-    def get_trusted_client_host(self, x_forwarded_for: str) -> tuple[str, int]:
-        """Extract the client host from x_forwarded_for header.
+    def get_trusted_client_address(self, x_forwarded_for: str) -> tuple[str, int]:
+        """Extract the client address from x_forwarded_for header.
 
         In general this is the first "untrusted" host in the forwarded for list.
         """
