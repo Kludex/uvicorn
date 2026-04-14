@@ -52,16 +52,48 @@ class ProxyHeadersMiddleware:
                     # Only set the client if we actually got something usable.
                     # See: https://github.com/Kludex/uvicorn/issues/1068
 
-                    # We've lost the connecting client's port information by now,
-                    # so only include the host.
-                    port = 0
-                    scope["client"] = (host, port)
+                    scope["client"] = _parse_host_port(host)
 
         return await self.app(scope, receive, send)
 
 
 def _parse_raw_hosts(value: str) -> list[str]:
     return [item.strip() for item in value.split(",")]
+
+
+def _parse_host_port(value: str) -> tuple[str, int]:
+    """Parse a forwarded host value into host and optional port.
+
+    Accepts bare IPs, IPv4 `host:port`, and bracketed IPv6 `[host]:port`.
+    Any unrecognized or malformed value is treated conservatively and returned
+    without a port so trust checks do not silently normalize arbitrary input.
+    """
+
+    if value.startswith("["):
+        bracket_end = value.find("]")
+        if bracket_end == -1:
+            return value, 0
+
+        host = value[1:bracket_end]
+        remainder = value[bracket_end + 1 :]
+        if not remainder:
+            return host, 0
+        if not remainder.startswith(":"):
+            return value, 0
+
+        try:
+            return host, int(remainder[1:])
+        except ValueError:
+            return host, 0
+
+    if value.count(":") == 1:
+        host, port = value.rsplit(":", 1)
+        try:
+            return host, int(port)
+        except ValueError:
+            return value, 0
+
+    return value, 0
 
 
 class _TrustedHosts:
@@ -113,14 +145,16 @@ class _TrustedHosts:
         if not host:
             return False
 
+        candidate_host, _ = _parse_host_port(host)
+
         try:
-            ip = ipaddress.ip_address(host)
+            ip = ipaddress.ip_address(candidate_host)
             if ip in self.trusted_hosts:
                 return True
             return any(ip in net for net in self.trusted_networks)
 
         except ValueError:
-            return host in self.trusted_literals
+            return candidate_host in self.trusted_literals
 
     def get_trusted_client_host(self, x_forwarded_for: str) -> str:
         """Extract the client host from x_forwarded_for header
