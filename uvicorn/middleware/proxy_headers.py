@@ -45,14 +45,13 @@ class ProxyHeadersMiddleware:
 
             if b"x-forwarded-for" in headers:
                 x_forwarded_for = headers[b"x-forwarded-for"].decode("latin1")
-                host = self.trusted_hosts.get_trusted_client_host(x_forwarded_for)
+                host, port = self.trusted_hosts.get_trusted_client_host(x_forwarded_for)
 
                 if host:
                     # If the x-forwarded-for header is empty then host is an empty string.
                     # Only set the client if we actually got something usable.
                     # See: https://github.com/Kludex/uvicorn/issues/1068
-
-                    scope["client"] = _parse_host_port(host)
+                    scope["client"] = (host, port)
 
         return await self.app(scope, receive, send)
 
@@ -145,32 +144,31 @@ class _TrustedHosts:
         if not host:
             return False
 
-        candidate_host, _ = _parse_host_port(host)
-
         try:
-            ip = ipaddress.ip_address(candidate_host)
+            ip = ipaddress.ip_address(host)
             if ip in self.trusted_hosts:
                 return True
             return any(ip in net for net in self.trusted_networks)
 
         except ValueError:
-            return candidate_host in self.trusted_literals
+            return host in self.trusted_literals
 
-    def get_trusted_client_host(self, x_forwarded_for: str) -> str:
-        """Extract the client host from x_forwarded_for header
+    def get_trusted_client_host(self, x_forwarded_for: str) -> tuple[str, int]:
+        """Extract the client host from x_forwarded_for header.
 
         In general this is the first "untrusted" host in the forwarded for list.
         """
         x_forwarded_for_hosts = _parse_raw_hosts(x_forwarded_for)
 
         if self.always_trust:
-            return x_forwarded_for_hosts[0]
+            return _parse_host_port(x_forwarded_for_hosts[0])
 
         # Note: each proxy appends to the header list so check it in reverse order
-        for host in reversed(x_forwarded_for_hosts):
+        for host_port in reversed(x_forwarded_for_hosts):
+            host, port = _parse_host_port(host_port)
             if host not in self:
-                return host
+                return host, port
 
         # All hosts are trusted meaning that the client was also a trusted proxy
         # See https://github.com/Kludex/uvicorn/issues/1068#issuecomment-855371576
-        return x_forwarded_for_hosts[0]
+        return _parse_host_port(x_forwarded_for_hosts[0])

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import ipaddress
 from typing import TYPE_CHECKING
 
@@ -30,6 +31,7 @@ async def default_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISend
         client_addr = "NONE"  # pragma: no cover
     else:
         host, port = client
+        with contextlib.suppress(ValueError):
         if ipaddress.ip_address(host).version == 6:
             host = f"[{host}]"
         client_addr = f"{host}:{port}"
