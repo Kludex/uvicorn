@@ -488,6 +488,8 @@ async def test_proxy_headers_invalid_x_forwarded_for() -> None:
         ("1.2.3.4:notaport", "https://1.2.3.4:notaport:0"),
         # Invalid bracketed IPv6 port keeps the host and drops the port
         ("[2001:db8::1]:notaport", "https://[2001:db8::1]:0"),
+        # Trailing data after a bracketed IPv6 host is left untouched
+        ("[2001:db8::1]extra", "https://[2001:db8::1]extra:0"),
         # Malformed bracket is left untouched
         ("[2001:db8::1", "https://[2001:db8::1:0"),
     ],
