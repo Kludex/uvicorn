@@ -1229,13 +1229,26 @@ async def test_server_keepalive_ping_pong(http_protocol_cls: HTTPProtocol, unuse
             protocol = list(server.server_state.connections)[0]
             assert isinstance(protocol, WebSocketsSansIOProtocol)
 
-            # Wait until at least one ping/pong roundtrip completes.
+            # Wait until at least one ping/pong roundtrip completes. On Windows,
+            # loop.time() can have coarse enough resolution that a successful
+            # roundtrip still records an RTT of exactly 0.0.
             async def ping_roundtrip() -> None:
-                while protocol.last_ping_rtt == 0.0:
-                    await asyncio.sleep(0.1)
+                while True:
+                    if protocol.last_ping_rtt > 0.0:
+                        return
+                    if (
+                        protocol.ping_sent_at > 0.0
+                        and protocol.pending_ping_payload is None
+                        and protocol.pong_timer is None
+                        and not protocol.transport.is_closing()
+                    ):
+                        return
+                    await asyncio.sleep(0.05)
 
             await asyncio.wait_for(ping_roundtrip(), timeout=5.0)
-            assert protocol.last_ping_rtt > 0
+            assert protocol.ping_sent_at > 0.0
+            assert protocol.pending_ping_payload is None
+            assert not protocol.transport.is_closing()
 
 
 async def test_server_keepalive_ping_timeout(http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
