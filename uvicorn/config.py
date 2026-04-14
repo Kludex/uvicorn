@@ -196,6 +196,7 @@ class Config:
         log_config: dict[str, Any] | str | RawConfigParser | IO[Any] | None = LOGGING_CONFIG,
         log_level: str | int | None = None,
         access_log: bool = True,
+        access_log_format: str | None = None,
         use_colors: bool | None = None,
         interface: InterfaceType = "auto",
         reload: bool = False,
@@ -246,6 +247,7 @@ class Config:
         self.log_config = log_config
         self.log_level = log_level
         self.access_log = access_log
+        self.access_log_format = access_log_format
         self.use_colors = use_colors
         self.interface = interface
         self.reload = reload
@@ -369,6 +371,13 @@ class Config:
                 if self.use_colors in (True, False):
                     self.log_config["formatters"]["default"]["use_colors"] = self.use_colors
                     self.log_config["formatters"]["access"]["use_colors"] = self.use_colors
+                # Apply access_log_format if specified
+                if self.access_log_format:
+                    self.log_config["formatters"]["access"] = {
+                        "()": "uvicorn.logging.GunicornAccessFormatter",
+                        "fmt": self.access_log_format,
+                        "use_colors": self.use_colors,
+                    }
                 logging.config.dictConfig(self.log_config)
             elif isinstance(self.log_config, str) and self.log_config.endswith(".json"):
                 with open(self.log_config) as file:
