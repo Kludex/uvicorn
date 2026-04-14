@@ -241,6 +241,9 @@ class Server:
     async def on_tick(self, counter: int) -> bool:
         # Update the default headers, once per second.
         if counter % 10 == 0:
+            if self.config.callback_progress is not None:
+                self.config.callback_progress()
+
             current_time = time.time()
             current_date = formatdate(current_time, usegmt=True).encode()
 

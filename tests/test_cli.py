@@ -15,7 +15,7 @@ import uvicorn
 from uvicorn.config import Config
 from uvicorn.main import main as cli
 from uvicorn.server import Server
-from uvicorn.supervisors import ChangeReload, Multiprocess
+from uvicorn.supervisors import ChangeReload, Multiprocess, Multithread
 
 HEADERS = "Content-Security-Policy:default-src 'self'; script-src https://example.com"
 main = importlib.import_module("uvicorn.main")
@@ -101,6 +101,19 @@ def test_cli_call_multiprocess_run() -> None:
     mock_run.assert_called_once()
 
 
+def test_cli_call_multithread_run() -> None:
+    runner = CliRunner()
+
+    with mock.patch("uvicorn.config.is_free_threaded_runtime", return_value=True):
+        with mock.patch.object(Config, "bind_socket") as mock_bind_socket:
+            with mock.patch.object(Multithread, "run") as mock_run:
+                result = runner.invoke(cli, ["tests.test_cli:App", "--workers=2", "--worker-class=thread"])
+
+    assert result.exit_code == 0
+    mock_bind_socket.assert_called_once()
+    mock_run.assert_called_once()
+
+
 @pytest.fixture(params=(True, False))
 def uds_file(tmp_path: Path, request: pytest.FixtureRequest) -> Path:  # pragma: py-win32
     file = tmp_path / "uvicorn.sock"
@@ -123,6 +136,15 @@ def test_cli_uds(uds_file: Path) -> None:  # pragma: py-win32
     mock_bind_socket.assert_called_once()
     mock_run.assert_called_once()
     assert not uds_file.exists()
+
+
+def test_cli_thread_worker_class_requires_free_threaded_runtime() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli, ["tests.test_cli:App", "--workers=2", "--worker-class=thread"])
+
+    assert result.exit_code == 1
+    assert 'Worker class "thread" requires a free-threaded Python 3.14 runtime' in str(result.exception)
 
 
 def test_cli_incomplete_app_parameter() -> None:
