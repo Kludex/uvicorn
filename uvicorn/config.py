@@ -225,6 +225,7 @@ class Config:
         ssl_cert_reqs: int = ssl.CERT_NONE,
         ssl_ca_certs: str | os.PathLike[str] | None = None,
         ssl_ciphers: str = "TLSv1",
+        ssl_context_factory: Callable[[], ssl.SSLContext] | None = None,
         headers: list[tuple[str, str]] | None = None,
         factory: bool = False,
         h11_max_incomplete_event_size: int | None = None,
@@ -271,6 +272,7 @@ class Config:
         self.ssl_cert_reqs = ssl_cert_reqs
         self.ssl_ca_certs = ssl_ca_certs
         self.ssl_ciphers = ssl_ciphers
+        self.ssl_context_factory = ssl_context_factory
         self.headers: list[tuple[str, str]] = headers or []
         self.encoded_headers: list[tuple[bytes, bytes]] = []
         self.factory = factory
@@ -355,7 +357,7 @@ class Config:
 
     @property
     def is_ssl(self) -> bool:
-        return bool(self.ssl_keyfile or self.ssl_certfile)
+        return bool(self.ssl_keyfile or self.ssl_certfile or self.ssl_context_factory)
 
     @property
     def use_subprocess(self) -> bool:
@@ -402,9 +404,11 @@ class Config:
     def load(self) -> None:
         assert not self.loaded
 
-        if self.is_ssl:
+        if self.ssl_context_factory is not None:
+            self.ssl: ssl.SSLContext | None = self.ssl_context_factory()
+        elif self.is_ssl:
             assert self.ssl_certfile
-            self.ssl: ssl.SSLContext | None = create_ssl_context(
+            self.ssl = create_ssl_context(
                 keyfile=self.ssl_keyfile,
                 certfile=self.ssl_certfile,
                 password=self.ssl_keyfile_password,
