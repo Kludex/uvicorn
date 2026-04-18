@@ -365,7 +365,7 @@ class Config:
         logging.addLevelName(TRACE_LOG_LEVEL, "TRACE")
 
         if self.log_config is not None:
-            if isinstance(self.log_config, os.PathLike):  # pragma: no cover
+            if isinstance(self.log_config, os.PathLike):
                 self.log_config = os.fspath(self.log_config)
 
             if isinstance(self.log_config, dict):
@@ -380,10 +380,9 @@ class Config:
             elif isinstance(self.log_config, str) and self.log_config.endswith((".yaml", ".yml")):
                 try:
                     import yaml
-                except ImportError as e:  # pragma: no cover
+                except ImportError as e:
                     raise ImportError(
-                        "Install the PyYAML package or the uvicorn[standard] optional "
-                        "dependencies to enable this functionality."
+                        "Install the PyYAML package or uvicorn[standard] to use `--log-config` with YAML files."
                     ) from e
 
                 with open(self.log_config) as file:
