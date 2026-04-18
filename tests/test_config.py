@@ -366,21 +366,14 @@ def test_log_config_yaml(
     mocked_logging_config_module.dictConfig.assert_called_once_with(logging_config)
 
 
-def test_log_config_yaml_missing_pyyaml(
-    mocked_logging_config_module: MagicMock,
-    mocker: MockerFixture,
-) -> None:
+def test_log_config_yaml_missing_pyyaml(mocked_logging_config_module: MagicMock) -> None:
     """
     Test that a helpful error is raised when PyYAML is not installed.
     """
-    yaml_module = sys.modules.pop("yaml")
-    mocker.patch.dict(sys.modules, {"yaml": None})
-
-    try:
-        with pytest.raises(ImportError, match="Install the PyYAML package or uvicorn\\[standard\\]"):
-            Config(app=asgi_app, log_config="log_config.yaml")
-    finally:
-        sys.modules["yaml"] = yaml_module
+    sys.modules["yaml"] = None  # type: ignore[assignment]
+    with pytest.raises(ImportError, match=r"Install the PyYAML package or uvicorn\[standard\]"):
+        Config(app=asgi_app, log_config="log_config.yaml")
+    del sys.modules["yaml"]
 
 
 def test_log_config_pathlike(
