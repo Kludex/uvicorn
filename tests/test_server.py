@@ -135,6 +135,30 @@ async def test_request_than_limit_max_requests_warn_log(
     assert "Maximum request limit of 1 exceeded. Terminating process." in caplog.text
 
 
+async def test_notify_is_triggered_on_every_tick(
+    unused_tcp_port: int, http_protocol_cls: type[H11Protocol | HttpToolsProtocol]
+):
+    call_count = 0
+
+    async def notify():
+        nonlocal call_count
+        call_count += 1
+
+    config = Config(
+        app=app,
+        limit_max_requests=1,
+        port=unused_tcp_port,
+        http=http_protocol_cls,
+        callback_notify=notify,
+        timeout_notify=0,
+    )
+
+    async with run_server(config):
+        assert call_count == 1
+        await asyncio.sleep(0.1)  # step forward just one tick
+        assert call_count == 2
+
+
 async def test_limit_max_requests_jitter(
     unused_tcp_port: int, http_protocol_cls: type[H11Protocol | HttpToolsProtocol], caplog: pytest.LogCaptureFixture
 ):
