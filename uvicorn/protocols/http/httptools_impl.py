@@ -5,11 +5,12 @@ import contextvars
 import http
 import logging
 import re
+import sys
 import urllib
 from asyncio.events import TimerHandle
 from collections import deque
 from collections.abc import Callable
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 import httptools
 
@@ -18,7 +19,6 @@ from uvicorn._types import (
     ASGIReceiveEvent,
     ASGISendEvent,
     HTTPRequestEvent,
-    HTTPResponseStartEvent,
     HTTPScope,
 )
 from uvicorn.config import Config
@@ -27,7 +27,7 @@ from uvicorn.protocols.http.flow_control import CLOSE_HEADER, HIGH_WATER_LIMIT, 
 from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
 from uvicorn.server import ServerState
 
-HEADER_RE = re.compile(b'[\x00-\x1f\x7f()<>@,;:[]={} \t\\"]')
+HEADER_RE = re.compile(b'[\x00-\x1f\x7f()<>@,;:\\[\\]={} \t\\\\"]')
 HEADER_VALUE_RE = re.compile(b"[\x00-\x08\x0a-\x1f\x7f]")
 
 
@@ -85,7 +85,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         # Per-connection state
         self.transport: asyncio.Transport = None  # type: ignore[assignment]
         self.flow: FlowControl = None  # type: ignore[assignment]
-        self.server: tuple[str, int] | None = None
+        self.server: tuple[str, int | None] | None = None
         self.client: tuple[str, int] | None = None
         self.scheme: Literal["http", "https"] | None = None
         self.pipeline: deque[tuple[RequestResponseCycle, ASGI3Application]] = deque()
@@ -292,9 +292,10 @@ class HttpToolsProtocol(asyncio.Protocol):
             # For the asyncio loop, we need to explicitly start with an empty context
             # as it can be polluted from previous ASGI runs.
             # See https://github.com/python/cpython/issues/140947 for details.
-            task = contextvars.Context().run(self.loop.create_task, self.cycle.run_asgi(app))
-            # TODO: Replace the line above with the line below for Python >= 3.11
-            # task = self.loop.create_task(self.cycle.run_asgi(app), context=contextvars.Context())
+            if sys.version_info >= (3, 11):  # pragma: py-lt-311
+                task = self.loop.create_task(self.cycle.run_asgi(app), context=contextvars.Context())
+            else:  # pragma: py-gte-311
+                task = contextvars.Context().run(self.loop.create_task, self.cycle.run_asgi(app))
             task.add_done_callback(self.tasks.discard)
             self.tasks.add(task)
         else:
@@ -348,6 +349,8 @@ class HttpToolsProtocol(asyncio.Protocol):
             self.transport.close()
         else:
             self.cycle.keep_alive = False
+            self.cycle.shutting_down = True
+            self.cycle.message_event.set()
 
     def pause_writing(self) -> None:
         """
@@ -399,9 +402,10 @@ class RequestResponseCycle:
         self.disconnected = False
         self.keep_alive = keep_alive
         self.waiting_for_100_continue = expect_100_continue
+        self.shutting_down = False
 
         # Request state
-        self.body = b""
+        self.body = bytearray()
         self.more_body = True
 
         # Response state
@@ -433,8 +437,9 @@ class RequestResponseCycle:
                 self.logger.error(msg)
                 await self.send_500_response()
             elif not self.response_complete and not self.disconnected:
-                msg = "ASGI callable returned without completing response."
-                self.logger.error(msg)
+                if not self.shutting_down:
+                    msg = "ASGI callable returned without completing response."
+                    self.logger.error(msg)
                 self.transport.close()
         finally:
             self.on_response = lambda: None
@@ -455,8 +460,6 @@ class RequestResponseCycle:
 
     # ASGI interface
     async def send(self, message: ASGISendEvent) -> None:
-        message_type = message["type"]
-
         if self.flow.write_paused and not self.disconnected:
             await self.flow.drain()  # pragma: full coverage
 
@@ -465,10 +468,8 @@ class RequestResponseCycle:
 
         if not self.response_started:
             # Sending response status line and headers
-            if message_type != "http.response.start":
-                msg = "Expected ASGI message 'http.response.start', but got '%s'."
-                raise RuntimeError(msg % message_type)
-            message = cast("HTTPResponseStartEvent", message)
+            if message["type"] != "http.response.start":
+                raise RuntimeError(f"Expected ASGI message 'http.response.start', but got '{message['type']}'.")
 
             self.response_started = True
             self.waiting_for_100_continue = False
@@ -519,11 +520,10 @@ class RequestResponseCycle:
 
         elif not self.response_complete:
             # Sending response body
-            if message_type != "http.response.body":
-                msg = "Expected ASGI message 'http.response.body', but got '%s'."
-                raise RuntimeError(msg % message_type)
+            if message["type"] != "http.response.body":
+                raise RuntimeError(f"Expected ASGI message 'http.response.body', but got '{message['type']}'.")
 
-            body = cast(bytes, message.get("body", b""))
+            body = message.get("body", b"")
             more_body = message.get("more_body", False)
 
             # Write response body
@@ -557,21 +557,20 @@ class RequestResponseCycle:
 
         else:
             # Response already sent
-            msg = "Unexpected ASGI message '%s' sent, after response already completed."
-            raise RuntimeError(msg % message_type)
+            raise RuntimeError(f"Unexpected ASGI message '{message['type']}' sent, after response already completed.")
 
     async def receive(self) -> ASGIReceiveEvent:
         if self.waiting_for_100_continue and not self.transport.is_closing():
             self.transport.write(b"HTTP/1.1 100 Continue\r\n\r\n")
             self.waiting_for_100_continue = False
 
-        if not self.disconnected and not self.response_complete:
+        if not self.disconnected and not self.response_complete and not self.shutting_down:
             self.flow.resume_reading()
             await self.message_event.wait()
             self.message_event.clear()
 
-        if self.disconnected or self.response_complete:
+        if self.disconnected or self.response_complete or self.shutting_down:
             return {"type": "http.disconnect"}
-        message: HTTPRequestEvent = {"type": "http.request", "body": self.body, "more_body": self.more_body}
-        self.body = b""
+        message: HTTPRequestEvent = {"type": "http.request", "body": bytes(self.body), "more_body": self.more_body}
+        self.body = bytearray()
         return message

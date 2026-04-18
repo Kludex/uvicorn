@@ -150,7 +150,7 @@ class WSGIResponder:
                 if message is None:
                     return
                 await send(message)
-            else:
+            else:  # pragma: no cover
                 await self.send_event.wait()
                 self.send_event.clear()
 

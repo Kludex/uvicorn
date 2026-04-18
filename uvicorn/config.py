@@ -211,6 +211,7 @@ class Config:
         root_path: str = "",
         limit_concurrency: int | None = None,
         limit_max_requests: int | None = None,
+        limit_max_requests_jitter: int = 0,
         backlog: int = 2048,
         timeout_keep_alive: int = 5,
         timeout_notify: int = 30,
@@ -256,6 +257,7 @@ class Config:
         self.root_path = root_path
         self.limit_concurrency = limit_concurrency
         self.limit_max_requests = limit_max_requests
+        self.limit_max_requests_jitter = limit_max_requests_jitter
         self.backlog = backlog
         self.timeout_keep_alive = timeout_keep_alive
         self.timeout_notify = timeout_notify

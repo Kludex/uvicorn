@@ -87,10 +87,45 @@ async def test_server_interrupt(
     assert server.should_exit
 
 
+async def test_shutdown_on_early_exit_during_startup(unused_tcp_port: int):
+    """Test that lifespan.shutdown is called even when should_exit is set during startup."""
+    startup_complete = False
+    shutdown_complete = False
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        nonlocal startup_complete, shutdown_complete
+        if scope["type"] == "lifespan":
+            while True:
+                message = await receive()
+                if message["type"] == "lifespan.startup":
+                    await asyncio.sleep(0.5)
+                    await send({"type": "lifespan.startup.complete"})
+                    startup_complete = True
+                elif message["type"] == "lifespan.shutdown":
+                    await send({"type": "lifespan.shutdown.complete"})
+                    shutdown_complete = True
+                    return
+
+    config = Config(app=app, lifespan="on", port=unused_tcp_port)
+    server = Server(config=config)
+
+    # Simulate a reload signal arriving during startup:
+    # set should_exit before the 0.5s startup sleep finishes.
+    async def set_exit():
+        await asyncio.sleep(0.2)
+        server.should_exit = True
+
+    asyncio.create_task(set_exit())
+    await server.serve()
+
+    assert startup_complete
+    assert shutdown_complete, "lifespan.shutdown was not called despite startup completing"
+
+
 async def test_request_than_limit_max_requests_warn_log(
     unused_tcp_port: int, http_protocol_cls: type[H11Protocol | HttpToolsProtocol], caplog: pytest.LogCaptureFixture
 ):
-    caplog.set_level(logging.WARNING, logger="uvicorn.error")
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
     config = Config(app=app, limit_max_requests=1, port=unused_tcp_port, http=http_protocol_cls)
     async with run_server(config):
         async with httpx.AsyncClient() as client:
@@ -98,6 +133,27 @@ async def test_request_than_limit_max_requests_warn_log(
             responses = await asyncio.gather(*tasks)
             assert len(responses) == 2
     assert "Maximum request limit of 1 exceeded. Terminating process." in caplog.text
+
+
+async def test_limit_max_requests_jitter(
+    unused_tcp_port: int, http_protocol_cls: type[H11Protocol | HttpToolsProtocol], caplog: pytest.LogCaptureFixture
+):
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
+    config = Config(
+        app=app, limit_max_requests=1, limit_max_requests_jitter=2, port=unused_tcp_port, http=http_protocol_cls
+    )
+    server = Server(config=config)
+    limit = server.limit_max_requests
+    assert limit is not None
+    assert 1 <= limit <= 3
+    task = asyncio.create_task(server.serve())
+    while not server.started:
+        await asyncio.sleep(0.01)
+    async with httpx.AsyncClient() as client:
+        for _ in range(limit + 1):
+            await client.get(f"http://127.0.0.1:{unused_tcp_port}")
+    await task
+    assert f"Maximum request limit of {limit} exceeded. Terminating process." in caplog.text
 
 
 @contextlib.asynccontextmanager

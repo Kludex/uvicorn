@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import contextlib
+import ipaddress
 from typing import TYPE_CHECKING
 
 import httpx
-import httpx._transports.asgi
 import pytest
 import websockets.client
 
@@ -30,6 +31,9 @@ async def default_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISend
         client_addr = "NONE"  # pragma: no cover
     else:
         host, port = client
+        with contextlib.suppress(ValueError):
+            if ipaddress.ip_address(host).version == 6:
+                host = f"[{host}]"
         client_addr = f"{host}:{port}"
 
     response = Response(f"{scheme}://{client_addr}", media_type="text/plain")
@@ -427,6 +431,31 @@ async def test_proxy_headers_multiple_proxies(trusted_hosts: str | list[str], ex
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("trusted_hosts", "expected"),
+    [
+        # always trust
+        ("*", "https://1.2.3.4:1234"),
+        # all proxies are trusted
+        (["127.0.0.1", "2001:db8::1", "192.168.0.2"], "https://1.2.3.4:1234"),
+        # should set first untrusted as remote address
+        (["192.168.0.2", "127.0.0.1"], "https://[2001:db8::1]:8080"),
+        # Mixed literals and networks
+        (["127.0.0.1", "2001:db8::/32", "192.168.0.2"], "https://1.2.3.4:1234"),
+    ],
+)
+async def test_proxy_headers_multiple_proxies_with_ports(trusted_hosts: str | list[str], expected: str) -> None:
+    async with make_httpx_client(trusted_hosts) as client:
+        headers = {
+            X_FORWARDED_FOR: "1.2.3.4:1234, [2001:db8::1]:8080, 192.168.0.2:9000",
+            X_FORWARDED_PROTO: "https",
+        }
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    assert response.text == expected
+
+
+@pytest.mark.anyio
 async def test_proxy_headers_invalid_x_forwarded_for() -> None:
     async with make_httpx_client("*") as client:
         headers = httpx.Headers(
@@ -439,6 +468,38 @@ async def test_proxy_headers_invalid_x_forwarded_for() -> None:
         response = await client.get("/", headers=headers)
     assert response.status_code == 200
     assert response.text == "https://1.2.3.4:0"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("forwarded_for", "expected"),
+    [
+        # IPv4 without port
+        ("1.2.3.4", "https://1.2.3.4:0"),
+        # IPv4 with port
+        ("1.2.3.4:1234", "https://1.2.3.4:1234"),
+        # Bracketed IPv6 with port
+        ("[2001:db8::1]:443", "https://[2001:db8::1]:443"),
+        # Bracketed IPv6 without port
+        ("[2001:db8::1]", "https://[2001:db8::1]:0"),
+        # Bare IPv6 without port
+        ("2001:db8::1", "https://[2001:db8::1]:0"),
+        # Invalid IPv4 port falls back to the original host value
+        ("1.2.3.4:notaport", "https://1.2.3.4:notaport:0"),
+        # Invalid bracketed IPv6 port keeps the host and drops the port
+        ("[2001:db8::1]:notaport", "https://[2001:db8::1]:0"),
+        # Trailing data after a bracketed IPv6 host is left untouched
+        ("[2001:db8::1]extra", "https://[2001:db8::1]extra:0"),
+        # Malformed bracket is left untouched
+        ("[2001:db8::1", "https://[2001:db8::1:0"),
+    ],
+)
+async def test_proxy_headers_x_forwarded_for_port_shapes(forwarded_for: str, expected: str) -> None:
+    async with make_httpx_client("*") as client:
+        headers = {X_FORWARDED_FOR: forwarded_for, X_FORWARDED_PROTO: "https"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    assert response.text == expected
 
 
 @pytest.mark.anyio

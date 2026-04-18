@@ -2,6 +2,50 @@
 toc_depth: 2
 ---
 
+## 0.44.0 (April 6, 2026)
+
+### Added
+
+* Implement websocket keepalive pings for websockets-sansio (#2888)
+
+## 0.43.0 (April 3, 2026)
+
+You can quit Uvicorn now. We heard you, @pamelafox - all 47 of your Ctrl+C's (thanks for flagging it, and thanks to @tiangolo for the fix 🙏). [See the tweet](https://x.com/pamelafox/status/2039097686155227623).
+
+### Changed
+
+* Emit `http.disconnect` ASGI `receive()` event on server shutting down for streaming responses (#2829)
+* Use native `context` parameter for `create_task` on Python 3.11+ (#2859)
+* Drop cast in ASGI types (#2875)
+
+## 0.42.0 (March 16, 2026)
+
+### Changed
+
+* Use `bytearray` for request body accumulation to avoid O(n^2) allocation on fragmented bodies (#2845)
+
+### Fixed
+
+* Escape brackets and backslash in httptools `HEADER_RE` regex (#2824)
+* Fix multiple issues in websockets sans-io implementation (#2825)
+
+## 0.41.0 (February 16, 2026)
+
+### Added
+
+* Add `--limit-max-requests-jitter` to stagger worker restarts (#2707)
+* Add socket path to `scope["server"]` (#2561)
+
+### Changed
+
+* Rename `LifespanOn.error_occured` to `error_occurred` (#2776)
+
+### Fixed
+
+* Ignore permission denied errors in watchfiles reloader (#2817)
+* Ensure lifespan shutdown runs when `should_exit` is set during startup (#2812)
+* Reduce the log level of 'request limit exceeded' messages (#2788)
+
 ## 0.40.0 (December 21, 2025)
 
 ### Remove
@@ -124,7 +168,7 @@ Improve `ProxyHeadersMiddleware` (#2468) and (#2231):
 
 ### Fixed
 
-- Don't warn when upgrade is not WebSocket and depedencies are installed (#2360)
+- Don't warn when upgrade is not WebSocket and dependencies are installed (#2360)
 
 ## 0.30.5 (August 2, 2024)
 

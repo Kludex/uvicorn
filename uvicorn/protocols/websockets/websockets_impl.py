@@ -20,15 +20,10 @@ from websockets.typing import Subprotocol
 from uvicorn._types import (
     ASGI3Application,
     ASGISendEvent,
-    WebSocketAcceptEvent,
-    WebSocketCloseEvent,
     WebSocketConnectEvent,
     WebSocketDisconnectEvent,
     WebSocketReceiveEvent,
-    WebSocketResponseBodyEvent,
-    WebSocketResponseStartEvent,
     WebSocketScope,
-    WebSocketSendEvent,
 )
 from uvicorn.config import Config
 from uvicorn.logging import TRACE_LOG_LEVEL
@@ -82,7 +77,7 @@ class WebSocketProtocol(WebSocketServerProtocol):
 
         # Connection state
         self.transport: asyncio.Transport = None  # type: ignore[assignment]
-        self.server: tuple[str, int] | None = None
+        self.server: tuple[str, int | None] | None = None
         self.client: tuple[str, int] | None = None
         self.scheme: Literal["wss", "ws"] = None  # type: ignore[assignment]
 
@@ -262,11 +257,8 @@ class WebSocketProtocol(WebSocketServerProtocol):
         self.transport.close()
 
     async def asgi_send(self, message: ASGISendEvent) -> None:
-        message_type = message["type"]
-
         if not self.handshake_started_event.is_set():
-            if message_type == "websocket.accept":
-                message = cast("WebSocketAcceptEvent", message)
+            if message["type"] == "websocket.accept":
                 self.logger.info(
                     '%s - "WebSocket %s" [accepted]',
                     get_client_addr(self.scope),
@@ -283,8 +275,7 @@ class WebSocketProtocol(WebSocketServerProtocol):
                     )
                 self.handshake_started_event.set()
 
-            elif message_type == "websocket.close":
-                message = cast("WebSocketCloseEvent", message)
+            elif message["type"] == "websocket.close":
                 self.logger.info(
                     '%s - "WebSocket %s" 403',
                     get_client_addr(self.scope),
@@ -294,8 +285,7 @@ class WebSocketProtocol(WebSocketServerProtocol):
                 self.handshake_started_event.set()
                 self.closed_event.set()
 
-            elif message_type == "websocket.http.response.start":
-                message = cast("WebSocketResponseStartEvent", message)
+            elif message["type"] == "websocket.http.response.start":
                 self.logger.info(
                     '%s - "WebSocket %s" %d',
                     get_client_addr(self.scope),
@@ -311,50 +301,48 @@ class WebSocketProtocol(WebSocketServerProtocol):
                 self.handshake_started_event.set()
 
             else:
-                msg = (
+                raise RuntimeError(
                     "Expected ASGI message 'websocket.accept', 'websocket.close', "
-                    "or 'websocket.http.response.start' but got '%s'."
+                    f"or 'websocket.http.response.start' but got '{message['type']}'."
                 )
-                raise RuntimeError(msg % message_type)
 
         elif not self.closed_event.is_set() and self.initial_response is None:
             await self.handshake_completed_event.wait()
 
             try:
-                if message_type == "websocket.send":
-                    message = cast("WebSocketSendEvent", message)
+                if message["type"] == "websocket.send":
                     bytes_data = message.get("bytes")
                     text_data = message.get("text")
                     data = text_data if bytes_data is None else bytes_data
                     await self.send(data)  # type: ignore[arg-type]
 
-                elif message_type == "websocket.close":
-                    message = cast("WebSocketCloseEvent", message)
+                elif message["type"] == "websocket.close":
                     code = message.get("code", 1000)
                     reason = message.get("reason", "") or ""
                     await self.close(code, reason)
                     self.closed_event.set()
 
                 else:
-                    msg = "Expected ASGI message 'websocket.send' or 'websocket.close', but got '%s'."
-                    raise RuntimeError(msg % message_type)
+                    raise RuntimeError(
+                        f"Expected ASGI message 'websocket.send' or 'websocket.close', but got '{message['type']}'."
+                    )
             except ConnectionClosed as exc:
                 raise ClientDisconnected from exc
 
         elif self.initial_response is not None:
-            if message_type == "websocket.http.response.body":
-                message = cast("WebSocketResponseBodyEvent", message)
+            if message["type"] == "websocket.http.response.body":
                 body = self.initial_response[2] + message["body"]
                 self.initial_response = self.initial_response[:2] + (body,)
                 if not message.get("more_body", False):
                     self.closed_event.set()
             else:
-                msg = "Expected ASGI message 'websocket.http.response.body' but got '%s'."
-                raise RuntimeError(msg % message_type)
+                raise RuntimeError(f"Expected ASGI message 'websocket.http.response.body' but got '{message['type']}'.")
 
         else:
-            msg = "Unexpected ASGI message '%s', after sending 'websocket.close' or response already completed."
-            raise RuntimeError(msg % message_type)
+            raise RuntimeError(
+                f"Unexpected ASGI message '{message['type']}', after sending 'websocket.close' "
+                "or response already completed."
+            )
 
     async def asgi_receive(self) -> WebSocketDisconnectEvent | WebSocketConnectEvent | WebSocketReceiveEvent:
         if not self.connect_sent:
