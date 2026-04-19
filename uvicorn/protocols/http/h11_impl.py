@@ -215,7 +215,12 @@ class H11Protocol(asyncio.Protocol):
                     "query_string": query_string,
                     "headers": self.headers,
                     "state": self.app_state.copy(),
+                    "extensions": {"http.response.trailers": {}},
                 }
+                expect_trailers = any(
+                    name == b"te" and b"trailers" in [v.strip() for v in value.lower().split(b",")]
+                    for name, value in self.headers
+                )
                 if self._should_upgrade():
                     self.handle_websocket_upgrade(event)
                     return
@@ -248,6 +253,7 @@ class H11Protocol(asyncio.Protocol):
                     access_log=self.access_log,
                     default_headers=self.server_state.default_headers,
                     message_event=asyncio.Event(),
+                    expect_trailers=expect_trailers,
                     on_response=self.on_response_complete,
                 )
                 # For the asyncio loop, we need to explicitly start with an empty context
@@ -382,6 +388,7 @@ class RequestResponseCycle:
         access_log: bool,
         default_headers: list[tuple[bytes, bytes]],
         message_event: asyncio.Event,
+        expect_trailers: bool,
         on_response: Callable[..., None],
     ) -> None:
         self.scope = scope
@@ -399,6 +406,7 @@ class RequestResponseCycle:
         self.disconnected = False
         self.keep_alive = True
         self.waiting_for_100_continue = conn.they_are_waiting_for_100_continue
+        self.expect_trailers = expect_trailers
         self.shutting_down = False
 
         # Request state
@@ -408,6 +416,8 @@ class RequestResponseCycle:
         # Response state
         self.response_started = False
         self.response_complete = False
+        self.send_trailers = False
+        self.trailers: list[tuple[bytes, bytes]] = []
 
     # ASGI exception wrapper
     async def run_asgi(self, app: ASGI3Application) -> None:
@@ -474,6 +484,7 @@ class RequestResponseCycle:
 
             status = message["status"]
             headers = self.default_headers + list(message.get("headers", []))
+            self.send_trailers = message.get("trailers", False) and self.scope["method"] != "HEAD"
 
             if CLOSE_HEADER in self.scope["headers"] and CLOSE_HEADER not in headers:
                 headers = headers + [CLOSE_HEADER]
@@ -511,14 +522,30 @@ class RequestResponseCycle:
             if not more_body:
                 self.response_complete = True
                 self.message_event.set()
-                output = self.conn.send(event=h11.EndOfMessage())
+                if not self.send_trailers:
+                    output = self.conn.send(event=h11.EndOfMessage())
+                    self.transport.write(output)
+
+        elif self.send_trailers:
+            # Sending response trailers
+            if message["type"] != "http.response.trailers":
+                raise RuntimeError(f"Expected ASGI message 'http.response.trailers', but got '{message['type']}'.")
+
+            self.trailers.extend(message.get("headers", []))
+            more_trailers = message.get("more_trailers", False)
+
+            if not more_trailers:
+                self.send_trailers = False
+                # h11 emits trailers only if the client advertised TE: trailers.
+                trailers = self.trailers if self.expect_trailers else []
+                output = self.conn.send(event=h11.EndOfMessage(headers=trailers))
                 self.transport.write(output)
 
         else:
             # Response already sent
             raise RuntimeError(f"Unexpected ASGI message '{message['type']}' sent, after response already completed.")
 
-        if self.response_complete:
+        if self.response_complete and not self.send_trailers:
             if self.conn.our_state is h11.MUST_CLOSE or not self.keep_alive:
                 self.conn.send(event=h11.ConnectionClosed())
                 self.transport.close()

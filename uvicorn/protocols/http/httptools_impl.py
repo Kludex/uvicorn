@@ -94,6 +94,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.scope: HTTPScope = None  # type: ignore[assignment]
         self.headers: list[tuple[bytes, bytes]] = None  # type: ignore[assignment]
         self.expect_100_continue = False
+        self.expect_trailers = False
         self.cycle: RequestResponseCycle = None  # type: ignore[assignment]
 
     # Protocol interface
@@ -221,6 +222,7 @@ class HttpToolsProtocol(asyncio.Protocol):
     def on_message_begin(self) -> None:
         self.url = b""
         self.expect_100_continue = False
+        self.expect_trailers = False
         self.headers = []
         self.scope = {  # type: ignore[typeddict-item]
             "type": "http",
@@ -232,6 +234,7 @@ class HttpToolsProtocol(asyncio.Protocol):
             "root_path": self.root_path,
             "headers": self.headers,
             "state": self.app_state.copy(),
+            "extensions": {"http.response.trailers": {}},
         }
 
     # Parser callbacks
@@ -242,6 +245,8 @@ class HttpToolsProtocol(asyncio.Protocol):
         name = name.lower()
         if name == b"expect" and value.lower() == b"100-continue":
             self.expect_100_continue = True
+        if name == b"te" and b"trailers" in [v.strip() for v in value.lower().split(b",")]:
+            self.expect_trailers = True
         self.headers.append((name, value))
 
     def on_headers_complete(self) -> None:
@@ -284,6 +289,7 @@ class HttpToolsProtocol(asyncio.Protocol):
             default_headers=self.server_state.default_headers,
             message_event=asyncio.Event(),
             expect_100_continue=self.expect_100_continue,
+            expect_trailers=self.expect_trailers,
             keep_alive=http_version != "1.0",
             on_response=self.on_response_complete,
         )
@@ -385,6 +391,7 @@ class RequestResponseCycle:
         default_headers: list[tuple[bytes, bytes]],
         message_event: asyncio.Event,
         expect_100_continue: bool,
+        expect_trailers: bool,
         keep_alive: bool,
         on_response: Callable[..., None],
     ):
@@ -402,6 +409,7 @@ class RequestResponseCycle:
         self.disconnected = False
         self.keep_alive = keep_alive
         self.waiting_for_100_continue = expect_100_continue
+        self.expect_trailers = expect_trailers
         self.shutting_down = False
 
         # Request state
@@ -411,6 +419,7 @@ class RequestResponseCycle:
         # Response state
         self.response_started = False
         self.response_complete = False
+        self.send_trailers = False
         self.chunked_encoding: bool | None = None
         self.expected_content_length = 0
 
@@ -476,6 +485,7 @@ class RequestResponseCycle:
 
             status_code = message["status"]
             headers = self.default_headers + list(message.get("headers", []))
+            self.send_trailers = message.get("trailers", False) and self.scope["method"] != "HEAD"
 
             if CLOSE_HEADER in self.scope["headers"] and CLOSE_HEADER not in headers:
                 headers = headers + [CLOSE_HEADER]
@@ -535,7 +545,10 @@ class RequestResponseCycle:
                 else:
                     content = []
                 if not more_body:
-                    content.append(b"0\r\n\r\n")
+                    if self.send_trailers:
+                        content.append(b"0\r\n")
+                    else:
+                        content.append(b"0\r\n\r\n")
                 self.transport.write(b"".join(content))
             else:
                 num_bytes = len(body)
@@ -551,6 +564,37 @@ class RequestResponseCycle:
                     raise RuntimeError("Response content shorter than Content-Length")
                 self.response_complete = True
                 self.message_event.set()
+                if not self.send_trailers:
+                    if not self.keep_alive:
+                        self.transport.close()
+                    self.on_response()
+
+        elif self.send_trailers:
+            # Sending response trailers
+            if message["type"] != "http.response.trailers":
+                raise RuntimeError(f"Expected ASGI message 'http.response.trailers', but got '{message['type']}'.")
+
+            trailers = list(message.get("headers", []))
+            more_trailers = message.get("more_trailers", False)
+            content = []
+
+            for name, value in trailers:
+                if HEADER_RE.search(name):
+                    raise RuntimeError("Invalid HTTP header name.")  # pragma: no cover
+                if HEADER_VALUE_RE.search(value):
+                    raise RuntimeError("Invalid HTTP header value.")  # pragma: no cover
+                name = name.lower()
+                content.extend([name, b": ", value, b"\r\n"])
+
+            if not more_trailers:
+                content.append(b"\r\n")
+
+            # Server should only send if the client sent a TE: trailers header.
+            if self.expect_trailers:
+                self.transport.write(b"".join(content))
+
+            if not more_trailers:
+                self.send_trailers = False
                 if not self.keep_alive:
                     self.transport.close()
                 self.on_response()
