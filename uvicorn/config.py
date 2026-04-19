@@ -193,7 +193,7 @@ class Config:
         ws_per_message_deflate: bool = True,
         lifespan: LifespanType = "auto",
         env_file: str | os.PathLike[str] | None = None,
-        log_config: dict[str, Any] | str | RawConfigParser | IO[Any] | None = LOGGING_CONFIG,
+        log_config: dict[str, Any] | str | os.PathLike[str] | RawConfigParser | IO[Any] | None = LOGGING_CONFIG,
         log_level: str | int | None = None,
         access_log: bool = True,
         use_colors: bool | None = None,
@@ -365,6 +365,9 @@ class Config:
         logging.addLevelName(TRACE_LOG_LEVEL, "TRACE")
 
         if self.log_config is not None:
+            if isinstance(self.log_config, os.PathLike):
+                self.log_config = os.fspath(self.log_config)
+
             if isinstance(self.log_config, dict):
                 if self.use_colors in (True, False):
                     self.log_config["formatters"]["default"]["use_colors"] = self.use_colors
