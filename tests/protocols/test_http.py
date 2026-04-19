@@ -41,6 +41,10 @@ WEBSOCKET_PROTOCOLS = WS_PROTOCOLS.keys()
 
 SIMPLE_GET_REQUEST = b"\r\n".join([b"GET / HTTP/1.1", b"Host: example.org", b"", b""])
 
+SIMPLE_GET_REQUEST_WITH_TRAILERS = b"\r\n".join(
+    [b"GET / HTTP/1.1", b"Host: example.org", b"TE: trailers", b"", b""]
+)
+
 SIMPLE_HEAD_REQUEST = b"\r\n".join([b"HEAD / HTTP/1.1", b"Host: example.org", b"", b""])
 
 SIMPLE_POST_REQUEST = b"\r\n".join(
@@ -1224,3 +1228,181 @@ async def test_header_upgrade_is_websocket_depend_not_installed(
     assert msg in caplog.text
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
     assert b"Hello, world" in protocol.transport.buffer
+
+
+async def test_trailers_extension_in_scope(http_protocol_cls: type[HTTPProtocol]):
+    received_scope: dict[str, Any] = {}
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        received_scope.update(scope)  # type: ignore[arg-type]
+        await Response("Hello, world", media_type="text/plain")(scope, receive, send)
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    assert "extensions" in received_scope
+    assert "http.response.trailers" in received_scope["extensions"]
+
+
+async def test_trailers(http_protocol_cls: type[HTTPProtocol]):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"text/plain")],
+                "trailers": True,
+            }
+        )
+        await send({"type": "http.response.body", "body": b"Hi"})
+        await send(
+            {
+                "type": "http.response.trailers",
+                "headers": [(b"x-trailer-1", b"value-1")],
+                "more_trailers": True,
+            }
+        )
+        await send(
+            {
+                "type": "http.response.trailers",
+                "headers": [(b"x-trailer-2", b"value-2")],
+                "more_trailers": False,
+            }
+        )
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST_WITH_TRAILERS)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Hi" in protocol.transport.buffer
+    assert b"x-trailer-1: value-1" in protocol.transport.buffer
+    assert b"x-trailer-2: value-2" in protocol.transport.buffer
+
+
+async def test_trailers_without_te_header_are_dropped(http_protocol_cls: type[HTTPProtocol]):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"text/plain")],
+                "trailers": True,
+            }
+        )
+        await send({"type": "http.response.body", "body": b"Hi"})
+        await send(
+            {
+                "type": "http.response.trailers",
+                "headers": [(b"x-trailer-1", b"value-1")],
+                "more_trailers": False,
+            }
+        )
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Hi" in protocol.transport.buffer
+    assert b"x-trailer-1: value-1" not in protocol.transport.buffer
+
+
+async def test_trailers_for_head_request_are_skipped(http_protocol_cls: type[HTTPProtocol]):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"text/plain"), (b"content-length", b"0")],
+                "trailers": True,
+            }
+        )
+        await send({"type": "http.response.body", "body": b""})
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_HEAD_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+
+
+async def test_body_after_trailers_raises(http_protocol_cls: type[HTTPProtocol]):
+    with_body_after_trailers: dict[str, bool] = {"raised": False}
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"text/plain")],
+                "trailers": True,
+            }
+        )
+        await send({"type": "http.response.body", "body": b"Hi"})
+        await send(
+            {
+                "type": "http.response.trailers",
+                "headers": [(b"x-trailer-1", b"value-1")],
+                "more_trailers": False,
+            }
+        )
+        try:
+            await send({"type": "http.response.body", "body": b"oops"})
+        except RuntimeError:
+            with_body_after_trailers["raised"] = True
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST_WITH_TRAILERS)
+    await protocol.loop.run_one()
+    assert with_body_after_trailers["raised"]
+
+
+async def test_body_during_trailers_phase_raises(http_protocol_cls: type[HTTPProtocol]):
+    raised: dict[str, bool] = {"raised": False}
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"text/plain")],
+                "trailers": True,
+            }
+        )
+        await send({"type": "http.response.body", "body": b"Hi"})
+        try:
+            await send({"type": "http.response.body", "body": b"more"})
+        except RuntimeError:
+            raised["raised"] = True
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST_WITH_TRAILERS)
+    await protocol.loop.run_one()
+    assert raised["raised"]
+
+
+async def test_trailers_with_close_connection(http_protocol_cls: type[HTTPProtocol]):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"text/plain")],
+                "trailers": True,
+            }
+        )
+        await send({"type": "http.response.body", "body": b"Hi"})
+        await send(
+            {
+                "type": "http.response.trailers",
+                "headers": [(b"x-trailer-1", b"value-1")],
+                "more_trailers": False,
+            }
+        )
+
+    request = b"\r\n".join(
+        [b"GET / HTTP/1.1", b"Host: example.org", b"Connection: close", b"TE: trailers", b"", b""]
+    )
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(request)
+    await protocol.loop.run_one()
+    assert b"x-trailer-1: value-1" in protocol.transport.buffer
+    assert protocol.transport.closed
