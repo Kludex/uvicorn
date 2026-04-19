@@ -69,7 +69,7 @@ class MockTransport:
     def pause_reading(self):  # pragma: no cover
         self.read_paused = True
 
-    def resume_reading(self):
+    def resume_reading(self):  # pragma: no cover
         self.read_paused = False
 
     def is_closing(self):
