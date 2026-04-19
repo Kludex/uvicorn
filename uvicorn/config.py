@@ -375,9 +375,12 @@ class Config:
                     loaded_config = json.load(file)
                     logging.config.dictConfig(loaded_config)
             elif isinstance(self.log_config, str) and self.log_config.endswith((".yaml", ".yml")):
-                # Install the PyYAML package or the uvicorn[standard] optional
-                # dependencies to enable this functionality.
-                import yaml
+                try:
+                    import yaml
+                except ImportError as e:
+                    raise ImportError(
+                        "Install the PyYAML package or uvicorn[standard] to use `--log-config` with YAML files."
+                    ) from e
 
                 with open(self.log_config) as file:
                     loaded_config = yaml.safe_load(file)
