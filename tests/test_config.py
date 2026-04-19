@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import socket
+import ssl
 import sys
 from collections.abc import Callable, Iterator
 from contextlib import closing
@@ -618,8 +619,18 @@ def test_setup_event_loop_is_removed(caplog: pytest.LogCaptureFixture) -> None:
 def test_http2_with_ssl_sets_alpn(
     tls_ca_certificate_pem_path: str,
     tls_ca_certificate_private_key_path: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test that http2=True with SSL configures ALPN protocols."""
+    recorded: list[list[str]] = []
+    original = ssl.SSLContext.set_alpn_protocols
+
+    def spy(self: ssl.SSLContext, protocols: list[str]) -> None:
+        recorded.append(protocols)
+        original(self, protocols)
+
+    monkeypatch.setattr(ssl.SSLContext, "set_alpn_protocols", spy)
+
     config = Config(
         app=asgi_app,
         http2=True,
@@ -631,6 +642,7 @@ def test_http2_with_ssl_sets_alpn(
     assert config.is_ssl is True
     assert config.ssl is not None
     assert config.h2_protocol_class is not None
+    assert ["h2", "http/1.1"] in recorded
 
 
 def test_http2_as_string_path() -> None:

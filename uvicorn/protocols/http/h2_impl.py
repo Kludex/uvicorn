@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import logging
+from collections import deque
 from collections.abc import Callable
 from typing import Any, Literal, cast
 from urllib.parse import unquote
@@ -447,7 +448,7 @@ class H2Protocol(HTTP2Protocol):
 
         stream = self.streams[stream_id]
         if stream.cycle:
-            self.transport.resume_reading()
+            self.flow.resume_reading()
             stream.cycle.more_body = False
             stream.cycle.message_event.set()
 
@@ -552,7 +553,7 @@ class H2Protocol(HTTP2Protocol):
         # Clean up completed stream (defer if there's pending data to flush)
         if stream_id in self.streams:
             stream = self.streams[stream_id]
-            if stream._pending_data or stream._pending_end_stream:
+            if stream._pending_size or stream._pending_end_stream:
                 # Data still waiting for flow control window - defer cleanup
                 stream._cleanup_pending = True
             else:
@@ -626,7 +627,8 @@ class H2Stream:
         self.cycle: RequestResponseCycle | None = None
 
         # Pending data that couldn't be sent due to flow control
-        self._pending_data = b""
+        self._pending_chunks: deque[bytes] = deque()
+        self._pending_size = 0
         self._pending_end_stream = False
         self._cleanup_pending = False
 
@@ -640,32 +642,49 @@ class H2Stream:
         if not data and not end_stream:  # pragma: no cover
             return
 
-        self._pending_data += data
+        if data:
+            self._pending_chunks.append(data)
+            self._pending_size += len(data)
         if end_stream:
             self._pending_end_stream = True
         self.flush_pending_data()
 
+    def _pop_chunk(self, size: int) -> bytes:
+        """Pop up to ``size`` bytes from the pending chunks deque."""
+        head = self._pending_chunks[0]
+        if len(head) <= size:
+            self._pending_chunks.popleft()
+            self._pending_size -= len(head)
+            return head
+        self._pending_chunks[0] = head[size:]
+        self._pending_size -= size
+        return head[:size]
+
     def flush_pending_data(self) -> None:
         """Flush as much pending data as the flow control window allows."""
-        while self._pending_data:
+        while self._pending_size:
             available_window = self.conn.local_flow_control_window(self.stream_id)
             max_frame_size = self.conn.max_outbound_frame_size
 
             if available_window <= 0:
                 break
 
-            chunk_size = min(available_window, max_frame_size, len(self._pending_data))
-            chunk = self._pending_data[:chunk_size]
-            self._pending_data = self._pending_data[chunk_size:]
+            chunk_size = min(available_window, max_frame_size, self._pending_size)
+            chunk = self._pop_chunk(chunk_size)
 
-            is_end = self._pending_end_stream and not self._pending_data
+            is_end = self._pending_end_stream and not self._pending_size
             self.conn.send_data(self.stream_id, chunk, end_stream=is_end)
             self.transport.write(self.conn.data_to_send())
             if is_end:
                 self._pending_end_stream = False
 
+        if not self._pending_size and self._pending_end_stream:
+            self.conn.send_data(self.stream_id, b"", end_stream=True)
+            self.transport.write(self.conn.data_to_send())
+            self._pending_end_stream = False
+
         # If all pending data has been flushed and cleanup was deferred, do it now
-        if not self._pending_data and not self._pending_end_stream and self._cleanup_pending:
+        if not self._pending_size and not self._pending_end_stream and self._cleanup_pending:
             self._cleanup_pending = False
             if self.stream_id in self.protocol.streams:
                 del self.protocol.streams[self.stream_id]

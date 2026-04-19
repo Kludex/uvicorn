@@ -201,22 +201,32 @@ def create_h2_request(
 
 def parse_h2_response(data: bytes) -> tuple[int, dict[str, str], bytes]:
     """Parse HTTP/2 response data and return (status, headers, body)."""
-    from h2.events import DataReceived, ResponseReceived
+    status, headers, body, _ = parse_h2_response_full(data)
+    return status, headers, body
+
+
+def parse_h2_response_full(data: bytes, request_method: str = "GET") -> tuple[int, dict[str, str], bytes, bool]:
+    """Parse HTTP/2 response and return (status, headers, body, end_stream_seen)."""
+    from h2.events import DataReceived, ResponseReceived, StreamEnded
 
     config = H2Configuration(client_side=True)
     conn = H2Connection(config=config)
     conn.initiate_connection()
-    # Simulate that we sent a request on stream 1
-    request_headers = [(":method", "GET"), (":path", "/"), (":scheme", "https"), (":authority", "localhost")]
+    request_headers = [
+        (":method", request_method),
+        (":path", "/"),
+        (":scheme", "https"),
+        (":authority", "localhost"),
+    ]
     conn.send_headers(1, request_headers, end_stream=True)
     conn.clear_outbound_data_buffer()
 
-    # Now parse the response
     events = conn.receive_data(data)
 
     status = 0
     headers: dict[str, str] = {}
     body = b""
+    end_stream_seen = False
 
     for event in events:
         if isinstance(event, ResponseReceived):
@@ -227,8 +237,10 @@ def parse_h2_response(data: bytes) -> tuple[int, dict[str, str], bytes]:
                     headers[name.decode("utf-8")] = value.decode("utf-8")
         elif isinstance(event, DataReceived):
             body += event.data
+        elif isinstance(event, StreamEnded):
+            end_stream_seen = True
 
-    return status, headers, body
+    return status, headers, body, end_stream_seen
 
 
 async def test_get_request():
@@ -331,10 +343,11 @@ async def test_head_request():
     protocol.data_received(request_data)
     await protocol.loop.run_one()
 
-    status, headers, body = parse_h2_response(protocol.transport.buffer)
+    status, headers, body, end_stream = parse_h2_response_full(protocol.transport.buffer, "HEAD")
     assert status == 200
     assert headers["content-type"] == "text/plain; charset=utf-8"
     assert not body
+    assert end_stream
 
 
 async def test_app_exception():

@@ -1850,7 +1850,7 @@ requires-dist = [
     { name = "click", specifier = ">=7.0" },
     { name = "colorama", marker = "sys_platform == 'win32' and extra == 'standard'", specifier = ">=0.4" },
     { name = "h11", specifier = ">=0.8" },
-    { name = "h2", marker = "extra == 'standard'", specifier = ">=4.0.0" },
+    { name = "h2", marker = "extra == 'standard'", specifier = ">=4.2.0" },
     { name = "httptools", marker = "extra == 'standard'", specifier = ">=0.6.3" },
     { name = "python-dotenv", marker = "extra == 'standard'", specifier = ">=0.13" },
     { name = "pyyaml", marker = "extra == 'standard'", specifier = ">=5.1" },
