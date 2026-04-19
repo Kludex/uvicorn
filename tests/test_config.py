@@ -482,6 +482,13 @@ def test_config_log_effective_level(log_level: int, uvicorn_logger_level: int) -
     assert logging.getLogger("uvicorn.asgi").getEffectiveLevel() == effective_level
 
 
+@pytest.mark.parametrize("log_level", ["INFO", "Info", "info"])
+def test_config_log_level_case_insensitive(log_level: str) -> None:
+    config = Config(app=asgi_app, log_level=log_level)
+    config.load()
+    assert logging.getLogger("uvicorn.error").level == logging.INFO
+
+
 def test_ws_max_size() -> None:
     config = Config(app=asgi_app, ws_max_size=1000)
     config.load()

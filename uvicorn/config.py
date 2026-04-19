@@ -400,7 +400,7 @@ class Config:
 
         if self.log_level is not None:
             if isinstance(self.log_level, str):
-                log_level = LOG_LEVELS[self.log_level]
+                log_level = LOG_LEVELS[self.log_level.lower()]
             else:
                 log_level = self.log_level
             logging.getLogger("uvicorn.error").setLevel(log_level)
