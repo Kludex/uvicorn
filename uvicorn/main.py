@@ -429,6 +429,7 @@ def main(
     app_dir: str,
     h11_max_incomplete_event_size: int | None,
     factory: bool,
+    shutdown_delay: float = 0,
 ) -> None:
     run(
         app,
@@ -480,6 +481,7 @@ def main(
         factory=factory,
         app_dir=app_dir,
         h11_max_incomplete_event_size=h11_max_incomplete_event_size,
+        shutdown_delay=shutdown_delay,
     )
 
 
@@ -534,6 +536,7 @@ def run(
     app_dir: str | None = None,
     factory: bool = False,
     h11_max_incomplete_event_size: int | None = None,
+    shutdown_delay: float = 0,
 ) -> None:
     if app_dir is not None:
         sys.path.insert(0, app_dir)
@@ -587,6 +590,7 @@ def run(
         use_colors=use_colors,
         factory=factory,
         h11_max_incomplete_event_size=h11_max_incomplete_event_size,
+        shutdown_delay=shutdown_delay,
     )
     server = Server(config=config)
 
