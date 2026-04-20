@@ -10,6 +10,14 @@ from uvicorn._types import WWWScope
 class ClientDisconnected(OSError): ...
 
 
+def _normalize_addr(info: tuple[object, ...] | list[object] | str) -> tuple[str, int | None] | None:
+    if isinstance(info, str):
+        return (info, None)
+    if isinstance(info, list | tuple) and len(info) >= 2:
+        return (str(info[0]), int(info[1]))
+    return None
+
+
 def get_remote_addr(transport: asyncio.Transport) -> tuple[str, int] | None:
     socket_info: socket.socket | None = transport.get_extra_info("socket")
     if socket_info is not None:
@@ -22,9 +30,10 @@ def get_remote_addr(transport: asyncio.Transport) -> tuple[str, int] | None:
             return None
 
     info = transport.get_extra_info("peername")
-    if info is not None and isinstance(info, list | tuple) and len(info) == 2:
-        return (str(info[0]), int(info[1]))
-    return None
+    if info is None:
+        return None
+    normalized = _normalize_addr(info)
+    return normalized if normalized is not None and normalized[1] is not None else None
 
 
 def get_local_addr(transport: asyncio.Transport) -> tuple[str, int | None] | None:
@@ -37,11 +46,9 @@ def get_local_addr(transport: asyncio.Transport) -> tuple[str, int | None] | Non
             return (info, None)
         return None
     info = transport.get_extra_info("sockname")
-    if info is not None and isinstance(info, list | tuple) and len(info) == 2:
-        return (str(info[0]), int(info[1]))
-    if isinstance(info, str):
-        return (info, None)
-    return None
+    if info is None:
+        return None
+    return _normalize_addr(info)
 
 
 def is_ssl(transport: asyncio.Transport) -> bool:
