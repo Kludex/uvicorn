@@ -21,7 +21,7 @@ spawn = multiprocessing.get_context("spawn")
 def get_subprocess(
     config: Config,
     target: Callable[..., None],
-    sockets: list[socket],
+    sockets: list[socket] | list[Callable[[], socket]],
 ) -> SpawnProcess:
     """
     Called in the parent process, to instantiate a new child process instance.
@@ -54,7 +54,7 @@ def get_subprocess(
 def subprocess_started(
     config: Config,
     target: Callable[..., None],
-    sockets: list[socket],
+    sockets: list[socket] | list[Callable[[], socket]],
     stdin_fileno: int | None,
 ) -> None:
     """
@@ -74,6 +74,10 @@ def subprocess_started(
 
     # Logging needs to be setup again for each child.
     config.configure_logging()
+
+    for idx, sock in enumerate(sockets):
+        if callable(sock):
+            sockets[idx] = sock()
 
     try:
         # Now we can call into `Server.run(sockets=sockets)`
