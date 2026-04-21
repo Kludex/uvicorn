@@ -9,7 +9,6 @@ toc_depth: 2
 * Add `--reset-contextvars` flag to isolate ASGI request context (#2912)
 * Accept `os.PathLike` for `log_config` (#2905)
 * Accept `log_level` strings case-insensitively (#2907)
-* Preserve forwarded client ports in proxy headers middleware (#2903)
 
 ### Changed
 
@@ -18,6 +17,7 @@ toc_depth: 2
 
 ### Fixed
 
+* Preserve forwarded client ports in proxy headers middleware (#2903)
 * Raise helpful `ImportError` when PyYAML is missing for YAML log config (#2906)
 
 ## 0.44.0 (April 6, 2026)
