@@ -15,12 +15,12 @@ import pytest
 
 from tests.protocols.test_http import SIMPLE_GET_REQUEST
 from tests.utils import run_server
-from uvicorn import Server
 from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.config import Config
 from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT
 from uvicorn.protocols.http.h11_impl import H11Protocol
 from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
+from uvicorn.server import Server
 
 pytestmark = pytest.mark.anyio
 
@@ -157,8 +157,14 @@ async def test_limit_max_requests_jitter(
 
 
 @contextlib.asynccontextmanager
-async def server(*, app: ASGIApplication, port: int, http_protocol_cls: type[H11Protocol | HttpToolsProtocol]):
-    config = Config(app=app, port=port, loop="asyncio", http=http_protocol_cls)
+async def _raw_server(
+    *,
+    app: ASGIApplication,
+    port: int,
+    http_protocol_cls: type[H11Protocol | HttpToolsProtocol],
+    reset_contextvars: bool = False,
+):
+    config = Config(app=app, port=port, loop="asyncio", http=http_protocol_cls, reset_contextvars=reset_contextvars)
     server = Server(config=config)
     task = asyncio.create_task(server.serve())
 
@@ -186,10 +192,36 @@ async def server(*, app: ASGIApplication, port: int, http_protocol_cls: type[H11
         await task
 
 
-async def test_no_contextvars_pollution_asyncio(
+async def test_contextvars_preserved_by_default(
     http_protocol_cls: type[H11Protocol | HttpToolsProtocol], unused_tcp_port: int
 ):
-    """Non-regression test for https://github.com/encode/uvicorn/issues/2167."""
+    """By default, context set outside the ASGI task is visible inside it."""
+    ctx: contextvars.ContextVar[str] = contextvars.ContextVar("ctx")
+    ctx.set("outer-value")
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert scope["type"] == "http"
+        while True:
+            message = await receive()
+            assert message["type"] == "http.request"
+            if not message["more_body"]:
+                break
+        body = json.dumps({"ctx": ctx.get("MISSING")}).encode("utf-8")
+        headers = [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode("utf-8"))]
+        await send({"type": "http.response.start", "status": 200, "headers": headers})
+        await send({"type": "http.response.body", "body": body})
+
+    async with _raw_server(app=app, http_protocol_cls=http_protocol_cls, port=unused_tcp_port) as extract_json_body:
+        assert await extract_json_body(SIMPLE_GET_REQUEST) == {"ctx": "outer-value"}
+
+
+async def test_reset_contextvars_asyncio(
+    http_protocol_cls: type[H11Protocol | HttpToolsProtocol], unused_tcp_port: int
+):
+    """With reset_contextvars=True, each ASGI run starts with a fresh context.
+
+    Non-regression test for https://github.com/encode/uvicorn/issues/2167.
+    """
     default_contextvars = {c.name for c in contextvars.copy_context().keys()}
     ctx: contextvars.ContextVar[str] = contextvars.ContextVar("ctx")
 
@@ -209,14 +241,13 @@ async def test_no_contextvars_pollution_asyncio(
             if not message["more_body"]:
                 break
 
-        # return the initial context for empty assertion
         body = json.dumps(initial_context).encode("utf-8")
         headers = [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode("utf-8"))]
         await send({"type": "http.response.start", "status": 200, "headers": headers})
         await send({"type": "http.response.body", "body": body})
 
-    # body has to be larger than HIGH_WATER_LIMIT to trigger a reading pause on the main thread
-    # and a resumption inside the ASGI task
+    # body larger than HIGH_WATER_LIMIT forces a reading pause on the main thread
+    # and a resumption inside the ASGI task, which is where the original pollution showed up.
     large_body = b"a" * (HIGH_WATER_LIMIT + 1)
     large_request = b"\r\n".join(
         [
@@ -229,6 +260,8 @@ async def test_no_contextvars_pollution_asyncio(
         ]
     )
 
-    async with server(app=app, http_protocol_cls=http_protocol_cls, port=unused_tcp_port) as extract_json_body:
+    async with _raw_server(
+        app=app, http_protocol_cls=http_protocol_cls, port=unused_tcp_port, reset_contextvars=True
+    ) as extract_json_body:
         assert await extract_json_body(large_request) == {}
         assert await extract_json_body(SIMPLE_GET_REQUEST) == {}

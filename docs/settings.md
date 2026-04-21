@@ -39,6 +39,7 @@ uvicorn itself.
 * `APP` - The ASGI application to run, in the format `"<module>:<attribute>"`.
 * `--factory` - Treat `APP` as an application factory, i.e. a `() -> <ASGI app>` callable.
 * `--app-dir <path>` - Look for APP in the specified directory by adding it to the PYTHONPATH. **Default:** *Current working directory*.
+* `--reset-contextvars` - Run each ASGI request in a fresh `contextvars.Context`. Workaround for a [context leak in asyncio](https://github.com/python/cpython/issues/140947); only relevant when using the `asyncio` event loop (uvloop is not affected). Enabling this hides any context set in the lifespan or by external instrumentation from ASGI handlers. **Default:** *False*.
 
 ## Socket Binding
 

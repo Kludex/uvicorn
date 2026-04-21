@@ -289,19 +289,25 @@ class HttpToolsProtocol(asyncio.Protocol):
         )
         if existing_cycle is None or existing_cycle.response_complete:
             # Standard case - start processing the request.
-            # For the asyncio loop, we need to explicitly start with an empty context
-            # as it can be polluted from previous ASGI runs.
-            # See https://github.com/python/cpython/issues/140947 for details.
-            if sys.version_info >= (3, 11):  # pragma: py-lt-311
-                task = self.loop.create_task(self.cycle.run_asgi(app), context=contextvars.Context())
-            else:  # pragma: py-gte-311
-                task = contextvars.Context().run(self.loop.create_task, self.cycle.run_asgi(app))
-            task.add_done_callback(self.tasks.discard)
-            self.tasks.add(task)
+            self._start_asgi_task(self.cycle, app)
         else:
             # Pipelined HTTP requests need to be queued up.
             self.flow.pause_reading()
             self.pipeline.appendleft((self.cycle, app))
+
+    def _start_asgi_task(self, cycle: RequestResponseCycle, app: ASGI3Application) -> None:
+        if self.config.reset_contextvars:
+            # Opt-in workaround for https://github.com/python/cpython/issues/140947:
+            # asyncio can leak context vars between tasks. Hides context set in the
+            # lifespan or by external instrumentation.
+            if sys.version_info >= (3, 11):  # pragma: py-lt-311
+                task = self.loop.create_task(cycle.run_asgi(app), context=contextvars.Context())
+            else:  # pragma: py-gte-311
+                task = contextvars.Context().run(self.loop.create_task, cycle.run_asgi(app))
+        else:
+            task = self.loop.create_task(cycle.run_asgi(app))
+        task.add_done_callback(self.tasks.discard)
+        self.tasks.add(task)
 
     def on_body(self, body: bytes) -> None:
         if (self.parser.should_upgrade() and self._should_upgrade()) or self.cycle.response_complete:
@@ -333,9 +339,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         # Keep-Alive timeout instead.
         if self.pipeline:
             cycle, app = self.pipeline.pop()
-            task = self.loop.create_task(cycle.run_asgi(app))
-            task.add_done_callback(self.tasks.discard)
-            self.tasks.add(task)
+            self._start_asgi_task(cycle, app)
         else:
             self.timeout_keep_alive_task = self.loop.call_later(
                 self.timeout_keep_alive, self.timeout_keep_alive_handler
