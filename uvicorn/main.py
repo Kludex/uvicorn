@@ -376,10 +376,7 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     "--reset-contextvars",
     is_flag=True,
     default=False,
-    help=(
-        "Run each ASGI request in a fresh contextvars.Context to work around "
-        "https://github.com/python/cpython/issues/140947. Hides context set in the lifespan."
-    ),
+    help="Run each ASGI request in a fresh contextvars.Context. Hides context set in the lifespan.",
     show_default=True,
 )
 @click.option(
