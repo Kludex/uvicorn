@@ -39,6 +39,7 @@ uvicorn itself.
 * `APP` - The ASGI application to run, in the format `"<module>:<attribute>"`.
 * `--factory` - Treat `APP` as an application factory, i.e. a `() -> <ASGI app>` callable.
 * `--app-dir <path>` - Look for APP in the specified directory by adding it to the PYTHONPATH. **Default:** *Current working directory*.
+* `--reset-contextvars` - Run each ASGI request in a fresh `contextvars.Context`. Workaround for a [context leak in asyncio](https://github.com/python/cpython/issues/140947); enabling this hides any context set in the lifespan or by external instrumentation from ASGI handlers. Only has effect on the `asyncio` event loop. **Default:** *False*.
 
 ## Socket Binding
 
@@ -100,7 +101,6 @@ Using Uvicorn with watchfiles will enable the following options (which are other
 * `--ws-per-message-deflate <bool>` - Enable/disable WebSocket per-message-deflate compression. Only available with the `websockets` protocol. **Default:** *True*.
 * `--lifespan <str>` - Set the Lifespan protocol implementation. **Options:** *'auto', 'on', 'off'.* **Default:** *'auto'*.
 * `--h11-max-incomplete-event-size <int>` - Set the maximum number of bytes to buffer of an incomplete event. Only available for `h11` HTTP protocol implementation. **Default:** *16384* (16 KB).
-* `--reset-contextvars` - Run each ASGI request in a fresh `contextvars.Context`. Workaround for a [context leak in asyncio](https://github.com/python/cpython/issues/140947); enabling this hides any context set in the lifespan or by external instrumentation from ASGI handlers. Only has effect on the `asyncio` event loop. **Default:** *False*.
 
 ## Application Interface
 
