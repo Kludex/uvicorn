@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import http
 import logging
+import sys
 from collections.abc import Callable
 from typing import Any, Literal
 from urllib.parse import unquote
@@ -248,7 +250,16 @@ class H11Protocol(asyncio.Protocol):
                     message_event=asyncio.Event(),
                     on_response=self.on_response_complete,
                 )
-                task = self.loop.create_task(self.cycle.run_asgi(app))
+                if self.config.reset_contextvars:
+                    # Opt-in workaround for https://github.com/python/cpython/issues/140947:
+                    # asyncio can leak context vars between tasks. Hides context set in the
+                    # lifespan or by external instrumentation.
+                    if sys.version_info >= (3, 11):  # pragma: py-lt-311
+                        task = self.loop.create_task(self.cycle.run_asgi(app), context=contextvars.Context())
+                    else:  # pragma: py-gte-311
+                        task = contextvars.Context().run(self.loop.create_task, self.cycle.run_asgi(app))
+                else:
+                    task = self.loop.create_task(self.cycle.run_asgi(app))
                 task.add_done_callback(self.tasks.discard)
                 self.tasks.add(task)
 

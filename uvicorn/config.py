@@ -228,6 +228,7 @@ class Config:
         headers: list[tuple[str, str]] | None = None,
         factory: bool = False,
         h11_max_incomplete_event_size: int | None = None,
+        reset_contextvars: bool = False,
     ):
         self.app = app
         self.host = host
@@ -275,6 +276,7 @@ class Config:
         self.encoded_headers: list[tuple[bytes, bytes]] = []
         self.factory = factory
         self.h11_max_incomplete_event_size = h11_max_incomplete_event_size
+        self.reset_contextvars = reset_contextvars
 
         self.loaded = False
         self.configure_logging()

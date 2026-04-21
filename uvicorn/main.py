@@ -373,6 +373,16 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     help="For h11, the maximum number of bytes to buffer of an incomplete event.",
 )
 @click.option(
+    "--reset-contextvars",
+    is_flag=True,
+    default=False,
+    help=(
+        "Run each ASGI request in a fresh contextvars.Context to work around "
+        "https://github.com/python/cpython/issues/140947. Hides context set in the lifespan."
+    ),
+    show_default=True,
+)
+@click.option(
     "--factory",
     is_flag=True,
     default=False,
@@ -428,6 +438,7 @@ def main(
     use_colors: bool,
     app_dir: str,
     h11_max_incomplete_event_size: int | None,
+    reset_contextvars: bool,
     factory: bool,
 ) -> None:
     run(
@@ -480,6 +491,7 @@ def main(
         factory=factory,
         app_dir=app_dir,
         h11_max_incomplete_event_size=h11_max_incomplete_event_size,
+        reset_contextvars=reset_contextvars,
     )
 
 
@@ -534,6 +546,7 @@ def run(
     app_dir: str | None = None,
     factory: bool = False,
     h11_max_incomplete_event_size: int | None = None,
+    reset_contextvars: bool = False,
 ) -> None:
     if app_dir is not None:
         sys.path.insert(0, app_dir)
@@ -587,6 +600,7 @@ def run(
         use_colors=use_colors,
         factory=factory,
         h11_max_incomplete_event_size=h11_max_incomplete_event_size,
+        reset_contextvars=reset_contextvars,
     )
     server = Server(config=config)
 
