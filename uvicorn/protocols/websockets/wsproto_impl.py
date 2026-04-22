@@ -37,18 +37,11 @@ class WebsocketBuffer:
         self.max_length = max_length
 
     def extend(self, event: events.TextMessage | events.BytesMessage) -> None:
-        if isinstance(event, events.TextMessage):
-            if self.value is None:
-                self.value = StringIO()
-            assert isinstance(self.value, StringIO)
-            self.value.write(event.data)
-            # `ws_max_size` is a byte budget - count encoded UTF-8 length so multi-byte text can't bypass it.
-            self.length += len(event.data.encode())
-        else:
-            if self.value is None:
-                self.value = BytesIO()
-            assert isinstance(self.value, BytesIO)
-            self.length += self.value.write(event.data)
+        if self.value is None:
+            self.value = StringIO() if isinstance(event, events.TextMessage) else BytesIO()
+        self.value.write(event.data)  # type: ignore[arg-type]
+        # `ws_max_size` is a byte budget, so count UTF-8 bytes for text.
+        self.length += len(event.data.encode()) if isinstance(event, events.TextMessage) else len(event.data)
         if self.length > self.max_length:
             raise FrameTooLargeError
 
