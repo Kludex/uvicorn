@@ -44,6 +44,7 @@ if TYPE_CHECKING:
 
     HTTPProtocol: TypeAlias = "type[H11Protocol | HttpToolsProtocol]"
     WSProtocol: TypeAlias = "type[_WSProtocol | WebSocketProtocol]"
+    KeepaliveWSProtocol: TypeAlias = "type[_WSProtocol | WebSocketsSansIOProtocol]"
 
 pytestmark = pytest.mark.anyio
 
@@ -1230,7 +1231,27 @@ async def test_lifespan_state(ws_protocol_cls: WSProtocol, http_protocol_cls: HT
     assert expected_states == actual_states
 
 
-async def test_server_keepalive_ping_pong(http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
+@pytest.fixture(
+    params=[
+        pytest.param(
+            "uvicorn.protocols.websockets.wsproto_impl:WSProtocol",
+            marks=skip_if_no_wsproto,
+            id="wsproto",
+        ),
+        pytest.param(
+            "uvicorn.protocols.websockets.websockets_sansio_impl:WebSocketsSansIOProtocol", id="websockets-sansio"
+        ),
+    ]
+)
+def keepalive_ws_protocol_cls(request: pytest.FixtureRequest):
+    from uvicorn.importer import import_from_string
+
+    return import_from_string(request.param)
+
+
+async def test_server_keepalive_ping_pong(
+    keepalive_ws_protocol_cls: KeepaliveWSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         while True:
             message = await receive()
@@ -1241,7 +1262,7 @@ async def test_server_keepalive_ping_pong(http_protocol_cls: HTTPProtocol, unuse
 
     config = Config(
         app=app,
-        ws=WebSocketsSansIOProtocol,
+        ws=keepalive_ws_protocol_cls,
         http=http_protocol_cls,
         lifespan="off",
         ws_ping_interval=0.1,
@@ -1252,7 +1273,7 @@ async def test_server_keepalive_ping_pong(http_protocol_cls: HTTPProtocol, unuse
         # The websockets client auto-responds to ping frames, keeping the connection alive.
         async with websockets.connect(f"ws://127.0.0.1:{unused_tcp_port}", ping_interval=None):
             protocol = list(server.server_state.connections)[0]
-            assert isinstance(protocol, WebSocketsSansIOProtocol)
+            assert isinstance(protocol, (_WSProtocol, WebSocketsSansIOProtocol))
 
             # Wait until the server sends at least one keepalive ping, then
             # sleep past the timeout window and ensure the connection stays open.
@@ -1267,7 +1288,9 @@ async def test_server_keepalive_ping_pong(http_protocol_cls: HTTPProtocol, unuse
             assert not protocol.transport.is_closing()
 
 
-async def test_server_keepalive_ping_timeout(http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
+async def test_server_keepalive_ping_timeout(
+    keepalive_ws_protocol_cls: KeepaliveWSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         while True:
             message = await receive()
@@ -1278,7 +1301,7 @@ async def test_server_keepalive_ping_timeout(http_protocol_cls: HTTPProtocol, un
 
     config = Config(
         app=app,
-        ws=WebSocketsSansIOProtocol,
+        ws=keepalive_ws_protocol_cls,
         http=http_protocol_cls,
         lifespan="off",
         ws_ping_interval=0.1,
@@ -1297,7 +1320,9 @@ async def test_server_keepalive_ping_timeout(http_protocol_cls: HTTPProtocol, un
             assert exc_info.value.rcvd.reason == "keepalive ping timeout"
 
 
-async def test_server_keepalive_disabled(http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
+async def test_server_keepalive_disabled(
+    keepalive_ws_protocol_cls: KeepaliveWSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         while True:
             message = await receive()
@@ -1308,7 +1333,7 @@ async def test_server_keepalive_disabled(http_protocol_cls: HTTPProtocol, unused
 
     config = Config(
         app=app,
-        ws=WebSocketsSansIOProtocol,
+        ws=keepalive_ws_protocol_cls,
         http=http_protocol_cls,
         lifespan="off",
         ws_ping_interval=None,
@@ -1317,5 +1342,5 @@ async def test_server_keepalive_disabled(http_protocol_cls: HTTPProtocol, unused
     async with run_server(config) as server:
         async with websockets.connect(f"ws://127.0.0.1:{unused_tcp_port}", ping_interval=None):
             protocol = list(server.server_state.connections)[0]
-            assert isinstance(protocol, WebSocketsSansIOProtocol)
+            assert isinstance(protocol, (_WSProtocol, WebSocketsSansIOProtocol))
             assert protocol.ping_timer is None
