@@ -105,7 +105,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.last_ping_rtt: float = 0.0
 
         # Buffers
-        self.bytes = bytearray()
+        self.bytes: bytes | bytearray = b""
 
     def connection_made(self, transport: BaseTransport) -> None:
         """Called when a connection is made."""
@@ -217,21 +217,28 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.tasks.add(task)
 
     def handle_cont(self, event: Frame) -> None:
+        assert isinstance(self.bytes, bytearray)
         self.bytes.extend(event.data)
         if event.fin:
             self.send_receive_event_to_app()
 
     def handle_text(self, event: Frame) -> None:
-        self.bytes = bytearray(event.data)
         self.curr_msg_data_type: Literal["text", "bytes"] = "text"
         if event.fin:
+            # Single-frame message: pass through as bytes (zero copies).
+            self.bytes = event.data
             self.send_receive_event_to_app()
+        else:
+            # Fragmented: promote to bytearray so continuations extend in place.
+            self.bytes = bytearray(event.data)
 
     def handle_bytes(self, event: Frame) -> None:
-        self.bytes = bytearray(event.data)
         self.curr_msg_data_type = "bytes"
         if event.fin:
+            self.bytes = event.data
             self.send_receive_event_to_app()
+        else:
+            self.bytes = bytearray(event.data)
 
     def send_receive_event_to_app(self) -> None:
         if self.curr_msg_data_type == "text":
@@ -243,7 +250,9 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 self.handle_parser_exception()
                 return
         else:
-            self.queue.put_nowait({"type": "websocket.receive", "bytes": bytes(self.bytes)})
+            # Freeze the buffer to bytes only when it was grown across fragments.
+            payload = self.bytes if isinstance(self.bytes, bytes) else bytes(self.bytes)
+            self.queue.put_nowait({"type": "websocket.receive", "bytes": payload})
         if not self.read_paused:
             self.read_paused = True
             self.transport.pause_reading()
