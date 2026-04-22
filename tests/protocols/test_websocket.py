@@ -777,6 +777,37 @@ async def test_fragmented_message_exceeding_max_size(
     assert exc_info.value.rcvd.code == 1009
 
 
+async def test_fragmented_message_reassembly(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+):
+    """Server reassembles a fragmented message and delivers it to the app intact."""
+
+    received: list[bytes] = []
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert scope["type"] == "websocket"
+        connect = await receive()
+        assert connect["type"] == "websocket.connect"
+        await send({"type": "websocket.accept"})
+        message = await receive()
+        assert message["type"] == "websocket.receive"
+        payload = message.get("bytes")
+        assert payload is not None
+        received.append(payload)
+        await send({"type": "websocket.close"})
+
+    config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
+    async with run_server(config):
+        async with websockets.connect(f"ws://127.0.0.1:{unused_tcp_port}") as ws:
+            payload = b"A" * 512
+            await ws.write_frame(False, Opcode.BINARY, payload)
+            for _ in range(4):
+                await ws.write_frame(False, Opcode.CONT, payload)
+            await ws.write_frame(True, Opcode.CONT, payload)
+
+    assert received == [b"A" * 512 * 6]
+
+
 async def test_server_reject_connection(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
 ):

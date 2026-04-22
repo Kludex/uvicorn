@@ -105,7 +105,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.last_ping_rtt: float = 0.0
 
         # Buffers
-        self.bytes = b""
+        self.bytes = bytearray()
 
     def connection_made(self, transport: BaseTransport) -> None:
         """Called when a connection is made."""
@@ -216,19 +216,19 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         task.add_done_callback(self.on_task_complete)
         self.tasks.add(task)
 
-    def handle_cont(self, event: Frame) -> None:  # pragma: no cover
-        self.bytes += event.data
+    def handle_cont(self, event: Frame) -> None:
+        self.bytes.extend(event.data)
         if event.fin:
             self.send_receive_event_to_app()
 
     def handle_text(self, event: Frame) -> None:
-        self.bytes = event.data
+        self.bytes = bytearray(event.data)
         self.curr_msg_data_type: Literal["text", "bytes"] = "text"
         if event.fin:
             self.send_receive_event_to_app()
 
     def handle_bytes(self, event: Frame) -> None:
-        self.bytes = event.data
+        self.bytes = bytearray(event.data)
         self.curr_msg_data_type = "bytes"
         if event.fin:
             self.send_receive_event_to_app()
@@ -243,7 +243,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 self.handle_parser_exception()
                 return
         else:
-            self.queue.put_nowait({"type": "websocket.receive", "bytes": self.bytes})
+            self.queue.put_nowait({"type": "websocket.receive", "bytes": bytes(self.bytes)})
         if not self.read_paused:
             self.read_paused = True
             self.transport.pause_reading()
