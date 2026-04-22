@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from io import BytesIO, StringIO
 from typing import Any, Literal, cast
 from urllib.parse import unquote
 
@@ -11,12 +12,7 @@ from wsproto.connection import ConnectionState
 from wsproto.extensions import Extension, PerMessageDeflate
 from wsproto.utilities import LocalProtocolError, RemoteProtocolError
 
-from uvicorn._types import (
-    ASGI3Application,
-    ASGISendEvent,
-    WebSocketEvent,
-    WebSocketScope,
-)
+from uvicorn._types import ASGI3Application, ASGISendEvent, WebSocketEvent, WebSocketReceiveEvent, WebSocketScope
 from uvicorn.config import Config
 from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.protocols.utils import (
@@ -28,6 +24,34 @@ from uvicorn.protocols.utils import (
     is_ssl,
 )
 from uvicorn.server import ServerState
+
+
+class FrameTooLargeError(Exception):
+    """Raised when accumulated websocket message bytes exceed `ws_max_size`."""
+
+
+class WebsocketBuffer:
+    def __init__(self, max_length: int) -> None:
+        self.value: BytesIO | StringIO | None = None
+        self.length = 0
+        self.max_length = max_length
+
+    def extend(self, event: events.TextMessage | events.BytesMessage) -> None:
+        if self.value is None:
+            self.value = StringIO() if isinstance(event, events.TextMessage) else BytesIO()
+        self.length += self.value.write(event.data)  # type: ignore[arg-type]
+        if self.length > self.max_length:
+            raise FrameTooLargeError
+
+    def clear(self) -> None:
+        self.value = None
+        self.length = 0
+
+    def to_message(self) -> WebSocketReceiveEvent:
+        if isinstance(self.value, StringIO):
+            return {"type": "websocket.receive", "text": self.value.getvalue()}
+        assert isinstance(self.value, BytesIO)
+        return {"type": "websocket.receive", "bytes": self.value.getvalue()}
 
 
 class WSProtocol(asyncio.Protocol):
@@ -73,15 +97,12 @@ class WSProtocol(asyncio.Protocol):
         self.writable = asyncio.Event()
         self.writable.set()
 
-        # Buffers
-        self.bytes = b""
-        self.text = ""
+        # Buffer
+        self.buffer = WebsocketBuffer(self.config.ws_max_size)
 
     # Protocol interface
 
-    def connection_made(  # type: ignore[override]
-        self, transport: asyncio.Transport
-    ) -> None:
+    def connection_made(self, transport: asyncio.Transport) -> None:  # type: ignore[override]
         self.connections.add(self)
         self.transport = transport
         self.server = get_local_addr(transport)
@@ -120,12 +141,12 @@ class WSProtocol(asyncio.Protocol):
 
     def handle_events(self) -> None:
         for event in self.conn.events():
+            if self.close_sent:
+                return
             if isinstance(event, events.Request):
                 self.handle_connect(event)
-            elif isinstance(event, events.TextMessage):
-                self.handle_text(event)
-            elif isinstance(event, events.BytesMessage):
-                self.handle_bytes(event)
+            elif isinstance(event, (events.TextMessage, events.BytesMessage)):
+                self.handle_message(event)
             elif isinstance(event, events.CloseConnection):
                 self.handle_close(event)
             elif isinstance(event, events.Ping):
@@ -185,21 +206,20 @@ class WSProtocol(asyncio.Protocol):
         task.add_done_callback(self.on_task_complete)
         self.tasks.add(task)
 
-    def handle_text(self, event: events.TextMessage) -> None:
-        self.text += event.data
+    def handle_message(self, event: events.TextMessage | events.BytesMessage) -> None:
+        try:
+            self.buffer.extend(event)
+        except FrameTooLargeError:
+            self.close_sent = True
+            reason = f"Message exceeds the maximum size ({self.config.ws_max_size} bytes)"
+            self.queue.put_nowait({"type": "websocket.disconnect", "code": 1009, "reason": reason})
+            if not self.transport.is_closing():
+                self.transport.write(self.conn.send(wsproto.events.CloseConnection(code=1009, reason=reason)))
+                self.transport.close()
+            return
         if event.message_finished:
-            self.queue.put_nowait({"type": "websocket.receive", "text": self.text})
-            self.text = ""
-            if not self.read_paused:
-                self.read_paused = True
-                self.transport.pause_reading()
-
-    def handle_bytes(self, event: events.BytesMessage) -> None:
-        self.bytes += event.data
-        # todo: we may want to guard the size of self.bytes and self.text
-        if event.message_finished:
-            self.queue.put_nowait({"type": "websocket.receive", "bytes": self.bytes})
-            self.bytes = b""
+            self.queue.put_nowait(self.buffer.to_message())
+            self.buffer.clear()
             if not self.read_paused:
                 self.read_paused = True
                 self.transport.pause_reading()

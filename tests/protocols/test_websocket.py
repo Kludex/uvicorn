@@ -10,6 +10,7 @@ import websockets
 import websockets.client
 import websockets.exceptions
 from websockets.extensions.permessage_deflate import ClientPerMessageDeflateFactory
+from websockets.frames import Opcode
 from websockets.typing import Subprotocol
 
 from tests.response import Response
@@ -749,6 +750,30 @@ async def test_send_binary_data_to_server_bigger_than_default_on_websockets(
                 with pytest.raises(websockets.exceptions.ConnectionClosedError):
                     await ws.recv()
                 assert ws.close_code == expected_result
+
+
+async def test_fragmented_message_exceeding_max_size(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+):
+    """Stream non-FIN fragments past `ws_max_size` - the server must close with 1009."""
+
+    class App(WebSocketResponse):
+        async def websocket_connect(self, message: WebSocketConnectEvent):
+            await self.send({"type": "websocket.accept"})
+
+    config = Config(
+        app=App, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", ws_max_size=2048, port=unused_tcp_port
+    )
+    async with run_server(config):
+        async with websockets.connect(f"ws://127.0.0.1:{unused_tcp_port}") as ws:
+            payload = b"A" * 1024
+            with pytest.raises(websockets.exceptions.ConnectionClosed) as exc_info:
+                await ws.write_frame(False, Opcode.BINARY, payload)
+                for _ in range(63):  # 64 KiB total, well past 2 KiB budget
+                    await ws.write_frame(False, Opcode.CONT, payload)
+                await ws.recv()
+    assert exc_info.value.rcvd is not None
+    assert exc_info.value.rcvd.code == 1009
 
 
 async def test_server_reject_connection(
