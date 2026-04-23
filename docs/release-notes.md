@@ -2,6 +2,17 @@
 toc_depth: 2
 ---
 
+## 0.46.0 (April 23, 2026)
+
+### Added
+
+* Support `ws_max_size` in `wsproto` implementation (#2915)
+* Support `ws_ping_interval` and `ws_ping_timeout` in `wsproto` implementation (#2916)
+
+### Fixed
+
+* Use `bytearray` for incoming WebSocket message buffer in `websockets-sansio` (#2917)
+
 ## 0.45.0 (April 21, 2026)
 
 ### Added
