@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from uvicorn.supervisors.basereload import BaseReload
 from uvicorn.supervisors.multiprocess import Multiprocess
+from uvicorn.supervisors.multithread import Multithread
 
 if TYPE_CHECKING:
     ChangeReload: type[BaseReload]
@@ -13,4 +14,4 @@ else:
     except ImportError:  # pragma: no cover
         from uvicorn.supervisors.statreload import StatReload as ChangeReload
 
-__all__ = ["Multiprocess", "ChangeReload"]
+__all__ = ["Multiprocess", "Multithread", "ChangeReload"]

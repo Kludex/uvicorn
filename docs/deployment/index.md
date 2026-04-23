@@ -70,15 +70,26 @@ A process manager will handle the socket setup, start-up multiple server process
 
 ### Built-in
 
-Uvicorn includes a `--workers` option that allows you to run multiple worker processes.
+Uvicorn includes a `--workers` option that allows you to run multiple worker instances.
 
 ```bash
 $ uvicorn main:app --workers 4
 ```
 
+The default worker class is `process`. Uvicorn also includes a `thread` worker class:
+
+```bash
+$ uvicorn main:app --workers 4 --worker-class thread
+```
+
+The `thread` worker class was built specifically for free-threaded Python 3.14 runtimes.
+It requires a free-threaded build (`Py_GIL_DISABLED=1`) with the GIL disabled at runtime.
+
 Unlike gunicorn, uvicorn does not use pre-fork, but uses [`spawn`](https://docs.python.org/3/library/multiprocessing.html#contexts-and-start-methods), which allows uvicorn's multiprocess manager to still work well on Windows.
 
-The default process manager monitors the status of child processes and automatically restarts child processes that die unexpectedly. Not only that, it will also monitor the status of the child process through the pipeline. When the child process is accidentally stuck, the corresponding child process will be killed through an unstoppable system signal or interface.
+The default `process` manager monitors the status of child processes and automatically restarts child processes that die unexpectedly. Not only that, it will also monitor the status of the child process through the pipeline. When the child process is accidentally stuck, the corresponding child process will be killed through an unstoppable system signal or interface.
+
+The `thread` worker class automatically restarts worker threads that exit unexpectedly and uses cooperative healthchecks to replace stale worker threads. Unlike the `process` worker class, it cannot force-kill a hung thread. When a thread fails its healthcheck, Uvicorn starts a replacement thread and lets the previous thread continue draining if it is still running.
 
 You can also manage child processes by sending specific signals to the main process. (Not supported on Windows.)
 

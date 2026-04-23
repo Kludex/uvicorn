@@ -5,6 +5,7 @@ from logging import WARNING
 
 import httpx
 import pytest
+from pytest_mock import MockerFixture
 
 import uvicorn.server
 from tests.utils import run_server
@@ -12,6 +13,7 @@ from uvicorn import Server
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.config import Config
 from uvicorn.main import run
+from uvicorn.supervisors import Multithread
 
 pytestmark = pytest.mark.anyio
 
@@ -85,6 +87,22 @@ def test_run_invalid_app_config_combination(caplog: pytest.LogCaptureFixture) ->
     )
 
 
+def test_run_invalid_thread_worker_class_config() -> None:
+    with pytest.raises(ValueError, match='Worker class "thread" requires a free-threaded Python 3.14 runtime'):
+        run("tests.test_main:app", workers=2, worker_class="thread")
+
+
+def test_run_multithread(mocker: MockerFixture) -> None:
+    mocker.patch("uvicorn.config.is_free_threaded_runtime", return_value=True)
+    mock_bind_socket = mocker.patch.object(Config, "bind_socket")
+    mock_run = mocker.patch.object(Multithread, "run")
+
+    run("tests.test_main:app", workers=2, worker_class="thread")
+
+    mock_bind_socket.assert_called_once()
+    mock_run.assert_called_once()
+
+
 def test_run_startup_failure(caplog: pytest.LogCaptureFixture) -> None:
     async def app(scope, receive, send):
         assert scope["type"] == "lifespan"
@@ -101,7 +119,7 @@ def test_run_match_config_params() -> None:
     config_params = {
         key: repr(value)
         for key, value in inspect.signature(Config.__init__).parameters.items()
-        if key not in ("self", "timeout_notify", "callback_notify")
+        if key not in ("self", "timeout_notify", "callback_notify", "callback_progress")
     }
     run_params = {
         key: repr(value) for key, value in inspect.signature(run).parameters.items() if key not in ("app_dir",)
