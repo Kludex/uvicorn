@@ -28,7 +28,6 @@ from uvicorn.config import (
     LoopFactoryType,
     WSProtocolType,
 )
-from uvicorn.importer import ImportFromStringError, import_from_string
 from uvicorn.server import Server
 from uvicorn.supervisors import ChangeReload, Multiprocess
 
@@ -605,20 +604,11 @@ def run(
         logger.warning("You must pass the application as an import string to enable 'reload' or 'workers'.")
         sys.exit(1)
 
-    # Eagerly import the app so a bad import string fails here, in the parent,
-    # before any worker is spawned (#2440), and so apps that open an event
-    # loop at import time don't collide with the server's running loop (#941).
-    # We deliberately don't store the result: spawn workers ship the parent's
-    # bound `server.run` method across pickle, which would carry the loaded
-    # app with it - breaking pickling for non-picklable apps and forcing
-    # workers to reuse parent state instead of re-importing freshly.
-    if isinstance(app, str):
-        try:
-            import_from_string(app)
-        except ImportFromStringError as exc:
-            logger = logging.getLogger("uvicorn.error")
-            logger.error("Error loading ASGI app. %s" % exc)
-            sys.exit(1)
+    # Import the app for fail-fast, then drop it - spawn workers ship `server.run`
+    # as a bound method that captures this config, and `loaded_app` may not be
+    # picklable. Workers re-import in `Server.run -> Config.load`.
+    config.load_app()
+    del config.loaded_app
 
     server = Server(config=config)
 
