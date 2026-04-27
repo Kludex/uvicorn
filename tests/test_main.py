@@ -12,6 +12,7 @@ from uvicorn import Server
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.config import Config
 from uvicorn.main import run
+from uvicorn.supervisors import Multiprocess
 
 pytestmark = pytest.mark.anyio
 
@@ -83,6 +84,27 @@ def test_run_invalid_app_config_combination(caplog: pytest.LogCaptureFixture) ->
     assert caplog.records[-1].message == (
         "You must pass the application as an import string to enable 'reload' or 'workers'."
     )
+
+
+def test_run_fails_fast_in_parent_on_bad_app_path(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bad app path with `--workers > 1` exits in the parent.
+
+    Regression for https://github.com/encode/uvicorn/discussions/2440: without
+    parent-side validation the supervisor restarts dying workers forever.
+    """
+
+    def fail(*args: object, **kwargs: object) -> None:
+        pytest.fail("parent reached supervisor; should have exited on bad app path")
+
+    monkeypatch.setattr(Config, "bind_socket", fail)
+    monkeypatch.setattr(Multiprocess, "run", fail)
+
+    with pytest.raises(SystemExit) as exit_exception:
+        run("tests.test_main:nonexistent_attr", workers=2)
+    assert exit_exception.value.code == 1
+    assert any("Error loading ASGI app" in record.message for record in caplog.records)
 
 
 def test_run_startup_failure(caplog: pytest.LogCaptureFixture) -> None:

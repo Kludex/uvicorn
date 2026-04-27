@@ -28,6 +28,26 @@ def test_get_subprocess() -> None:
     fdsock.close()
 
 
+def test_get_subprocess_strips_loaded_state() -> None:
+    """Spawn child receives a config with loaded state cleared.
+
+    The spawn child gets a fresh interpreter and must re-import the app, so
+    its `Server.run()` needs `loaded=False` to trigger a real `load()`.
+    """
+    config = Config(app=app)
+    config.load()
+    assert config.loaded is True
+
+    process = get_subprocess(config, server_run, [])
+    child_config = process._kwargs["config"]  # type: ignore[attr-defined]
+
+    assert child_config.loaded is False
+    assert "loaded_app" not in child_config.__dict__
+    # Parent is unchanged.
+    assert config.loaded is True
+    assert config.loaded_app is not None
+
+
 def test_subprocess_started() -> None:
     fdsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     fd = fdsock.fileno()

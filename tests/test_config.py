@@ -205,6 +205,49 @@ def test_proxy_headers() -> None:
     assert isinstance(config.loaded_app, ProxyHeadersMiddleware)
 
 
+def test_load_is_idempotent() -> None:
+    """Calling `Config.load()` twice is a no-op.
+
+    Eager `load_app()` in `uvicorn.run()` means workers/Server may call
+    `load()` on an already-loaded config; the second call must not re-import.
+    """
+    config = Config(app=asgi_app)
+    config.load()
+    loaded_app = config.loaded_app
+
+    config.load()
+
+    assert config.loaded_app is loaded_app
+
+
+
+
+def test_load_app_runs_outside_event_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """App import happens before any event loop is running.
+
+    Regression for https://github.com/encode/uvicorn/issues/941: an app that
+    uses `asyncio.run(...)` at import time would crash with "loop already
+    running" if Uvicorn imported it inside the server's loop. The parent must
+    import synchronously first.
+    """
+    module = tmp_path / "eager_async_app.py"
+    module.write_text(
+        "import asyncio\n"
+        "async def _build():\n"
+        "    async def app(scope, receive, send):\n"
+        "        pass\n"
+        "    return app\n"
+        "app = asyncio.run(_build())\n"
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    config = Config(app="eager_async_app:app")
+
+    config.load_app()  # must not raise "loop already running"
+
+    assert sys.modules["eager_async_app"].app is config.loaded_app
+
+
 def test_app_unimportable_module() -> None:
     config = Config(app="no.such:app")
     with pytest.raises(ImportError):
