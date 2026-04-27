@@ -416,8 +416,7 @@ class Config:
             sys.exit(1)
 
     def load(self) -> None:
-        if self.loaded:
-            return
+        assert not self.loaded
 
         if self.is_ssl:
             assert self.ssl_certfile

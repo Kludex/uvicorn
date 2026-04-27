@@ -205,21 +205,6 @@ def test_proxy_headers() -> None:
     assert isinstance(config.loaded_app, ProxyHeadersMiddleware)
 
 
-def test_load_is_idempotent() -> None:
-    """Calling `Config.load()` twice is a no-op.
-
-    Eager `load_app()` in `uvicorn.run()` means workers/Server may call
-    `load()` on an already-loaded config; the second call must not re-import.
-    """
-    config = Config(app=asgi_app)
-    config.load()
-    loaded_app = config.loaded_app
-
-    config.load()
-
-    assert config.loaded_app is loaded_app
-
-
 def test_app_unimportable_module() -> None:
     config = Config(app="no.such:app")
     with pytest.raises(ImportError):

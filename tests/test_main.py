@@ -110,12 +110,12 @@ def test_run_fails_fast_in_parent_on_bad_app_path(
 
 
 def test_run_imports_app_before_starting_event_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """`uvicorn.run()` imports the app before constructing Server.
+    """`uvicorn.run()` imports the app before `Server.run` opens the event loop.
 
     Regression for https://github.com/encode/uvicorn/issues/941: an app whose
     module body calls `asyncio.run(...)` crashes with "loop already running"
     if Uvicorn imports it inside the server's event loop. The parent must
-    import the app synchronously, before any Server is built.
+    import the app synchronously, before `Server.run` enters `asyncio.run`.
     """
     module = tmp_path / "eager_async_app.py"
     module.write_text(
