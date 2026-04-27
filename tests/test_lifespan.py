@@ -98,7 +98,7 @@ def test_lifespan_auto_with_error():
         lifespan = LifespanOn(config)
 
         await lifespan.startup()
-        assert lifespan.error_occured
+        assert lifespan.error_occurred
         assert not lifespan.should_exit
         await lifespan.shutdown()
 
@@ -117,7 +117,7 @@ def test_lifespan_on_with_error():
         lifespan = LifespanOn(config)
 
         await lifespan.startup()
-        assert lifespan.error_occured
+        assert lifespan.error_occurred
         assert lifespan.should_exit
         await lifespan.shutdown()
 
@@ -143,7 +143,7 @@ def test_lifespan_with_failed_startup(mode, raise_exception, caplog):
 
         await lifespan.startup()
         assert lifespan.startup_failed
-        assert lifespan.error_occured is raise_exception
+        assert lifespan.error_occurred is raise_exception
         assert lifespan.should_exit
         await lifespan.shutdown()
 
@@ -171,7 +171,7 @@ def test_lifespan_scope_asgi3app():
 
         await lifespan.startup()
         assert not lifespan.startup_failed
-        assert not lifespan.error_occured
+        assert not lifespan.error_occurred
         assert not lifespan.should_exit
         await lifespan.shutdown()
 
@@ -228,7 +228,7 @@ def test_lifespan_with_failed_shutdown(mode, raise_exception, caplog):
         assert not lifespan.startup_failed
         await lifespan.shutdown()
         assert lifespan.shutdown_failed
-        assert lifespan.error_occured is raise_exception
+        assert lifespan.error_occurred is raise_exception
         assert lifespan.should_exit
 
     loop = asyncio.new_event_loop()

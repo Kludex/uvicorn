@@ -32,8 +32,8 @@ from __future__ import annotations
 
 import sys
 import types
-from collections.abc import Awaitable, Iterable, MutableMapping
-from typing import Any, Callable, Literal, Optional, Protocol, TypedDict, Union
+from collections.abc import Awaitable, Callable, Iterable, MutableMapping
+from typing import Any, Literal, Protocol, TypedDict
 
 if sys.version_info >= (3, 11):  # pragma: py-lt-311
     from typing import NotRequired
@@ -42,9 +42,9 @@ else:  # pragma: py-gte-311
 
 # WSGI
 Environ = MutableMapping[str, Any]
-ExcInfo = tuple[type[BaseException], BaseException, Optional[types.TracebackType]]
-StartResponse = Callable[[str, Iterable[tuple[str, str]], Optional[ExcInfo]], None]
-WSGIApp = Callable[[Environ, StartResponse], Union[Iterable[bytes], BaseException]]
+ExcInfo = tuple[type[BaseException], BaseException, types.TracebackType | None]
+StartResponse = Callable[[str, Iterable[tuple[str, str]], ExcInfo | None], None]
+WSGIApp = Callable[[Environ, StartResponse], Iterable[bytes] | BaseException]
 
 
 # ASGI
@@ -93,8 +93,8 @@ class LifespanScope(TypedDict):
     state: NotRequired[dict[str, Any]]
 
 
-WWWScope = Union[HTTPScope, WebSocketScope]
-Scope = Union[HTTPScope, WebSocketScope, LifespanScope]
+WWWScope = HTTPScope | WebSocketScope
+Scope = HTTPScope | WebSocketScope | LifespanScope
 
 
 class HTTPRequestEvent(TypedDict):
@@ -159,7 +159,7 @@ class _WebSocketReceiveEventText(TypedDict):
     text: str
 
 
-WebSocketReceiveEvent = Union[_WebSocketReceiveEventBytes, _WebSocketReceiveEventText]
+WebSocketReceiveEvent = _WebSocketReceiveEventBytes | _WebSocketReceiveEventText
 
 
 class _WebSocketSendEventBytes(TypedDict):
@@ -174,7 +174,7 @@ class _WebSocketSendEventText(TypedDict):
     text: str
 
 
-WebSocketSendEvent = Union[_WebSocketSendEventBytes, _WebSocketSendEventText]
+WebSocketSendEvent = _WebSocketSendEventBytes | _WebSocketSendEventText
 
 
 class WebSocketResponseStartEvent(TypedDict):
@@ -227,36 +227,36 @@ class LifespanShutdownFailedEvent(TypedDict):
     message: str
 
 
-WebSocketEvent = Union[WebSocketReceiveEvent, WebSocketDisconnectEvent, WebSocketConnectEvent]
+WebSocketEvent = WebSocketReceiveEvent | WebSocketDisconnectEvent | WebSocketConnectEvent
 
 
-ASGIReceiveEvent = Union[
-    HTTPRequestEvent,
-    HTTPDisconnectEvent,
-    WebSocketConnectEvent,
-    WebSocketReceiveEvent,
-    WebSocketDisconnectEvent,
-    LifespanStartupEvent,
-    LifespanShutdownEvent,
-]
+ASGIReceiveEvent = (
+    HTTPRequestEvent
+    | HTTPDisconnectEvent
+    | WebSocketConnectEvent
+    | WebSocketReceiveEvent
+    | WebSocketDisconnectEvent
+    | LifespanStartupEvent
+    | LifespanShutdownEvent
+)
 
 
-ASGISendEvent = Union[
-    HTTPResponseStartEvent,
-    HTTPResponseBodyEvent,
-    HTTPResponseTrailersEvent,
-    HTTPServerPushEvent,
-    HTTPDisconnectEvent,
-    WebSocketAcceptEvent,
-    WebSocketSendEvent,
-    WebSocketResponseStartEvent,
-    WebSocketResponseBodyEvent,
-    WebSocketCloseEvent,
-    LifespanStartupCompleteEvent,
-    LifespanStartupFailedEvent,
-    LifespanShutdownCompleteEvent,
-    LifespanShutdownFailedEvent,
-]
+ASGISendEvent = (
+    HTTPResponseStartEvent
+    | HTTPResponseBodyEvent
+    | HTTPResponseTrailersEvent
+    | HTTPServerPushEvent
+    | HTTPDisconnectEvent
+    | WebSocketAcceptEvent
+    | WebSocketSendEvent
+    | WebSocketResponseStartEvent
+    | WebSocketResponseBodyEvent
+    | WebSocketCloseEvent
+    | LifespanStartupCompleteEvent
+    | LifespanStartupFailedEvent
+    | LifespanShutdownCompleteEvent
+    | LifespanShutdownFailedEvent
+)
 
 
 ASGIReceiveCallable = Callable[[], Awaitable[ASGIReceiveEvent]]
@@ -270,12 +270,5 @@ class ASGI2Protocol(Protocol):
 
 
 ASGI2Application = type[ASGI2Protocol]
-ASGI3Application = Callable[
-    [
-        Scope,
-        ASGIReceiveCallable,
-        ASGISendCallable,
-    ],
-    Awaitable[None],
-]
-ASGIApplication = Union[ASGI2Application, ASGI3Application]
+ASGI3Application = Callable[[Scope, ASGIReceiveCallable, ASGISendCallable], Awaitable[None]]
+ASGIApplication = ASGI2Application | ASGI3Application

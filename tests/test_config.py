@@ -7,10 +7,10 @@ import logging
 import os
 import socket
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import closing
 from pathlib import Path
-from typing import IO, Any, Callable, Literal
+from typing import IO, Any, Literal
 from unittest.mock import MagicMock
 
 import pytest
@@ -407,6 +407,35 @@ def test_log_config_yaml(
     mocked_logging_config_module.dictConfig.assert_called_once_with(logging_config)
 
 
+def test_log_config_yaml_missing_pyyaml(mocked_logging_config_module: MagicMock, mocker: MockerFixture) -> None:
+    """
+    Test that a helpful error is raised when PyYAML is not installed.
+    """
+    mocker.patch.dict(sys.modules, {"yaml": None})
+    with pytest.raises(ImportError, match=r"Install the PyYAML package or uvicorn\[standard\]"):
+        Config(app=asgi_app, log_config="log_config.yaml")
+
+
+def test_log_config_pathlike(
+    mocked_logging_config_module: MagicMock,
+    logging_config: dict[str, Any],
+    json_logging_config: str,
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    """
+    Test that one can pass a `os.PathLike` (e.g. `pathlib.Path`) as the log config path.
+    """
+    path = tmp_path / "log_config.json"
+    mocked_open = mocker.patch("uvicorn.config.open", mocker.mock_open(read_data=json_logging_config))
+
+    config = Config(app=asgi_app, log_config=path)
+    config.load()
+
+    mocked_open.assert_called_once_with(os.fspath(path))
+    mocked_logging_config_module.dictConfig.assert_called_once_with(logging_config)
+
+
 @pytest.mark.parametrize("config_file", ["log_config.ini", configparser.ConfigParser(), io.StringIO()])
 def test_log_config_file(
     mocked_logging_config_module: MagicMock,
@@ -501,6 +530,13 @@ def test_config_log_effective_level(log_level: int, uvicorn_logger_level: int) -
     assert logging.getLogger("uvicorn.error").getEffectiveLevel() == effective_level
     assert logging.getLogger("uvicorn.access").getEffectiveLevel() == effective_level
     assert logging.getLogger("uvicorn.asgi").getEffectiveLevel() == effective_level
+
+
+@pytest.mark.parametrize("log_level", ["INFO", "Info", "info"])
+def test_config_log_level_case_insensitive(log_level: str) -> None:
+    config = Config(app=asgi_app, log_level=log_level)
+    config.load()
+    assert logging.getLogger("uvicorn.error").level == logging.INFO
 
 
 def test_ws_max_size() -> None:
