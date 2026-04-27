@@ -604,12 +604,7 @@ def run(
         logger.warning("You must pass the application as an import string to enable 'reload' or 'workers'.")
         sys.exit(1)
 
-    # Import the app for fail-fast, then drop it - spawn workers ship `server.run`
-    # as a bound method that captures this config, and `loaded_app` may not be
-    # picklable. Workers re-import in `Server.run -> Config.load`.
     config.load_app()
-    del config.loaded_app
-
     server = Server(config=config)
 
     try:
