@@ -95,7 +95,7 @@ def test_run_fails_fast_in_parent_on_bad_app_path(
     parent-side validation the supervisor restarts dying workers forever.
     """
 
-    def fail(*args: object, **kwargs: object) -> None:
+    def fail(*args: object, **kwargs: object) -> None:  # pragma: no cover
         pytest.fail("parent reached supervisor; should have exited on bad app path")
 
     monkeypatch.setattr(Config, "bind_socket", fail)

@@ -616,7 +616,7 @@ def run(
             Multiprocess(config, target=server.run, sockets=[sock]).run()
         else:
             server.run()
-    except KeyboardInterrupt:
+    except KeyboardInterrupt:  # pragma: full coverage
         pass  # pragma: full coverage
     finally:
         if config.uds and os.path.exists(config.uds):
