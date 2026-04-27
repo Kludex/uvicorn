@@ -220,8 +220,6 @@ def test_load_is_idempotent() -> None:
     assert config.loaded_app is loaded_app
 
 
-
-
 def test_load_app_runs_outside_event_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """App import happens before any event loop is running.
 
