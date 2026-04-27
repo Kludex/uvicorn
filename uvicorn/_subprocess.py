@@ -5,7 +5,6 @@ starting child processes.
 
 from __future__ import annotations
 
-import copy
 import multiprocessing
 import os
 import sys
@@ -42,15 +41,8 @@ def get_subprocess(
     except (AttributeError, OSError):
         stdin_fileno = None
 
-    # The spawn child is a fresh interpreter and must re-import the app.
-    # The parent's loaded_app may also be non-picklable (DB pools, locks, etc.).
-    # TODO: remove once Config settings and runtime state are split apart.
-    child_config = copy.copy(config)
-    child_config.loaded = False
-    child_config.__dict__.pop("loaded_app", None)
-
     kwargs = {
-        "config": child_config,
+        "config": config,
         "target": target,
         "sockets": sockets,
         "stdin_fileno": stdin_fileno,

@@ -1,7 +1,9 @@
 import importlib
 import inspect
 import socket
+import sys
 from logging import WARNING
+from pathlib import Path
 
 import httpx
 import pytest
@@ -105,6 +107,40 @@ def test_run_fails_fast_in_parent_on_bad_app_path(
         run("tests.test_main:nonexistent_attr", workers=2)
     assert exit_exception.value.code == 1
     assert any("Error loading ASGI app" in record.message for record in caplog.records)
+
+
+def test_run_imports_app_before_starting_event_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`uvicorn.run()` imports the app before constructing Server.
+
+    Regression for https://github.com/encode/uvicorn/issues/941: an app whose
+    module body calls `asyncio.run(...)` crashes with "loop already running"
+    if Uvicorn imports it inside the server's event loop. The parent must
+    import the app synchronously, before any Server is built.
+    """
+    module = tmp_path / "eager_async_app.py"
+    module.write_text(
+        "import asyncio\n"
+        "async def _build():\n"
+        "    async def app(scope, receive, send):\n"
+        "        pass\n"
+        "    return app\n"
+        "app = asyncio.run(_build())\n"
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    imported_before_server_run: list[bool] = []
+
+    def tracking_run(self: Server, sockets: object = None) -> None:
+        imported_before_server_run.append("eager_async_app" in sys.modules)
+        self.started = True
+
+    monkeypatch.setattr(Server, "run", tracking_run)
+
+    # The import side effect (`eager_async_app` lands in `sys.modules`) must
+    # happen before `Server.run`, which is where the event loop opens.
+    run("eager_async_app:app")
+
+    assert imported_before_server_run == [True]
 
 
 def test_run_startup_failure(caplog: pytest.LogCaptureFixture) -> None:
