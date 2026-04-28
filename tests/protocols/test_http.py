@@ -639,6 +639,21 @@ async def test_value_returned(http_protocol_cls: type[HTTPProtocol]):
     assert protocol.transport.is_closing()
 
 
+async def test_half_closed_connection_still_sends_response(http_protocol_cls: type[HTTPProtocol]):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await asyncio.sleep(0)
+        await send({"type": "http.response.start", "status": 200})
+        await send({"type": "http.response.body", "body": b"Hello", "more_body": False})
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    assert protocol.eof_received() is True
+    await protocol.loop.run_one()
+
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Hello" in protocol.transport.buffer
+
+
 async def test_early_disconnect(http_protocol_cls: type[HTTPProtocol]):
     got_disconnect_event = False
 

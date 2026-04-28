@@ -128,8 +128,10 @@ class H11Protocol(asyncio.Protocol):
             self.transport.close()
             self._unset_keepalive_if_required()
 
-    def eof_received(self) -> None:
-        pass
+    def eof_received(self) -> bool:
+        # A half-closed TCP connection means the client finished sending
+        # the request body, not that it stopped reading the response.
+        return True
 
     def _unset_keepalive_if_required(self) -> None:
         if self.timeout_keep_alive_task is not None:
