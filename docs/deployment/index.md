@@ -227,9 +227,9 @@ $ gunicorn --keyfile=./key.pem --certfile=./cert.pem -k uvicorn.workers.UvicornW
 
 ### Customizing the SSL context
 
-For TLS scenarios that the `--ssl-*` flags don't cover (e.g., mutual TLS, certificate pinning, custom `SSLContext.options`, bumping `minimum_version`), pass an `ssl_context_factory` to `uvicorn.run()` or `Config`.
+For TLS scenarios that the `--ssl-*` flags don't cover (e.g., mutual TLS, custom `SSLContext.options`, bumping `minimum_version`, loading certificates from memory), pass an `ssl_context_factory` to `uvicorn.run()` or `Config`.
 
-The factory receives the `Config` instance and a `default_ssl_context_factory` callable that builds the standard context from the `ssl_*` settings. Use it to start from uvicorn's default and mutate it, or ignore it and build your own context from scratch.
+The factory receives the `Config` instance and a `default_ssl_context_factory` callable that builds the standard context from the `ssl_*` settings on `Config`. Use it to start from uvicorn's default and mutate it, or ignore it and build your own context from scratch - the `ssl_*` settings are only consumed by the default factory, so if you don't call it they're effectively unused.
 
 ```python
 import ssl
