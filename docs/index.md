@@ -54,10 +54,6 @@ Help us keep Uvicorn maintained and sustainable by [becoming a sponsor](https://
     <a href="https://fastapi.tiangolo.com">
         <img src="img/fastapi-logo.png" alt="FastAPI" style="height: 80px;">
     </a>
-    <a href="https://huggingface.co">
-        <img src="img/hf-logo-with-title.svg#only-light" alt="Hugging Face" style="height: 80px;">
-        <img src="img/hf-logo-with-title-dark.svg#only-dark" alt="Hugging Face" style="height: 80px;">
-    </a>
 </div>
 
 ## Quickstart

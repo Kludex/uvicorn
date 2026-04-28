@@ -38,21 +38,6 @@
   object-fit: contain;
 }
 
-img[src*="#only-dark"],
-img[src*="#gh-dark-mode-only"] {
-  display: none;
-}
-
-[data-md-color-scheme="slate"] img[src*="#only-dark"],
-[data-md-color-scheme="slate"] img[src*="#gh-dark-mode-only"] {
-  display: inline;
-}
-
-[data-md-color-scheme="slate"] img[src*="#only-light"],
-[data-md-color-scheme="slate"] img[src*="#gh-light-mode-only"] {
-  display: none;
-}
-
 .md-nav__sponsor-cta {
   display: inline-block;
   margin-top: 0.15rem;
