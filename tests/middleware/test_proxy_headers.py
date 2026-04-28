@@ -559,9 +559,9 @@ async def test_proxy_headers_empty_x_forwarded_for() -> None:
 
 async def host_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
     """Echoes the `host` header and `scope["server"]` so tests can assert both."""
-    headers = dict(scope["headers"])  # type: ignore[typeddict-item]
+    headers = dict(scope["headers"])  # type: ignore
     host_header = headers.get(b"host", b"").decode("latin1")
-    server = scope.get("server")  # type: ignore[union-attr]
+    server = scope["server"]  # type: ignore
     if server is not None:
         server_repr = f"{server[0]}:{server[1]}"
     else:
@@ -658,16 +658,14 @@ async def test_proxy_headers_combined_for_proto_host() -> None:
     """All three X-Forwarded-* headers compose: client, scheme, server, host all rewritten."""
 
     async def echo_all(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
-        headers = dict(scope["headers"])  # type: ignore[typeddict-item]
+        headers = dict(scope["headers"])  # type: ignore
         host_header = headers.get(b"host", b"").decode("latin1")
-        server = scope.get("server")  # type: ignore[union-attr]
-        client = scope.get("client")  # type: ignore[union-attr]
-        body = (
-            f"scheme={scope['scheme']} "  # type: ignore[typeddict-item]
-            f"client={client[0]}:{client[1]} "
-            f"server={server[0]}:{server[1]} "
-            f"host={host_header}"
-        )
+        server = scope["server"]  # type: ignore
+        client = scope["client"]  # type: ignore
+        scheme = scope["scheme"]  # type: ignore
+        assert server is not None
+        assert client is not None
+        body = f"scheme={scheme} client={client[0]}:{client[1]} server={server[0]}:{server[1]} host={host_header}"
         await Response(body, media_type="text/plain")(scope, receive, send)
 
     middleware = ProxyHeadersMiddleware(echo_all, trusted_hosts="*")
