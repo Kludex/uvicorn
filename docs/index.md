@@ -44,6 +44,22 @@ and means we're now able to start building a common set of tooling usable across
 
 Uvicorn currently supports **HTTP/1.1** and **WebSockets**.
 
+## Sponsorship
+
+Help us keep Uvicorn maintained and sustainable by [becoming a sponsor](https://github.com/sponsors/Kludex).
+
+**Current sponsors:**
+
+<div style="display: flex; flex-wrap: wrap; gap: 2rem; align-items: center; margin: 1rem 0;">
+    <a href="https://fastapi.tiangolo.com">
+        <img src="img/fastapi-logo.png" alt="FastAPI" style="height: 80px;">
+    </a>
+    <a href="https://huggingface.co">
+        <img src="img/hf-logo-with-title.svg#only-light" alt="Hugging Face" style="height: 80px;">
+        <img src="img/hf-logo-with-title-dark.svg#only-dark" alt="Hugging Face" style="height: 80px;">
+    </a>
+</div>
+
 ## Quickstart
 
 **Uvicorn** is available on [PyPI](https://pypi.org/project/uvicorn/) so installation is as simple as:
