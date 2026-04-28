@@ -85,6 +85,9 @@ class Server:
         if not config.loaded:
             config.load()
 
+        if sockets is None and config.bind is not None:
+            sockets = config.bind_sockets()
+
         self.lifespan = config.lifespan_class(config)
 
         message = "Started server process [%d]"
@@ -126,9 +129,7 @@ class Server:
             # Explicitly passed a list of open sockets.
             # We use this when the server is run from a Gunicorn worker.
 
-            def _share_socket(
-                sock: socket.SocketType,
-            ) -> socket.SocketType:  # pragma py-not-win32
+            def _share_socket(sock: socket.SocketType) -> socket.SocketType:  # pragma py-not-win32
                 # Windows requires the socket be explicitly shared across
                 # multiple workers (processes).
                 from socket import fromshare  # type: ignore[attr-defined]
@@ -199,10 +200,7 @@ class Server:
 
         if config.fd is not None:  # pragma: py-win32
             sock = listeners[0]
-            logger.info(
-                "Uvicorn running on socket %s (Press CTRL+C to quit)",
-                sock.getsockname(),
-            )
+            logger.info("Uvicorn running on socket %s (Press CTRL+C to quit)", sock.getsockname())
 
         elif config.uds is not None:  # pragma: py-win32
             logger.info("Uvicorn running on unix socket %s (Press CTRL+C to quit)", config.uds)
