@@ -421,14 +421,14 @@ class Config:
         assert not self.loaded
 
         if self.ssl_context_factory is not None:
-            if self.ssl_keyfile or self.ssl_certfile:
-                logger.warning(
-                    "`ssl_context_factory` takes precedence over `ssl_keyfile`/`ssl_certfile`; "
-                    "the latter are passed to the factory via the default factory only."
-                )
 
             def default_factory() -> ssl.SSLContext:
-                assert self.ssl_certfile, "`ssl_certfile` is required to build the default SSL context"
+                if not self.ssl_certfile:
+                    raise RuntimeError(
+                        "`default_ssl_context_factory()` requires `ssl_certfile` to be set on `Config`. "
+                        "Either pass `ssl_certfile` (and optionally `ssl_keyfile`) or build the `SSLContext` "
+                        "directly inside `ssl_context_factory` without calling the default factory."
+                    )
                 return create_ssl_context(
                     keyfile=self.ssl_keyfile,
                     certfile=self.ssl_certfile,

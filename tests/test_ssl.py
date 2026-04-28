@@ -179,23 +179,15 @@ def test_ssl_context_factory_mutates_default(
     assert config.ssl.minimum_version == ssl.TLSVersion.TLSv1_3
 
 
-def test_ssl_context_factory_warns_when_ssl_keyfile_also_set(
-    caplog: pytest.LogCaptureFixture,
-    tls_certificate_server_cert_path: str,
-    tls_certificate_private_key_path: str,
-) -> None:
+def test_default_ssl_context_factory_requires_ssl_certfile() -> None:
+    """Calling `default_ssl_context_factory()` without `ssl_certfile` raises a clear error."""
+
     def ssl_context_factory(config: Config, default_ssl_context_factory: DefaultFactory) -> ssl.SSLContext:
         return default_ssl_context_factory()
 
-    config = Config(
-        app=app,
-        ssl_keyfile=tls_certificate_private_key_path,
-        ssl_certfile=tls_certificate_server_cert_path,
-        ssl_context_factory=ssl_context_factory,
-    )
-    with caplog.at_level("WARNING", logger="uvicorn.error"):
+    config = Config(app=app, ssl_context_factory=ssl_context_factory)
+    with pytest.raises(RuntimeError, match="requires `ssl_certfile`"):
         config.load()
-    assert any("takes precedence" in record.message for record in caplog.records)
 
 
 def test_ssl_context_factory_must_return_ssl_context() -> None:
