@@ -138,6 +138,34 @@ The [SSL context](https://docs.python.org/3/library/ssl.html#ssl.SSLContext) can
 
 To understand more about the SSL context options, please refer to the [Python documentation](https://docs.python.org/3/library/ssl.html).
 
+For advanced scenarios that the flags above don't cover (e.g., mutual TLS, certificate pinning, custom `SSLContext.options`), pass an `ssl_context_factory` to `uvicorn.run()` or `Config`. The factory receives the `Config` instance and a `default_ssl_context_factory` callable that builds the standard context from the `ssl_*` settings, so you can either start from the default and mutate it or build your own from scratch:
+
+```python
+from __future__ import annotations
+
+import ssl
+from collections.abc import Callable
+
+import uvicorn
+from uvicorn.config import Config
+
+
+def ssl_context_factory(config: Config, default_ssl_context_factory: Callable[[], ssl.SSLContext]) -> ssl.SSLContext:
+    context = default_ssl_context_factory()
+    context.minimum_version = ssl.TLSVersion.TLSv1_3
+    return context
+
+
+uvicorn.run(
+    "main:app",
+    ssl_keyfile="key.pem",
+    ssl_certfile="cert.pem",
+    ssl_context_factory=ssl_context_factory,
+)
+```
+
+The factory is called inside each worker process, so it works with `--reload` and `--workers > 1`. The factory itself must be picklable in those modes (a top-level function is fine; lambdas are not).
+
 ## Resource Limits
 
 * `--limit-concurrency <int>` - Maximum number of concurrent connections or tasks to allow, before issuing HTTP 503 responses. Useful for ensuring known memory usage patterns even under over-resourced loads.
