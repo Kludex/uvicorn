@@ -537,7 +537,7 @@ class Config:
 
     def bind_socket(self) -> socket.socket:
         logger_args: list[str | int]
-        if self.uds:  # pragma: py-win32
+        if self.uds is not None:  # pragma: py-win32
             path = self.uds
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             try:
@@ -552,7 +552,7 @@ class Config:
             sock_name_format = "%s"
             color_message = "Uvicorn running on " + click.style(sock_name_format, bold=True) + " (Press CTRL+C to quit)"
             logger_args = [self.uds]
-        elif self.fd:  # pragma: py-win32
+        elif self.fd is not None:  # pragma: py-win32
             sock = socket.fromfd(self.fd, socket.AF_UNIX, socket.SOCK_STREAM)
             message = "Uvicorn running on socket %s (Press CTRL+C to quit)"
             fd_name_format = "%s"
