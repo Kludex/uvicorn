@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import socket
-import subprocess
 import sys
 from collections.abc import Callable, Iterator
 from contextlib import closing
@@ -554,6 +553,19 @@ def test_bind_fd_works_with_reload_or_workers(reload: bool, workers: int):  # pr
     fdsock.close()
 
 
+@pytest.fixture
+def stdin_socket() -> Iterator[socket.socket]:  # pragma: py-win32
+    with closing(socket.socket(socket.AF_INET)) as sock:
+        sock.bind(("127.0.0.1", 0))
+        saved_stdin = os.dup(0)
+        os.dup2(sock.fileno(), 0)
+        try:
+            yield sock
+        finally:
+            os.dup2(saved_stdin, 0)
+            os.close(saved_stdin)
+
+
 @pytest.mark.parametrize(
     "reload, workers",
     [
@@ -563,20 +575,13 @@ def test_bind_fd_works_with_reload_or_workers(reload: bool, workers: int):  # pr
     ids=["--reload=True --workers=1", "--reload=False --workers=2"],
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
-def test_bind_stdin_works_with_reload_or_workers(reload: bool, workers: int):  # pragma: py-win32
-    fdsock = socket.socket(socket.AF_INET)
-    fdsock.bind(("127.0.0.1", 0))
-    code = f"""
-from uvicorn.config import Config
-config = Config(app="tests.test_config:asgi_app", fd=0, reload={reload}, workers={workers})
-config.load()
-sock = config.bind_socket()
-assert sock.getsockname() == {fdsock.getsockname()}
-sock.close()
-    """
-    code = ";".join(code.strip().splitlines())
-    subprocess.check_call([sys.executable, "-c", code], stdin=fdsock.fileno())
-    fdsock.close()
+def test_bind_stdin_works_with_reload_or_workers(
+    reload: bool, workers: int, stdin_socket: socket.socket
+):  # pragma: py-win32
+    config = Config(app=asgi_app, fd=0, reload=reload, workers=workers)
+    config.load()
+    with closing(config.bind_socket()) as sock:
+        assert sock.getsockname() == stdin_socket.getsockname()
 
 
 @pytest.mark.parametrize(
