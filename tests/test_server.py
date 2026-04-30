@@ -142,17 +142,13 @@ async def test_limit_max_requests_jitter(
     config = Config(
         app=app, limit_max_requests=1, limit_max_requests_jitter=2, port=unused_tcp_port, http=http_protocol_cls
     )
-    server = Server(config=config)
-    limit = server.limit_max_requests
-    assert limit is not None
-    assert 1 <= limit <= 3
-    task = asyncio.create_task(server.serve())
-    while not server.started:
-        await asyncio.sleep(0.01)
-    async with httpx.AsyncClient() as client:
-        for _ in range(limit + 1):
-            await client.get(f"http://127.0.0.1:{unused_tcp_port}")
-    await task
+    async with run_server(config) as server:
+        limit = server.limit_max_requests
+        assert limit is not None
+        assert 1 <= limit <= 3
+        async with httpx.AsyncClient() as client:
+            tasks = [client.get(f"http://127.0.0.1:{unused_tcp_port}") for _ in range(limit + 1)]
+            await asyncio.gather(*tasks)
     assert f"Maximum request limit of {limit} exceeded. Terminating process." in caplog.text
 
 
