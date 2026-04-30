@@ -260,13 +260,21 @@ The factory is called inside each worker process, so it works with `--reload` an
 When running an application behind one or more proxies, certain information about the request is lost.
 To avoid this most proxies will add headers containing this information for downstream servers to read.
 
-Uvicorn currently supports the following headers:
+Uvicorn supports two header families, selected via `--proxy-headers <x-forwarded|forwarded>`:
 
-- `X-Forwarded-For` ([MDN Reference](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For))
-- `X-Forwarded-Proto`([MDN Reference](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-Proto))
+`x-forwarded` (default):
 
-Uvicorn can use these headers to correctly set the client and protocol in the request.
-However as anyone can set these headers you must configure which "clients" you will trust to have set them correctly.
+- `X-Forwarded-For` ([MDN Reference](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For)) - sets `scope["client"]`.
+- `X-Forwarded-Proto` ([MDN Reference](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-Proto)) - sets `scope["scheme"]`.
+- `X-Forwarded-Host` ([MDN Reference](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-Host)) - rewrites the `Host` request header.
+
+`forwarded`:
+
+- `Forwarded` ([RFC 7239](https://datatracker.ietf.org/doc/html/rfc7239)) - the standardized header that combines all of the above into a single value with `for=`, `proto=`, and `host=` parameters.
+
+The two modes are mutually exclusive: when one is selected, the other family is ignored entirely. This is intentional - silent fallback would let a client set whichever family the proxy is not configured for. Choose the mode that matches what your upstream proxy emits.
+
+However, as anyone can set these headers you must configure which "clients" you will trust to have set them correctly.
 
 Uvicorn can be configured to trust IP Addresses (e.g. `127.0.0.1`), IP Networks (e.g. `10.100.0.0/16`),
 or Literals (e.g. `/path/to/socket.sock`). When running from CLI these are configured using `--forwarded-allow-ips`.

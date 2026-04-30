@@ -9,7 +9,7 @@ import sys
 import warnings
 from collections.abc import Callable
 from configparser import RawConfigParser
-from typing import IO, Any, get_args
+from typing import IO, Any, Literal, get_args
 
 import click
 
@@ -223,10 +223,23 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     help="Enable/Disable colorized logging.",
 )
 @click.option(
-    "--proxy-headers/--no-proxy-headers",
+    "--proxy-headers",
+    type=click.Choice(["x-forwarded", "forwarded"]),
+    is_flag=False,
+    flag_value="x-forwarded",
+    default="x-forwarded",
+    show_default=True,
+    help="Which forwarding-header family to read. `x-forwarded` (default) reads "
+    "X-Forwarded-Proto / -For / -Host. `forwarded` reads the RFC 7239 `Forwarded` header. "
+    "Bare `--proxy-headers` means `x-forwarded` (matches the prior boolean default). "
+    "Use `--no-proxy-headers` to disable.",
+)
+@click.option(
+    "--no-proxy-headers",
+    "no_proxy_headers",
     is_flag=True,
-    default=True,
-    help="Enable/Disable X-Forwarded-Proto, X-Forwarded-For to populate url scheme and remote address info.",
+    default=False,
+    help="Disable proxy header parsing.",
 )
 @click.option(
     "--server-header/--no-server-header",
@@ -412,7 +425,8 @@ def main(
     log_config: str,
     log_level: str,
     access_log: bool,
-    proxy_headers: bool,
+    proxy_headers: Literal["x-forwarded", "forwarded"],
+    no_proxy_headers: bool,
     server_header: bool,
     date_header: bool,
     forwarded_allow_ips: str,
@@ -438,6 +452,8 @@ def main(
     reset_contextvars: bool,
     factory: bool,
 ) -> None:
+    proxy_headers_enabled = not no_proxy_headers
+    proxy_headers_mode = proxy_headers
     run(
         app,
         host=host,
@@ -464,7 +480,8 @@ def main(
         reload_excludes=reload_excludes or None,
         reload_delay=reload_delay,
         workers=workers,
-        proxy_headers=proxy_headers,
+        proxy_headers=proxy_headers_enabled,
+        proxy_headers_mode=proxy_headers_mode,
         server_header=server_header,
         date_header=date_header,
         forwarded_allow_ips=forwarded_allow_ips,
@@ -520,6 +537,7 @@ def run(
     log_level: str | int | None = None,
     access_log: bool = True,
     proxy_headers: bool = True,
+    proxy_headers_mode: Literal["x-forwarded", "forwarded"] = "x-forwarded",
     server_header: bool = True,
     date_header: bool = True,
     forwarded_allow_ips: list[str] | str | None = None,
@@ -576,6 +594,7 @@ def run(
         log_level=log_level,
         access_log=access_log,
         proxy_headers=proxy_headers,
+        proxy_headers_mode=proxy_headers_mode,
         server_header=server_header,
         date_header=date_header,
         forwarded_allow_ips=forwarded_allow_ips,

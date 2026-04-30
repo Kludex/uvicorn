@@ -115,7 +115,7 @@ Note that WSGI mode always disables WebSocket support, as it is not supported by
 ## HTTP
 
 * `--root-path <str>` - Set the ASGI `root_path` for applications submounted below a given URL path. **Default:** *""*.
-* `--proxy-headers / --no-proxy-headers` - Enable/Disable X-Forwarded-Proto, X-Forwarded-For to populate remote address info. Defaults to enabled, but is restricted to only trusting connecting IPs in the `forwarded-allow-ips` configuration.
+* `--proxy-headers <x-forwarded|forwarded>` - Which forwarding-header family to read to populate remote address info, scheme, and host. `x-forwarded` (default) reads `X-Forwarded-Proto`, `X-Forwarded-For`, and `X-Forwarded-Host`. `forwarded` reads the standardized `Forwarded` header from [RFC 7239](https://datatracker.ietf.org/doc/html/rfc7239). Modes are mutually exclusive: when one is selected, the other family is ignored entirely. Bare `--proxy-headers` means `x-forwarded` (matching the prior boolean default). Use `--no-proxy-headers` to disable. Header parsing is restricted to only trusting connecting IPs in the `forwarded-allow-ips` configuration.
 * `--forwarded-allow-ips <comma-separated-list>` - Comma separated list of IP Addresses, IP Networks, or literals (e.g. UNIX Socket path) to trust with proxy headers. Defaults to the `$FORWARDED_ALLOW_IPS` environment variable if available, or '127.0.0.1'. The literal `'*'` means trust everything.
 * `--server-header / --no-server-header` - Enable/Disable default `Server` header. **Default:** *True*.
 * `--date-header / --no-date-header` - Enable/Disable default `Date` header. **Default:** *True*.
