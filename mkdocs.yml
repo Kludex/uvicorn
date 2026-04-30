@@ -62,7 +62,6 @@ nav:
       - Docker: deployment/docker.md
   - Release Notes: release-notes.md
   - Contributing: contributing.md
-  - Sponsorship: sponsorship.md
 
 extra:
   analytics:
@@ -79,6 +78,9 @@ extra:
       link: https://www.linkedin.com/in/marcelotryle
     - icon: fontawesome/solid/globe
       link: https://fastapiexpert.com
+
+extra_css:
+  - css/extra.css
 
 markdown_extensions:
   - attr_list
