@@ -252,7 +252,7 @@ class Config:
         self.interface = interface
         self.reload = reload
         self.reload_delay = reload_delay
-        self.workers = workers or 1
+        self.workers = workers
         self.proxy_headers = proxy_headers
         self.server_header = server_header
         self.date_header = date_header
@@ -336,7 +336,7 @@ class Config:
             logger.info("Loading environment from '%s'", env_file)
             load_dotenv(dotenv_path=env_file)
 
-        if workers is None and "WEB_CONCURRENCY" in os.environ:
+        if self.workers is None and "WEB_CONCURRENCY" in os.environ:
             self.workers = int(os.environ["WEB_CONCURRENCY"])
 
         self.forwarded_allow_ips: list[str] | str
@@ -345,7 +345,7 @@ class Config:
         else:
             self.forwarded_allow_ips = forwarded_allow_ips  # pragma: full coverage
 
-        if self.reload and self.workers > 1:
+        if self.reload and self.workers is not None:
             logger.warning('"workers" flag is ignored when reloading is enabled.')
 
     @property
@@ -363,7 +363,7 @@ class Config:
 
     @property
     def use_subprocess(self) -> bool:
-        return bool(self.reload or self.workers > 1)
+        return self.reload or self.workers is not None
 
     def configure_logging(self) -> None:
         logging.addLevelName(TRACE_LOG_LEVEL, "TRACE")

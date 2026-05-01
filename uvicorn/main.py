@@ -114,7 +114,7 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     default=None,
     type=int,
     help="Number of worker processes. Defaults to the $WEB_CONCURRENCY environment"
-    " variable if available, or 1. Not valid with --reload.",
+    " variable if available. Not valid with --reload.",
 )
 @click.option(
     "--loop",
@@ -407,7 +407,7 @@ def main(
     reload_includes: list[str],
     reload_excludes: list[str],
     reload_delay: float,
-    workers: int,
+    workers: int | None,
     env_file: str,
     log_config: str,
     log_level: str,
@@ -601,7 +601,7 @@ def run(
         h11_max_incomplete_event_size=h11_max_incomplete_event_size,
         reset_contextvars=reset_contextvars,
     )
-    if (config.reload or config.workers > 1) and not isinstance(app, str):
+    if config.use_subprocess and not isinstance(app, str):
         logger = logging.getLogger("uvicorn.error")
         logger.warning("You must pass the application as an import string to enable 'reload' or 'workers'.")
         sys.exit(1)
@@ -613,7 +613,7 @@ def run(
         if config.should_reload:
             sock = config.bind_socket()
             ChangeReload(config, target=server.run, sockets=[sock]).run()
-        elif config.workers > 1:
+        elif config.workers is not None:
             sock = config.bind_socket()
             Multiprocess(config, target=server.run, sockets=[sock]).run()
         else:
@@ -621,10 +621,10 @@ def run(
     except KeyboardInterrupt:  # pragma: full coverage
         pass
     finally:
-        if config.uds and os.path.exists(config.uds):
+        if config.uds is not None and os.path.exists(config.uds):
             os.remove(config.uds)  # pragma: py-win32
 
-    if not server.started and not config.should_reload and config.workers == 1:
+    if not (server.started or config.use_subprocess):
         sys.exit(STARTUP_FAILURE)
 
 

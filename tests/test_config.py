@@ -513,14 +513,14 @@ def test_ws_max_queue() -> None:
 @pytest.mark.parametrize(
     "reload, workers",
     [
-        (True, 1),
+        (True, None),
         (False, 2),
     ],
-    ids=["--reload=True --workers=1", "--reload=False --workers=2"],
+    ids=["--reload=True --workers=None", "--reload=False --workers=2"],
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
 def test_bind_unix_socket_works_with_reload_or_workers(
-    tmp_path: Path, reload: bool, workers: int, short_socket_name: str
+    tmp_path: Path, reload: bool, workers: int | None, short_socket_name: str
 ):  # pragma: py-win32
     config = Config(app=asgi_app, uds=short_socket_name, reload=reload, workers=workers)
     config.load()
@@ -534,13 +534,13 @@ def test_bind_unix_socket_works_with_reload_or_workers(
 @pytest.mark.parametrize(
     "reload, workers",
     [
-        (True, 1),
+        (True, None),
         (False, 2),
     ],
-    ids=["--reload=True --workers=1", "--reload=False --workers=2"],
+    ids=["--reload=True --workers=None", "--reload=False --workers=2"],
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
-def test_bind_fd_works_with_reload_or_workers(reload: bool, workers: int):  # pragma: py-win32
+def test_bind_fd_works_with_reload_or_workers(reload: bool, workers: int | None):  # pragma: py-win32
     fdsock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     fd = fdsock.fileno()
     config = Config(app=asgi_app, fd=fd, reload=reload, workers=workers)
@@ -569,14 +569,14 @@ def stdin_socket() -> Iterator[socket.socket]:  # pragma: py-win32
 @pytest.mark.parametrize(
     "reload, workers",
     [
-        (True, 1),
+        (True, None),
         (False, 2),
     ],
-    ids=["--reload=True --workers=1", "--reload=False --workers=2"],
+    ids=["--reload=True --workers=None", "--reload=False --workers=2"],
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
 def test_bind_stdin_works_with_reload_or_workers(
-    reload: bool, workers: int, stdin_socket: socket.socket
+    reload: bool, workers: int | None, stdin_socket: socket.socket
 ):  # pragma: py-win32
     config = Config(app=asgi_app, fd=0, reload=reload, workers=workers)
     config.load()
@@ -587,24 +587,24 @@ def test_bind_stdin_works_with_reload_or_workers(
 @pytest.mark.parametrize(
     "reload, workers, expected",
     [
-        (True, 1, True),
-        (False, 2, True),
-        (False, 1, False),
+        (True, None, True),
+        (False, 1, True),
+        (False, None, False),
     ],
     ids=[
-        "--reload=True --workers=1",
-        "--reload=False --workers=2",
+        "--reload=True --workers=None",
         "--reload=False --workers=1",
+        "--reload=False --workers=None",
     ],
 )
-def test_config_use_subprocess(reload: bool, workers: int, expected: bool):
+def test_config_use_subprocess(reload: bool, workers: int | None, expected: bool):
     config = Config(app=asgi_app, reload=reload, workers=workers)
     config.load()
     assert config.use_subprocess == expected
 
 
 def test_warn_when_using_reload_and_workers(caplog: pytest.LogCaptureFixture) -> None:
-    Config(app=asgi_app, reload=True, workers=2)
+    Config(app=asgi_app, reload=True, workers=1)
     assert len(caplog.records) == 1
     assert '"workers" flag is ignored when reloading is enabled.' in caplog.records[0].message
 

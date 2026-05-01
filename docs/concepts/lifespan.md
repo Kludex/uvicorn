@@ -5,8 +5,8 @@ This allows you to run **startup** and **shutdown** events for your application.
 The lifespan protocol is useful for initializing resources that need to be available throughout
 the lifetime of the application, such as database connections, caches, or other services.
 
-Keep in mind that the lifespan is executed **only once per application instance**. If you have
-multiple workers, each worker will execute the lifespan independently.
+Keep in mind that the lifespan is executed **only once per application instance**. If you use
+workers, each worker will execute the lifespan independently.
 
 ## Lifespan Architecture
 
