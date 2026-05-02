@@ -188,8 +188,15 @@ class HttpToolsProtocol(asyncio.Protocol):
         return True
 
     def _should_upgrade_to_h2c(self) -> bool:
-        """Check if HTTP/2 protocol is available for h2c upgrade."""
-        return self.h2_protocol_class is not None
+        """Check if HTTP/2 protocol is available for h2c upgrade.
+
+        h2c is HTTP/2 cleartext only; refuse it on TLS connections so a client
+        cannot bypass ALPN by sending `Upgrade: h2c` over a session that
+        negotiated `http/1.1`. HTTP/2 over TLS must come through ALPN.
+        """
+        if self.h2_protocol_class is None:
+            return False
+        return not is_ssl(self.transport)
 
     def _unsupported_upgrade_warning(self) -> None:
         self.logger.warning("Unsupported upgrade request.")

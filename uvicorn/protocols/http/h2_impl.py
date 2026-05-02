@@ -55,6 +55,11 @@ _HTTP2_FORBIDDEN_HEADERS = frozenset(
     {b"connection", b"keep-alive", b"proxy-connection", b"transfer-encoding", b"upgrade"}
 )
 
+# Hard cap on streams the peer may open and then immediately reset before any
+# response is generated. Past this threshold the connection is torn down so
+# a client cannot make us spin up unbounded ASGI tasks at line rate.
+_MAX_UNMATCHED_RESETS = 100
+
 
 class HTTP2Protocol(asyncio.Protocol):
     """Abstract base class for HTTP/2 protocol implementations.
@@ -160,6 +165,12 @@ class H2Protocol(HTTP2Protocol):
         # Set when the server requests shutdown while streams are still active.
         self._shutdown_requested = False
 
+        # Counts streams opened by the peer that were cancelled before the
+        # response started. Limits churn from clients that open and immediately
+        # reset streams in a tight loop. Once over the threshold the connection
+        # is closed.
+        self._unmatched_resets = 0
+
     @staticmethod
     def is_valid_h2c_settings(value: bytes) -> bool:
         """Return True if `value` is a valid base64url-encoded SETTINGS payload.
@@ -246,15 +257,24 @@ class H2Protocol(HTTP2Protocol):
         """Handle the initial request that triggered the h2c upgrade."""
         stream_id = 1  # Upgraded request is always stream 1
 
-        # Parse headers into scope format (exclude connection/upgrade related headers)
+        # RFC 7230 says hop-by-hop headers and any names listed in `Connection`
+        # are scoped to the HTTP/1.1 connection. Per RFC 7540 section 8.1.2.2,
+        # they MUST NOT appear in HTTP/2 messages either, so drop them before
+        # the request crosses into the HTTP/2 scope.
+        connection_tokens: set[bytes] = set()
+        for name, value in headers:
+            if name == b"connection":
+                connection_tokens.update(token.lower().strip() for token in value.split(b","))
+        forbidden = _HTTP2_FORBIDDEN_HEADERS | connection_tokens | {b"http2-settings"}
+
         scope_headers: list[tuple[bytes, bytes]] = []
         host: bytes = b""
         for name, value in headers:
-            # Skip HTTP/1.1 specific headers that don't apply to HTTP/2
-            if name.lower() not in (b"connection", b"upgrade", b"http2-settings"):
-                scope_headers.append((name, value))
-                if name.lower() == b"host":
-                    host = value
+            if name in forbidden:
+                continue
+            scope_headers.append((name, value))
+            if name == b"host":
+                host = value
 
         # Extract path and query string
         raw_path, _, query_string = path.partition("?")
@@ -568,6 +588,21 @@ class H2Protocol(HTTP2Protocol):
                 stream.cycle.disconnected = True
                 stream.cycle.disconnect_event.set()
                 stream.cycle.message_event.set()
+                # If the response had not started, count this as an unmatched
+                # reset. Bound the budget so a peer cannot drive ASGI task
+                # churn by open+reset in a tight loop.
+                if not stream.cycle.response_started:
+                    self._unmatched_resets += 1
+                    if self._unmatched_resets > _MAX_UNMATCHED_RESETS:
+                        self.logger.warning(
+                            "Closing HTTP/2 connection after %d unmatched stream resets.",
+                            self._unmatched_resets,
+                        )
+                        self.conn.close_connection(error_code=ErrorCodes.ENHANCE_YOUR_CALM)
+                        self.transport.write(self.conn.data_to_send())
+                        self.transport.close()
+                        del self.streams[stream_id]
+                        return
             del self.streams[stream_id]
             # Run the same housekeeping `on_response_complete` would have run
             # (keep-alive timer or pending-shutdown close) so a reset cancelling
@@ -1056,7 +1091,32 @@ class RequestResponseCycle:
                     raise RuntimeError("Response content shorter than Content-Length")
 
             if body or not more_body:
-                self.stream.send_data(body, end_stream=not more_body)
+                # Chunk so a single oversized ASGI body does not blow past the
+                # high-water mark in one go. Yield between chunks so the peer
+                # has a chance to send WINDOW_UPDATE and the cycle observes
+                # `h2_write_paused` rather than buffering megabytes at once.
+                offset = 0
+                total = len(body)
+                while offset < total:
+                    if not self.protocol.h2_write_paused.is_set() and not self.disconnected:
+                        drain = asyncio.create_task(self.protocol.h2_write_paused.wait())
+                        disconnect = asyncio.create_task(self.disconnect_event.wait())
+                        try:
+                            await asyncio.wait({drain, disconnect}, return_when=asyncio.FIRST_COMPLETED)
+                        finally:
+                            for task in (drain, disconnect):
+                                if not task.done():
+                                    task.cancel()
+                                    with contextlib.suppress(asyncio.CancelledError):
+                                        await task
+                    if self.disconnected:
+                        return
+                    chunk = body[offset : offset + HIGH_WATER_LIMIT]
+                    offset += len(chunk)
+                    is_final = offset >= total and not more_body
+                    self.stream.send_data(chunk, end_stream=is_final)
+                if not body and not more_body:
+                    self.stream.send_data(b"", end_stream=True)
 
             # Handle response completion
             if not more_body:

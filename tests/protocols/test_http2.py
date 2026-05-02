@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import Callable
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
@@ -514,14 +515,14 @@ async def test_non_ascii_response_header_bytes_are_preserved() -> None:
 
 
 async def test_send_data_pauses_writer_when_buffer_grows() -> None:
-    """When the peer withholds WINDOW_UPDATE, the per-stream buffer grows.
-    `send_data` must engage the HTTP/2 backpressure event so the ASGI app
-    yields instead of letting the buffer grow unbounded."""
+    """When the peer withholds WINDOW_UPDATE, the cycle must engage HTTP/2
+    backpressure so a large ASGI body chunk does not buffer megabytes at once.
+    The cycle splits the body into HIGH_WATER_LIMIT-sized pieces and awaits
+    drain between them; this test confirms the task stays parked until the
+    peer opens the windows."""
     response_started = asyncio.Event()
-    h2_paused_observed = False
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
-        nonlocal h2_paused_observed
         await send(
             {
                 "type": "http.response.start",
@@ -530,21 +531,19 @@ async def test_send_data_pauses_writer_when_buffer_grows() -> None:
             }
         )
         response_started.set()
-        # The default initial window is 65 535 bytes; a 200 KiB chunk forces
-        # well over the high water mark of 64 KiB into the pending buffer.
-        await send({"type": "http.response.body", "body": b"y" * 200_000, "more_body": True})
-        h2_paused_observed = not protocol.h2_write_paused.is_set()
-        await send({"type": "http.response.body", "body": b"", "more_body": False})
+        await send({"type": "http.response.body", "body": b"y" * 200_000, "more_body": False})
 
     protocol = get_connected_protocol(app)
     protocol.transport.clear_buffer()
     protocol.data_received(create_h2_request("GET", "/"))
     task = asyncio.create_task(protocol.loop.run_one())
     await response_started.wait()
-    for _ in range(3):
+    # Yield enough times for the cycle to fill the initial window and park on
+    # `h2_write_paused`. The default initial window is 65 535 bytes; the
+    # 200 KiB body therefore cannot fit without WINDOW_UPDATE.
+    for _ in range(20):
         await asyncio.sleep(0)
-
-    assert h2_paused_observed
+    assert not task.done()
     assert not protocol.h2_write_paused.is_set()
 
     # Open the windows so the rest of the buffer can flush.
@@ -563,6 +562,80 @@ async def test_send_data_pauses_writer_when_buffer_grows() -> None:
     await task
 
     assert protocol.h2_write_paused.is_set()
+
+
+async def test_repeated_open_then_reset_closes_connection(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If a peer keeps opening streams and immediately resetting them before
+    a response starts, the connection must close after a bounded number of
+    such streams instead of letting ASGI task churn run unbounded."""
+    monkeypatch.setattr("uvicorn.protocols.http.h2_impl._MAX_UNMATCHED_RESETS", 2)
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        msg = await receive()
+        assert msg["type"] == "http.disconnect"
+
+    protocol = get_connected_protocol(app)
+    protocol.transport.clear_buffer()
+    h2_protocol = cast(H2Protocol, protocol)
+
+    client_config = H2Configuration(client_side=True, header_encoding=None)
+    client_conn = H2Connection(config=client_config)
+    client_conn.initiate_connection()
+    protocol.data_received(client_conn.data_to_send())
+
+    # Open + reset streams one at a time; drain the ASGI cycle for each so its
+    # coroutine is awaited before the next iteration. The connection closes
+    # mid-loop once `_unmatched_resets` crosses the configured threshold.
+    for stream_id in (1, 3, 5, 7):
+        if protocol.transport.is_closing():
+            break
+        client_conn.send_headers(
+            stream_id,
+            [
+                (b":method", b"POST"),
+                (b":path", b"/"),
+                (b":scheme", b"https"),
+                (b":authority", b"localhost"),
+            ],
+            end_stream=False,
+        )
+        client_conn.reset_stream(stream_id)
+        protocol.data_received(client_conn.data_to_send())
+        while protocol.loop._tasks:
+            await protocol.loop.run_one()
+
+    assert protocol.transport.is_closing()
+    assert h2_protocol._unmatched_resets > 2
+
+
+async def test_send_drains_before_starting_response() -> None:
+    """If `h2_write_paused` is already cleared when `send` is called, the
+    cycle must drain before pushing any response bytes onto the wire."""
+    protocol = get_connected_protocol(Response("ok"))
+    h2_protocol = cast(H2Protocol, protocol)
+
+    protocol.data_received(create_h2_request("GET", "/"))
+    cycle = h2_protocol.streams[1].cycle
+    assert cycle is not None
+    h2_protocol.h2_write_paused.clear()
+
+    async def open_window() -> None:
+        await asyncio.sleep(0)
+        h2_protocol.h2_write_paused.set()
+
+    flipper = asyncio.create_task(open_window())
+    try:
+        await asyncio.wait_for(cycle.send({"type": "http.response.start", "status": 200, "headers": []}), timeout=1.0)
+    finally:
+        flipper.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await flipper
+
+    # Drain the still-running run_asgi coroutine that `data_received` spawned
+    # so xdist doesn't flag a leaked coroutine.
+    while protocol.loop._tasks:
+        with contextlib.suppress(Exception):
+            await protocol.loop.run_one()
 
 
 async def test_hop_by_hop_response_headers_are_stripped() -> None:
