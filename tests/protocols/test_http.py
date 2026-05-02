@@ -1192,6 +1192,16 @@ async def test_h2c_upgrade_disabled_with_http2_false(http_protocol_cls: type[HTT
             h2c_upgrade_request(extra_settings=b"AAMAAABkAAQBAAAAAAIAAAAA"),
             id="duplicate_http2_settings_header",
         ),
+        # Requests with a body cannot be safely upgraded - the HTTP/1.1 body would
+        # need to feed stream 1 in HTTP/2, and we don't carry it across the switch.
+        pytest.param(
+            h2c_upgrade_request(method=b"POST", content_length=b"5", body=b"hello"),
+            id="content_length_body",
+        ),
+        pytest.param(
+            h2c_upgrade_request(method=b"POST", transfer_encoding=b"chunked"),
+            id="transfer_encoding_chunked",
+        ),
     ],
 )
 async def test_h2c_upgrade_rejected_for_malformed_request(

@@ -132,17 +132,23 @@ H2C_UPGRADE_REQUEST = b"\r\n".join(
 
 def h2c_upgrade_request(
     *,
+    method: bytes = b"GET",
     connection: bytes | None = b"Upgrade, HTTP2-Settings",
     upgrade: bytes | None = b"h2c",
     settings: bytes | None = b"AAMAAABkAAQBAAAAAAIAAAAA",
     extra_settings: bytes | None = None,
+    content_length: bytes | None = None,
+    transfer_encoding: bytes | None = None,
+    body: bytes = b"",
 ) -> bytes:
     """Build an h2c upgrade request, optionally with malformed pieces.
 
-    Set any keyword to None to omit that header. ``extra_settings`` adds a second
+    Set any keyword to None to omit that header. `extra_settings` adds a second
     HTTP2-Settings header (used to assert duplicate-header rejection).
+    `content_length` / `transfer_encoding` / `body` build a request that
+    carries a body so tests can assert the upgrade is refused.
     """
-    lines = [b"GET / HTTP/1.1", b"Host: example.org"]
+    lines = [method + b" / HTTP/1.1", b"Host: example.org"]
     if connection is not None:
         lines.append(b"Connection: " + connection)
     if upgrade is not None:
@@ -151,5 +157,9 @@ def h2c_upgrade_request(
         lines.append(b"HTTP2-Settings: " + settings)
     if extra_settings is not None:
         lines.append(b"HTTP2-Settings: " + extra_settings)
-    lines.extend([b"", b""])
+    if content_length is not None:
+        lines.append(b"Content-Length: " + content_length)
+    if transfer_encoding is not None:
+        lines.append(b"Transfer-Encoding: " + transfer_encoding)
+    lines.extend([b"", body])
     return b"\r\n".join(lines)

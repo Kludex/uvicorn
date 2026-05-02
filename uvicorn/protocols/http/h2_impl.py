@@ -388,6 +388,10 @@ class H2Protocol(HTTP2Protocol):
             if name[0:1] == b":":
                 # Pseudo-headers (HTTP/2 specific)
                 pseudo_headers[name] = value
+            elif name.lower() == b"host":
+                # `:authority` takes precedence; drop any explicit `host` header
+                # so the scope only carries one source of truth.
+                continue
             else:
                 scope_headers.append((name.lower(), value))
 

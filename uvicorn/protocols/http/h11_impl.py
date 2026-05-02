@@ -198,7 +198,8 @@ class H11Protocol(asyncio.Protocol):
     def _get_h2c_settings(self, connection_tokens: list[bytes]) -> bytes | None:
         # Per RFC 7540 section 3.2, an h2c upgrade requires the `HTTP2-Settings`
         # connection-option and exactly one valid `HTTP2-Settings` header field whose value
-        # is a base64url-encoded SETTINGS frame payload.
+        # is a base64url-encoded SETTINGS frame payload. Requests that carry a body cannot
+        # be upgraded because we'd lose the body bytes when we hand stream 1 to h2.
         # Returns the validated raw header value, or None if the upgrade is not valid.
         if b"http2-settings" not in connection_tokens:
             return None
@@ -208,6 +209,10 @@ class H11Protocol(asyncio.Protocol):
                 if seen is not None or not value:
                     return None
                 seen = value
+            elif name == b"content-length" and value not in (b"", b"0"):
+                return None
+            elif name == b"transfer-encoding":
+                return None
         if seen is None:
             return None
         assert self.h2_protocol_class is not None
