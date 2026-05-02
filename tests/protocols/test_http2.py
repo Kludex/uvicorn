@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
@@ -12,6 +13,7 @@ from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope, WWWScop
 from uvicorn.config import Config
 from uvicorn.lifespan.off import LifespanOff
 from uvicorn.lifespan.on import LifespanOn
+from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT
 from uvicorn.server import ServerState
 
 try:
@@ -377,6 +379,31 @@ async def test_authority_replaces_host_header() -> None:
     assert received_scope is not None
     host_headers = [value for name, value in received_scope["headers"] if name == b"host"]
     assert host_headers == [b"primary.example.org"]
+
+
+async def test_resume_reading_waits_for_other_buffered_streams() -> None:
+    """If one stream's request body is buffered above the limit, ending or
+    consuming a different stream must NOT release backpressure on the
+    transport - otherwise the slow stream would keep filling memory."""
+    protocol = get_connected_protocol(Response("ok"))
+    h2_protocol = cast(H2Protocol, protocol)
+
+    # Inject a fake "active" stream with a body buffer above the high-water mark.
+    fake_cycle = SimpleNamespace(body=b"x" * (HIGH_WATER_LIMIT + 1))
+    fake_stream = SimpleNamespace(cycle=fake_cycle)
+    h2_protocol.streams[3] = fake_stream  # type: ignore[assignment]
+    protocol.flow.pause_reading()
+    assert protocol.flow.read_paused
+
+    # Asking the protocol to resume reading should be a no-op while stream 3
+    # still has too much buffered.
+    h2_protocol.resume_reading_if_idle()
+    assert protocol.flow.read_paused
+
+    # Once the slow stream drains under the limit reads can resume.
+    fake_cycle.body = b""
+    h2_protocol.resume_reading_if_idle()
+    assert not protocol.flow.read_paused
 
 
 async def test_early_response_drops_remaining_request_body() -> None:

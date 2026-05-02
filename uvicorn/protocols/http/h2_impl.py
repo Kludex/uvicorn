@@ -155,7 +155,10 @@ class H2Protocol(HTTP2Protocol):
         catches every case h2 would reject after the upgrade was committed.
         """
         try:
-            base64.urlsafe_b64decode(value)
+            # Strict validation rejects characters outside the base64url alphabet
+            # that `urlsafe_b64decode` would otherwise silently strip
+            # (e.g. `AAMAAABk!!`).
+            base64.b64decode(value.replace(b"-", b"+").replace(b"_", b"/"), validate=True)
         except (binascii.Error, ValueError):
             return False
         try:
@@ -504,9 +507,18 @@ class H2Protocol(HTTP2Protocol):
             return
 
         if stream.cycle:
-            self.flow.resume_reading()
+            self.resume_reading_if_idle()
             stream.cycle.more_body = False
             stream.cycle.message_event.set()
+
+    def resume_reading_if_idle(self) -> None:
+        """Resume reads only if no other stream is still over the body buffer
+        high-water mark. Otherwise the slow stream's buffer would keep growing
+        while a fast peer ships frames on a sibling stream."""
+        for other in self.streams.values():
+            if other.cycle and len(other.cycle.body) > HIGH_WATER_LIMIT:
+                return
+        self.flow.resume_reading()
 
     def handle_stream_reset(self, event: StreamReset) -> None:
         stream_id = event.stream_id
@@ -995,7 +1007,10 @@ class RequestResponseCycle:
 
     async def receive(self) -> ASGIReceiveEvent:
         if not self.disconnected and not self.response_complete:
-            self.flow.resume_reading()
+            # The app has consumed what it had buffered, so it is safe to
+            # resume reads as long as no concurrent stream is still over the
+            # body buffer high-water mark.
+            self.protocol.resume_reading_if_idle()
             await self.message_event.wait()
             self.message_event.clear()
 
