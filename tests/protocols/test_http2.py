@@ -309,6 +309,45 @@ async def test_shutdown_during_idle():
     assert protocol.transport.is_closing()
 
 
+async def test_early_response_drops_remaining_request_body() -> None:
+    """If the app sends a complete response before consuming the body, the
+    client may still ship the remaining DATA frames. The server must drop them
+    rather than reset a stream hyper-h2 already considers closed."""
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 413,
+                "headers": [(b"content-type", b"text/plain")],
+            }
+        )
+        await send({"type": "http.response.body", "body": b"too big", "more_body": False})
+
+    protocol = get_connected_protocol(app)
+    protocol.transport.clear_buffer()
+
+    client_config = H2Configuration(client_side=True, header_encoding="utf-8")
+    client_conn = H2Connection(config=client_config)
+    client_conn.initiate_connection()
+    client_conn.send_headers(
+        1,
+        [(":method", "POST"), (":path", "/"), (":scheme", "https"), (":authority", "localhost")],
+        end_stream=False,
+    )
+    protocol.data_received(client_conn.data_to_send())
+    await protocol.loop.run_one()
+
+    # The app already finished, so the stream is closed on the server side.
+    h2_protocol = cast(H2Protocol, protocol)
+    assert 1 not in h2_protocol.streams
+
+    # The client now sends the remainder of the body (it didn't see the
+    # response yet). This must not raise a protocol error.
+    client_conn.send_data(1, b"x" * 1000, end_stream=True)
+    protocol.data_received(client_conn.data_to_send())
+
+
 async def test_non_ascii_response_header_bytes_are_preserved() -> None:
     """ASGI lets headers be raw bytes. The HTTP/2 path must not Latin-1-decode
     them and let h2 re-encode as UTF-8, which would corrupt the wire bytes."""

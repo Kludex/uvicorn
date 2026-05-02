@@ -139,6 +139,10 @@ class H2Protocol(HTTP2Protocol):
         # Stream management - maps stream_id to H2Stream
         self.streams: dict[int, H2Stream] = {}
 
+        # Bytes buffered across every active stream awaiting a WINDOW_UPDATE.
+        # Used to apply connection-wide write backpressure on the ASGI app.
+        self.pending_bytes = 0
+
         # Set when the server requests shutdown while streams are still active.
         self._shutdown_requested = False
 
@@ -455,14 +459,11 @@ class H2Protocol(HTTP2Protocol):
         stream_id = event.stream_id
         data = event.data
 
-        if stream_id not in self.streams:  # pragma: no cover
-            # Stream not found - send protocol error
-            self.conn.reset_stream(stream_id, error_code=ErrorCodes.PROTOCOL_ERROR)
-            self.transport.write(self.conn.data_to_send())
-            return
-
-        stream = self.streams[stream_id]
-        if stream.cycle and not stream.cycle.response_complete:
+        # The stream is gone if the app sent a complete response before
+        # consuming the request body and we already cleaned it up. Drop the
+        # data instead of resetting a stream hyper-h2 already considers closed.
+        stream = self.streams.get(stream_id)
+        if stream is not None and stream.cycle and not stream.cycle.response_complete:
             stream.cycle.body += data
             if len(stream.cycle.body) > HIGH_WATER_LIMIT:  # pragma: no cover
                 self.flow.pause_reading()
@@ -475,13 +476,13 @@ class H2Protocol(HTTP2Protocol):
     def handle_stream_ended(self, event: StreamEnded) -> None:
         stream_id = event.stream_id
 
-        if stream_id not in self.streams:  # pragma: no cover
-            # Stream not found - send stream closed error
-            self.conn.reset_stream(stream_id, error_code=ErrorCodes.STREAM_CLOSED)
-            self.transport.write(self.conn.data_to_send())
+        # The stream may have been cleaned up already if the app sent a
+        # complete response before the request body finished. Just drop the
+        # event in that case.
+        stream = self.streams.get(stream_id)
+        if stream is None:
             return
 
-        stream = self.streams[stream_id]
         if stream.cycle:
             self.flow.resume_reading()
             stream.cycle.more_body = False
@@ -701,15 +702,16 @@ class H2Stream:
         if data:
             self._pending_chunks.append(data)
             self._pending_size += len(data)
+            self.protocol.pending_bytes += len(data)
         if end_stream:
             self._pending_end_stream = True
         self.flush_pending_data()
 
-        # Apply backpressure on the ASGI cycle when the per-stream buffer
+        # Apply backpressure on the ASGI cycle when the connection-wide buffer
         # outgrows the high water mark. The cycle's `send` awaits
         # `flow.drain()`, so the app yields until the peer sends WINDOW_UPDATE
         # frames and the buffer drains in `flush_pending_data`.
-        if self._pending_size > HIGH_WATER_LIMIT:
+        if self.protocol.pending_bytes > HIGH_WATER_LIMIT:
             self.flow.pause_writing()
 
     def _pop_chunk(self, size: int) -> bytes:
@@ -717,10 +719,13 @@ class H2Stream:
         head = self._pending_chunks[0]
         if len(head) <= size:
             self._pending_chunks.popleft()
-            self._pending_size -= len(head)
+            popped = len(head)
+            self._pending_size -= popped
+            self.protocol.pending_bytes -= popped
             return head
         self._pending_chunks[0] = head[size:]
         self._pending_size -= size
+        self.protocol.pending_bytes -= size
         return head[:size]
 
     def flush_pending_data(self) -> None:
@@ -746,8 +751,8 @@ class H2Stream:
             self.transport.write(self.conn.data_to_send())
             self._pending_end_stream = False
 
-        # Release backpressure once the buffer has drained below the limit.
-        if self._pending_size <= HIGH_WATER_LIMIT:
+        # Release backpressure once the connection-wide buffer drains below the limit.
+        if self.protocol.pending_bytes <= HIGH_WATER_LIMIT:
             self.flow.resume_writing()
 
         # If all pending data has been flushed and cleanup was deferred, do it now
