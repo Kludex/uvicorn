@@ -46,6 +46,7 @@ class MockProtocol(asyncio.Protocol):
     scope: Scope
     connections: set[Any]
     flow: Any
+    h2_write_paused: asyncio.Event
 
     def shutdown(self) -> None: ...
 
@@ -513,13 +514,13 @@ async def test_non_ascii_response_header_bytes_are_preserved() -> None:
 
 async def test_send_data_pauses_writer_when_buffer_grows() -> None:
     """When the peer withholds WINDOW_UPDATE, the per-stream buffer grows.
-    `send_data` must engage the cycle's flow control so the ASGI app awaits
-    `flow.drain()` instead of letting the buffer grow unbounded."""
+    `send_data` must engage the HTTP/2 backpressure event so the ASGI app
+    yields instead of letting the buffer grow unbounded."""
     response_started = asyncio.Event()
-    write_paused_observed = False
+    h2_paused_observed = False
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
-        nonlocal write_paused_observed
+        nonlocal h2_paused_observed
         await send(
             {
                 "type": "http.response.start",
@@ -531,8 +532,7 @@ async def test_send_data_pauses_writer_when_buffer_grows() -> None:
         # The default initial window is 65 535 bytes; a 200 KiB chunk forces
         # well over the high water mark of 64 KiB into the pending buffer.
         await send({"type": "http.response.body", "body": b"y" * 200_000, "more_body": True})
-        # If backpressure is wired up, the cycle's flow control flag is now set.
-        write_paused_observed = protocol.flow.write_paused
+        h2_paused_observed = not protocol.h2_write_paused.is_set()
         await send({"type": "http.response.body", "body": b"", "more_body": False})
 
     protocol = get_connected_protocol(app)
@@ -540,12 +540,11 @@ async def test_send_data_pauses_writer_when_buffer_grows() -> None:
     protocol.data_received(create_h2_request("GET", "/"))
     task = asyncio.create_task(protocol.loop.run_one())
     await response_started.wait()
-    # Yield a couple of times so the body chunk is processed.
     for _ in range(3):
         await asyncio.sleep(0)
 
-    assert write_paused_observed
-    assert protocol.flow.write_paused
+    assert h2_paused_observed
+    assert not protocol.h2_write_paused.is_set()
 
     # Open the windows so the rest of the buffer can flush.
     client_config = H2Configuration(client_side=True, header_encoding="utf-8")
@@ -562,7 +561,7 @@ async def test_send_data_pauses_writer_when_buffer_grows() -> None:
     protocol.data_received(client_conn.data_to_send())
     await task
 
-    assert not protocol.flow.write_paused
+    assert protocol.h2_write_paused.is_set()
 
 
 async def test_shutdown_during_active_stream_closes_after_response():
@@ -1013,7 +1012,7 @@ async def test_stream_reset_clears_buffered_pending_bytes() -> None:
 
     h2_protocol = cast(H2Protocol, protocol)
     assert h2_protocol.pending_bytes > 0
-    assert protocol.flow.write_paused
+    assert not protocol.h2_write_paused.is_set()
 
     # Client resets the stream; the buffered data should be discarded and
     # the connection-wide pending byte counter must drop.
@@ -1030,7 +1029,7 @@ async def test_stream_reset_clears_buffered_pending_bytes() -> None:
     protocol.data_received(client_conn.data_to_send())
 
     assert h2_protocol.pending_bytes == 0
-    assert not protocol.flow.write_paused
+    assert protocol.h2_write_paused.is_set()
     finish_response.set()
     await task
 

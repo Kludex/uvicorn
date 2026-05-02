@@ -142,6 +142,13 @@ class H2Protocol(HTTP2Protocol):
         # Used to apply connection-wide write backpressure on the ASGI app.
         self.pending_bytes = 0
 
+        # Independent of `flow.write_paused` (which asyncio also touches via
+        # `pause_writing`). Set when the HTTP/2 send queue is over the limit
+        # so a slow peer can't bypass our own backpressure if the transport
+        # happens to be writable.
+        self.h2_write_paused = asyncio.Event()
+        self.h2_write_paused.set()
+
         # Set when the server requests shutdown while streams are still active.
         self._shutdown_requested = False
 
@@ -547,7 +554,7 @@ class H2Protocol(HTTP2Protocol):
             stream._pending_end_stream = False
             stream._cleanup_pending = False
             if self.pending_bytes <= HIGH_WATER_LIMIT:
-                self.flow.resume_writing()
+                self.h2_write_paused.set()
             if stream.cycle:
                 stream.cycle.disconnected = True
                 stream.cycle.message_event.set()
@@ -663,11 +670,17 @@ class H2Protocol(HTTP2Protocol):
     def on_stream_closed(self) -> None:
         """Run housekeeping after a stream has been removed from `self.streams`.
 
-        Either schedules the keep-alive timer or finishes a pending graceful
-        shutdown.
+        Resumes paused reads when the stream's body buffer is no longer
+        contributing to backpressure, and either schedules the keep-alive timer
+        or finishes a pending graceful shutdown.
         """
         if self.transport.is_closing():  # pragma: no cover
             return
+
+        # The stream's body buffer is gone, so it can no longer block the read
+        # side of the transport. Resume reads if the remaining streams are
+        # under the high water mark.
+        self.resume_reading_if_idle()
 
         self._unset_keepalive_if_required()
 
@@ -768,11 +781,11 @@ class H2Stream:
         self.flush_pending_data()
 
         # Apply backpressure on the ASGI cycle when the connection-wide buffer
-        # outgrows the high water mark. The cycle's `send` awaits
-        # `flow.drain()`, so the app yields until the peer sends WINDOW_UPDATE
-        # frames and the buffer drains in `flush_pending_data`.
+        # outgrows the high water mark. The cycle's `send` awaits this event
+        # in addition to the transport-level `flow.drain()`, so the app yields
+        # until the peer sends WINDOW_UPDATE frames.
         if self.protocol.pending_bytes > HIGH_WATER_LIMIT:
-            self.flow.pause_writing()
+            self.protocol.h2_write_paused.clear()
 
     def _pop_chunk(self, size: int) -> bytes:
         """Pop up to `size` bytes from the pending chunks deque."""
@@ -811,9 +824,10 @@ class H2Stream:
             self.transport.write(self.conn.data_to_send())
             self._pending_end_stream = False
 
-        # Release backpressure once the connection-wide buffer drains below the limit.
+        # Release HTTP/2 backpressure once the connection-wide buffer drains.
+        # Transport-level pause is owned by `FlowControl` so we don't touch it.
         if self.protocol.pending_bytes <= HIGH_WATER_LIMIT:
-            self.flow.resume_writing()
+            self.protocol.h2_write_paused.set()
 
         # If all pending data has been flushed and cleanup was deferred, do it now
         if not self._pending_size and not self._pending_end_stream and self._cleanup_pending:
@@ -915,6 +929,10 @@ class RequestResponseCycle:
 
         if self.flow.write_paused and not self.disconnected:  # pragma: no cover
             await self.flow.drain()
+        # HTTP/2 connection-level send queue may also apply backpressure when
+        # the peer's flow-control window is exhausted.
+        if not self.protocol.h2_write_paused.is_set() and not self.disconnected:
+            await self.protocol.h2_write_paused.wait()
 
         if self.disconnected:  # pragma: no cover
             return
