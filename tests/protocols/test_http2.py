@@ -309,6 +309,41 @@ async def test_shutdown_during_idle():
     assert protocol.transport.is_closing()
 
 
+async def test_host_header_used_when_authority_absent() -> None:
+    """If a request omits `:authority` but provides a `Host` header (e.g. an
+    intermediary forwarding an HTTP/1.1 origin-form request), the ASGI scope
+    must still surface that host."""
+    received_scope: dict[str, Any] | None = None
+
+    async def app(scope: Any, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        nonlocal received_scope
+        received_scope = scope
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+    protocol = get_connected_protocol(app)
+    protocol.transport.clear_buffer()
+    client_config = H2Configuration(client_side=True, header_encoding=None, validate_outbound_headers=False)
+    client_conn = H2Connection(config=client_config)
+    client_conn.initiate_connection()
+    client_conn.send_headers(
+        1,
+        [
+            (b":method", b"GET"),
+            (b":path", b"/"),
+            (b":scheme", b"https"),
+            (b"host", b"forwarded.example.org"),
+        ],
+        end_stream=True,
+    )
+    protocol.data_received(client_conn.data_to_send())
+    await protocol.loop.run_one()
+
+    assert received_scope is not None
+    host_headers = [value for name, value in received_scope["headers"] if name == b"host"]
+    assert host_headers == [b"forwarded.example.org"]
+
+
 async def test_authority_replaces_host_header() -> None:
     """When both `:authority` and a duplicate `Host` header arrive, the ASGI
     scope should carry exactly one host entry sourced from `:authority`."""

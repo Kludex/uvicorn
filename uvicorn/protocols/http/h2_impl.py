@@ -384,20 +384,26 @@ class H2Protocol(HTTP2Protocol):
         scope_headers: list[tuple[bytes, bytes]] = []
         host: bytes = b""
 
+        host_from_header: bytes | None = None
         for name, value in headers:
             if name[0:1] == b":":
                 # Pseudo-headers (HTTP/2 specific)
                 pseudo_headers[name] = value
             elif name.lower() == b"host":
-                # `:authority` takes precedence; drop any explicit `host` header
-                # so the scope only carries one source of truth.
-                continue
+                # Defer the `host` header: `:authority` takes precedence if present,
+                # otherwise we'll fall back to whatever the client sent.
+                host_from_header = value
             else:
                 scope_headers.append((name.lower(), value))
 
-        # Extract :authority and add as host header
+        # Extract :authority and add as host header. Fall back to the explicit
+        # `Host` header when an intermediary translated an HTTP/1.1 request
+        # without setting `:authority`.
         if b":authority" in pseudo_headers:
             host = pseudo_headers[b":authority"]
+            scope_headers.append((b"host", host))
+        elif host_from_header is not None:
+            host = host_from_header
             scope_headers.append((b"host", host))
 
         # Extract path and query string
@@ -520,6 +526,11 @@ class H2Protocol(HTTP2Protocol):
                 stream.cycle.disconnected = True
                 stream.cycle.message_event.set()
             del self.streams[stream_id]
+            # Run the same housekeeping `on_response_complete` would have run
+            # (keep-alive timer or pending-shutdown close) so a reset cancelling
+            # a flow-control-blocked response doesn't leave the connection
+            # idle with no streams.
+            self.on_stream_closed()
 
     def handle_window_updated(self, event: WindowUpdated) -> None:
         stream_id = event.stream_id

@@ -175,7 +175,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         upgrade = None
         for name, value in self.headers:
             if name == b"connection":
-                connection = [token.lower().strip() for token in value.split(b",")]
+                connection.extend(token.lower().strip() for token in value.split(b","))
             if name == b"upgrade":
                 upgrade = value.lower()
         if b"upgrade" in connection:
