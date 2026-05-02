@@ -126,6 +126,9 @@ class H2Protocol(HTTP2Protocol):
         # Stream management - maps stream_id to H2Stream
         self.streams: dict[int, H2Stream] = {}
 
+        # Set when the server requests shutdown while streams are still active.
+        self._shutdown_requested = False
+
     # Protocol interface
     def connection_made(self, transport: asyncio.Transport) -> None:  # type: ignore[override]
         self.connections.add(self)
@@ -565,6 +568,15 @@ class H2Protocol(HTTP2Protocol):
         if self.transport.is_closing():  # pragma: no cover
             return
 
+        # If shutdown was requested while streams were in flight, close the
+        # connection now that the last stream has finished.
+        if self._shutdown_requested and not self.streams:
+            self._unset_keepalive_if_required()
+            self.conn.close_connection()
+            self.transport.write(self.conn.data_to_send())
+            self.transport.close()
+            return
+
         # Reset keep-alive timer if no active streams
         self._unset_keepalive_if_required()
         if not self.streams:
@@ -576,15 +588,11 @@ class H2Protocol(HTTP2Protocol):
         """
         Called by the server to commence a graceful shutdown.
         """
+        self._shutdown_requested = True
         if not self.streams:
             self.conn.close_connection()
             self.transport.write(self.conn.data_to_send())
             self.transport.close()
-        else:  # pragma: no cover
-            # Mark all active streams for closure
-            for stream in self.streams.values():
-                if stream.cycle:
-                    stream.cycle.keep_alive = False
 
     def pause_writing(self) -> None:  # pragma: no cover
         """

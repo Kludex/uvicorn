@@ -15,6 +15,13 @@ from urllib.parse import unquote
 import h11
 from h11._connection import DEFAULT_MAX_INCOMPLETE_EVENT_SIZE
 
+try:
+    from hyperframe.exceptions import HyperframeError
+    from hyperframe.frame import SettingsFrame
+except ImportError:  # pragma: no cover
+    SettingsFrame = None  # type: ignore[assignment,misc]
+    HyperframeError = Exception  # type: ignore[assignment,misc]
+
 from uvicorn._types import (
     ASGI3Application,
     ASGIReceiveEvent,
@@ -199,7 +206,8 @@ class H11Protocol(asyncio.Protocol):
 
     def _get_h2c_settings(self, connection_tokens: list[bytes]) -> bytes | None:
         # Per RFC 7540 section 3.2, an h2c upgrade requires the `HTTP2-Settings`
-        # connection-option and exactly one valid `HTTP2-Settings` header field.
+        # connection-option and exactly one valid `HTTP2-Settings` header field whose value
+        # is a base64url-encoded SETTINGS frame payload.
         # Returns the validated raw header value, or None if the upgrade is not valid.
         if b"http2-settings" not in connection_tokens:
             return None
@@ -212,8 +220,9 @@ class H11Protocol(asyncio.Protocol):
         if seen is None:
             return None
         try:
-            base64.urlsafe_b64decode(seen)
-        except (binascii.Error, ValueError):
+            decoded = base64.urlsafe_b64decode(seen)
+            SettingsFrame(0).parse_body(memoryview(decoded))
+        except (binascii.Error, ValueError, HyperframeError):
             return None
         return seen
 

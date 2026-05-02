@@ -308,6 +308,41 @@ async def test_shutdown_during_idle():
     assert protocol.transport.is_closing()
 
 
+async def test_shutdown_during_active_stream_closes_after_response():
+    """Shutdown during an in-flight stream must close the connection
+    once the last response completes, not hold it open until keep-alive expires."""
+    response_event = asyncio.Event()
+    finish_response = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        response_event.set()
+        await finish_response.wait()
+        await send({"type": "http.response.body", "body": b"done"})
+
+    protocol = get_connected_protocol(app)
+    protocol.transport.clear_buffer()
+
+    request_data = create_h2_request("GET", "/")
+    protocol.data_received(request_data)
+    task = asyncio.create_task(protocol.loop.run_one())
+    await response_event.wait()
+
+    h2_protocol = cast(H2Protocol, protocol)
+    assert h2_protocol.streams, "stream should be active before shutdown"
+    protocol.shutdown()
+    # Connection must stay open while the stream is still in flight.
+    assert not protocol.transport.is_closing()
+
+    finish_response.set()
+    await task
+
+    # Once the response completes the connection should be closed and the
+    # keep-alive timer must not have been scheduled.
+    assert protocol.transport.is_closing()
+    assert h2_protocol.timeout_keep_alive_task is None
+
+
 async def test_root_path() -> None:
     received_scope: WWWScope | None = None
 

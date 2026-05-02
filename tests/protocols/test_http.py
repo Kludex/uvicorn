@@ -1182,6 +1182,9 @@ async def test_h2c_upgrade_disabled_with_http2_false(http_protocol_cls: type[HTT
         pytest.param(h2c_upgrade_request(connection=b"Upgrade"), id="missing_connection_token"),
         pytest.param(h2c_upgrade_request(settings=b""), id="empty_http2_settings_value"),
         pytest.param(h2c_upgrade_request(settings=b"!!not-base64!!"), id="non_base64_http2_settings"),
+        # `AAAA` decodes to 3 bytes, which is shorter than one SETTINGS entry (6 bytes), so
+        # SettingsFrame.parse_body rejects it before we commit to the upgrade.
+        pytest.param(h2c_upgrade_request(settings=b"AAAA"), id="invalid_settings_frame_body"),
         pytest.param(
             h2c_upgrade_request(extra_settings=b"AAMAAABkAAQBAAAAAAIAAAAA"),
             id="duplicate_http2_settings_header",
