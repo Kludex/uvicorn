@@ -5,11 +5,17 @@ import logging
 import socket
 import threading
 import time
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, TypeAlias
 
 import pytest
 
+from tests.protocols.http_utils import (
+    H2C_UPGRADE_REQUEST,
+    MockLoop,
+    MockSSLObject,
+    MockTransport,
+    h2c_upgrade_request,
+)
 from tests.response import Response
 from uvicorn import Server
 from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallable, Scope
@@ -131,18 +137,6 @@ UPGRADE_REQUEST = b"\r\n".join(
     ]
 )
 
-UPGRADE_HTTP2_REQUEST = b"\r\n".join(
-    [
-        b"GET / HTTP/1.1",
-        b"Host: example.org",
-        b"Connection: upgrade",
-        b"Upgrade: h2c",
-        b"Sec-WebSocket-Version: 11",
-        b"",
-        b"",
-    ]
-)
-
 INVALID_REQUEST_TEMPLATE = b"\r\n".join(
     [
         b"%s",
@@ -174,114 +168,6 @@ UPGRADE_REQUEST_ERROR_FIELD = b"\r\n".join(
         b"",
     ]
 )
-
-
-class MockSSLObject:
-    def __init__(self, alpn_protocol: str | None = None):
-        self._alpn_protocol = alpn_protocol
-
-    def selected_alpn_protocol(self) -> str | None:
-        return self._alpn_protocol
-
-
-class MockTransport:
-    def __init__(
-        self,
-        sockname: tuple[str, int] | None = None,
-        peername: tuple[str, int] | None = None,
-        sslcontext: bool = False,
-        ssl_object: MockSSLObject | None = None,
-    ):
-        self.sockname = ("127.0.0.1", 8000) if sockname is None else sockname
-        self.peername = ("127.0.0.1", 8001) if peername is None else peername
-        self.sslcontext = sslcontext
-        self._ssl_object = ssl_object
-        self.closed = False
-        self.buffer = b""
-        self.read_paused = False
-        self._protocol: asyncio.Protocol | None = None
-
-    def get_extra_info(self, key: Any):
-        return {
-            "sockname": self.sockname,
-            "peername": self.peername,
-            "sslcontext": self.sslcontext,
-            "ssl_object": self._ssl_object,
-        }.get(key)
-
-    def write(self, data: bytes):
-        assert not self.closed
-        self.buffer += data
-
-    def close(self):
-        assert not self.closed
-        self.closed = True
-
-    def pause_reading(self):
-        self.read_paused = True
-
-    def resume_reading(self):
-        self.read_paused = False
-
-    def is_closing(self):
-        return self.closed
-
-    def clear_buffer(self):
-        self.buffer = b""
-
-    def set_protocol(self, protocol: asyncio.Protocol):
-        self._protocol = protocol
-
-    def get_protocol(self) -> asyncio.Protocol | None:
-        return self._protocol
-
-
-class MockTimerHandle:
-    def __init__(
-        self, loop_later_list: list[MockTimerHandle], delay: float, callback: Callable[[], None], args: tuple[Any, ...]
-    ):
-        self.loop_later_list = loop_later_list
-        self.delay = delay
-        self.callback = callback
-        self.args = args
-        self.cancelled = False
-
-    def cancel(self):
-        if not self.cancelled:
-            self.cancelled = True
-            self.loop_later_list.remove(self)
-
-
-class MockLoop:
-    def __init__(self) -> None:
-        self._tasks: list[asyncio.Task[Any]] = []
-        self._later: list[MockTimerHandle] = []
-
-    def create_task(self, coroutine: Any, **kwargs: Any) -> Any:
-        self._tasks.insert(0, coroutine)
-        return MockTask()
-
-    def call_later(self, delay: float, callback: Callable[[], None], *args: Any) -> MockTimerHandle:
-        handle = MockTimerHandle(self._later, delay, callback, args)
-        self._later.insert(0, handle)
-        return handle
-
-    async def run_one(self) -> Any:
-        return await self._tasks.pop()
-
-    def run_later(self, with_delay: float) -> None:
-        later: list[MockTimerHandle] = []
-        for timer_handle in self._later:
-            if with_delay >= timer_handle.delay:
-                timer_handle.callback(*timer_handle.args)
-            else:
-                later.append(timer_handle)
-        self._later = later
-
-
-class MockTask:
-    def add_done_callback(self, callback: Callable[[], None]):
-        pass
 
 
 class MockProtocol(asyncio.Protocol):
@@ -972,18 +858,6 @@ async def test_unsupported_ws_upgrade_request_warn_on_auto(
     assert msg in warnings
 
 
-async def test_http2_upgrade_request(http_protocol_cls: type[HTTPProtocol], ws_protocol_cls: type[WSProtocol]):
-    app = Response("Hello, world", media_type="text/plain")
-
-    protocol = get_connected_protocol(app, http_protocol_cls, ws=ws_protocol_cls, http2=True)
-    protocol.data_received(UPGRADE_HTTP2_REQUEST)
-    await protocol.loop.run_one()
-    # HTTP/2 upgrade is now supported - expect 101 Switching Protocols and HTTP/2 response
-    assert b"HTTP/1.1 101 Switching Protocols" in protocol.transport.buffer
-    assert b"Upgrade: h2c" in protocol.transport.buffer
-    assert b"Hello, world" in protocol.transport.buffer
-
-
 async def asgi3app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
     pass
 
@@ -1248,19 +1122,6 @@ async def test_header_upgrade_is_not_websocket_depend_installed(
     assert b"Hello, world" in protocol.transport.buffer
 
 
-H2C_UPGRADE_REQUEST = b"\r\n".join(
-    [
-        b"GET / HTTP/1.1",
-        b"Host: example.org",
-        b"Connection: Upgrade, HTTP2-Settings",
-        b"Upgrade: h2c",
-        b"HTTP2-Settings: AAMAAABkAAQBAAAAAAIAAAAA",
-        b"",
-        b"",
-    ]
-)
-
-
 @skip_if_no_h2
 async def test_alpn_h2_upgrade(http_protocol_cls: type[HTTPProtocol]):
     """Test that ALPN h2 negotiation switches to H2Protocol."""
@@ -1311,6 +1172,38 @@ async def test_h2c_upgrade_disabled_with_http2_false(http_protocol_cls: type[HTT
 
     assert b"HTTP/1.1 101 Switching Protocols" not in protocol.transport.buffer
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+
+
+@skip_if_no_h2
+@pytest.mark.parametrize(
+    "request_bytes",
+    [
+        pytest.param(h2c_upgrade_request(settings=None), id="missing_http2_settings_header"),
+        pytest.param(h2c_upgrade_request(connection=b"Upgrade"), id="missing_connection_token"),
+        pytest.param(h2c_upgrade_request(settings=b""), id="empty_http2_settings_value"),
+        pytest.param(h2c_upgrade_request(settings=b"!!not-base64!!"), id="non_base64_http2_settings"),
+        pytest.param(
+            h2c_upgrade_request(extra_settings=b"AAMAAABkAAQBAAAAAAIAAAAA"),
+            id="duplicate_http2_settings_header",
+        ),
+    ],
+)
+async def test_h2c_upgrade_rejected_for_malformed_request(
+    http_protocol_cls: type[HTTPProtocol],
+    request_bytes: bytes,
+    caplog: pytest.LogCaptureFixture,
+):
+    """A malformed h2c upgrade must NOT switch protocols and must NOT send 101."""
+    caplog.set_level(logging.WARNING, logger="uvicorn.error")
+    app = Response("Hello, world", media_type="text/plain")
+    protocol = get_connected_protocol(app, http_protocol_cls, http2=True)
+    protocol.data_received(request_bytes)
+    await protocol.loop.run_one()
+
+    assert b"HTTP/1.1 101 Switching Protocols" not in protocol.transport.buffer
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert protocol.transport.get_protocol() is None
+    assert any("Ignoring h2c upgrade" in record.getMessage() for record in caplog.records)
 
 
 async def test_header_upgrade_is_websocket_depend_not_installed(

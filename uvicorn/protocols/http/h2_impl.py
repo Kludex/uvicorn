@@ -66,7 +66,7 @@ class HTTP2Protocol(asyncio.Protocol):
         method: str,
         path: str,
         headers: list[tuple[bytes, bytes]],
-        http2_settings: bytes | None,
+        http2_settings: bytes,
     ) -> None:
         """Initialize an HTTP/2 connection from an h2c upgrade request.
 
@@ -74,6 +74,8 @@ class HTTP2Protocol(asyncio.Protocol):
         1. Set up the HTTP/2 connection state
         2. Process the original request as stream 1
         3. Start handling HTTP/2 frames
+
+        The caller must validate `http2_settings` (presence + base64url-decodable) before invoking this method.
         """
 
 
@@ -148,12 +150,13 @@ class H2Protocol(HTTP2Protocol):
         method: str,
         path: str,
         headers: list[tuple[bytes, bytes]],
-        http2_settings: bytes | None,
+        http2_settings: bytes,
     ) -> None:
         """Initialize HTTP/2 connection for h2c upgrade.
 
         This is called when upgrading from HTTP/1.1 to HTTP/2 cleartext.
-        The 101 Switching Protocols response has already been sent.
+        The 101 Switching Protocols response has already been sent and
+        ``http2_settings`` is the validated raw HTTP2-Settings header value.
         """
         self.connections.add(self)
 

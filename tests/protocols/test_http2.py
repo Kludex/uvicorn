@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from ssl import SSLObject
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
+from tests.protocols.http_utils import MockLoop, MockTransport
 from tests.response import Response
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope, WWWScope
 from uvicorn.config import Config
@@ -34,105 +34,6 @@ if TYPE_CHECKING:
 pytestmark = [pytest.mark.anyio, skip_if_no_h2]
 
 
-class MockTransport:
-    def __init__(
-        self,
-        sockname: tuple[str, int] | None = None,
-        peername: tuple[str, int] | None = None,
-        sslcontext: bool = True,
-        ssl_object: SSLObject | None = None,
-    ):
-        self.sockname = ("127.0.0.1", 8000) if sockname is None else sockname
-        self.peername = ("127.0.0.1", 8001) if peername is None else peername
-        self.sslcontext = sslcontext
-        self._ssl_object = ssl_object
-        self.closed = False
-        self.buffer = b""
-        self.read_paused = False
-
-    def get_extra_info(self, key: Any):
-        return {
-            "sockname": self.sockname,
-            "peername": self.peername,
-            "sslcontext": self.sslcontext,
-            "ssl_object": self._ssl_object,
-        }.get(key)
-
-    def write(self, data: bytes):
-        assert not self.closed
-        self.buffer += data
-
-    def close(self):
-        assert not self.closed
-        self.closed = True
-
-    def pause_reading(self):  # pragma: no cover
-        self.read_paused = True
-
-    def resume_reading(self):  # pragma: no cover
-        self.read_paused = False
-
-    def is_closing(self):
-        return self.closed
-
-    def clear_buffer(self):
-        self.buffer = b""
-
-    def set_protocol(self, protocol: asyncio.Protocol): ...
-
-
-class MockTimerHandle:
-    def __init__(
-        self,
-        loop_later_list: list[MockTimerHandle],
-        delay: float,
-        callback: Callable[[], None],
-        args: tuple[Any, ...],
-    ):
-        self.loop_later_list = loop_later_list
-        self.delay = delay
-        self.callback = callback
-        self.args = args
-        self.cancelled = False
-
-    def cancel(self):
-        if not self.cancelled:
-            self.cancelled = True
-            self.loop_later_list.remove(self)
-
-
-class MockLoop(asyncio.AbstractEventLoop):
-    def __init__(self) -> None:
-        self._tasks: list[asyncio.Task[Any]] = []
-        self._later: list[MockTimerHandle] = []
-
-    def create_task(self, coroutine: Any) -> MockTask:  # type: ignore[override]
-        self._tasks.insert(0, coroutine)
-        return MockTask()
-
-    def call_later(self, delay: float, callback: Callable[[], None], *args: Any) -> MockTimerHandle:  # type: ignore[override]
-        handle = MockTimerHandle(self._later, delay, callback, args)
-        self._later.insert(0, handle)
-        return handle
-
-    async def run_one(self) -> Any:
-        return await self._tasks.pop()
-
-    def run_later(self, with_delay: float) -> None:
-        later: list[MockTimerHandle] = []
-        for timer_handle in self._later:
-            if with_delay >= timer_handle.delay:
-                timer_handle.callback(*timer_handle.args)
-            else:  # pragma: no cover
-                later.append(timer_handle)
-        self._later = later
-
-
-class MockTask:
-    def add_done_callback(self, callback: Callable[[], None]):
-        pass
-
-
 class MockProtocol(asyncio.Protocol):
     """Type stub for protocol with mock transport and loop."""
 
@@ -149,12 +50,12 @@ def get_connected_protocol(
     lifespan: LifespanOff | LifespanOn | None = None,
     **kwargs: Any,
 ) -> MockProtocol:
-    loop = MockLoop()  # type: ignore[abstract]
-    transport = MockTransport()
+    loop = MockLoop()
+    transport = MockTransport(sslcontext=True)
     config = Config(app=app, **kwargs)
     lifespan = lifespan or LifespanOff(config)
     server_state = ServerState()
-    protocol = H2Protocol(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)
+    protocol = H2Protocol(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)  # type: ignore[arg-type]
     protocol.connection_made(transport)  # type: ignore[arg-type]
     return protocol  # type: ignore[return-value]
 

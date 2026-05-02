@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import contextvars
 import http
 import logging
@@ -97,6 +99,8 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.headers: list[tuple[bytes, bytes]] = None  # type: ignore[assignment]
         self.expect_100_continue = False
         self.cycle: RequestResponseCycle = None  # type: ignore[assignment]
+        # Cached HTTP2-Settings header value when an h2c upgrade has been validated.
+        self._h2c_settings: bytes | None = None
 
     # Protocol interface
     def connection_made(  # type: ignore[override]
@@ -168,8 +172,8 @@ class HttpToolsProtocol(asyncio.Protocol):
             self.timeout_keep_alive_task.cancel()
             self.timeout_keep_alive_task = None
 
-    def _get_upgrade(self) -> bytes | None:
-        connection = []
+    def _get_upgrade(self) -> tuple[bytes | None, list[bytes]]:
+        connection: list[bytes] = []
         upgrade = None
         for name, value in self.headers:
             if name == b"connection":
@@ -177,8 +181,8 @@ class HttpToolsProtocol(asyncio.Protocol):
             if name == b"upgrade":
                 upgrade = value.lower()
         if b"upgrade" in connection:
-            return upgrade
-        return None  # pragma: full coverage
+            return upgrade, connection
+        return None, connection  # pragma: full coverage
 
     def _should_upgrade_to_ws(self) -> bool:
         if self.ws_protocol_class is None:
@@ -195,13 +199,38 @@ class HttpToolsProtocol(asyncio.Protocol):
             msg = "No supported WebSocket library detected. Please use \"pip install 'uvicorn[standard]'\", or install 'websockets' or 'wsproto' manually."  # noqa: E501
             self.logger.warning(msg)
 
+    def _get_h2c_settings(self, connection_tokens: list[bytes]) -> bytes | None:
+        # Per RFC 7540 section 3.2, an h2c upgrade requires the `HTTP2-Settings`
+        # connection-option and exactly one valid `HTTP2-Settings` header field.
+        # Returns the validated raw header value, or None if the upgrade is not valid.
+        if b"http2-settings" not in connection_tokens:
+            return None
+        seen: bytes | None = None
+        for name, value in self.headers:
+            if name == b"http2-settings":
+                if seen is not None or not value:
+                    return None
+                seen = value
+        if seen is None:
+            return None
+        try:
+            base64.urlsafe_b64decode(seen)
+        except (binascii.Error, ValueError):
+            return None
+        return seen
+
     def _get_upgrade_type(self) -> str | None:
         """Determine the type of upgrade request: 'websocket', 'h2c', or None."""
-        upgrade = self._get_upgrade()
+        upgrade, connection_tokens = self._get_upgrade()
         if upgrade == b"websocket" and self._should_upgrade_to_ws():
             return "websocket"
         if upgrade == b"h2c" and self._should_upgrade_to_h2c():
-            return "h2c"
+            settings = self._get_h2c_settings(connection_tokens)
+            if settings is not None:
+                self._h2c_settings = settings
+                return "h2c"
+            self.logger.warning("Ignoring h2c upgrade with missing or invalid HTTP2-Settings header.")
+            return None
         if upgrade is not None:
             self._unsupported_upgrade_warning()
         return None
@@ -249,6 +278,8 @@ class HttpToolsProtocol(asyncio.Protocol):
     def handle_h2c_upgrade(self) -> None:
         """Handle HTTP/2 cleartext (h2c) upgrade request."""
         assert self.h2_protocol_class is not None
+        # `_get_upgrade_type` validates the HTTP2-Settings header before this is reached.
+        assert self._h2c_settings is not None
         if self.logger.level <= TRACE_LOG_LEVEL:  # pragma: full coverage
             prefix = "%s:%d - " % self.client if self.client else ""
             self.logger.log(TRACE_LOG_LEVEL, "%sUpgrading to HTTP/2 (h2c)", prefix)
@@ -258,13 +289,6 @@ class HttpToolsProtocol(asyncio.Protocol):
         # Send 101 Switching Protocols response
         response = b"HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: h2c\r\n\r\n"
         self.transport.write(response)
-
-        # Get HTTP2-Settings header if present
-        http2_settings: bytes | None = None
-        for name, value in self.scope["headers"]:
-            if name == b"http2-settings":
-                http2_settings = value
-                break
 
         # Create and switch to H2Protocol
         h2_protocol = self.h2_protocol_class(
@@ -280,7 +304,7 @@ class HttpToolsProtocol(asyncio.Protocol):
             self.scope["method"],
             self.url.decode("ascii"),
             list(self.scope["headers"]),
-            http2_settings,
+            self._h2c_settings,
         )
 
         self.transport.set_protocol(h2_protocol)
