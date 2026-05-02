@@ -564,6 +564,45 @@ async def test_send_data_pauses_writer_when_buffer_grows() -> None:
     assert protocol.h2_write_paused.is_set()
 
 
+async def test_shutdown_wakes_streams_blocked_in_receive() -> None:
+    """A graceful shutdown must wake any cycle blocked in `await receive()`
+    so the ASGI app sees a disconnect, finishes, and lets the connection
+    close. Otherwise shutdown hangs until forced cancellation."""
+    app_finished = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        message = await receive()
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"", "more_body": False})
+        app_finished.set()
+        assert message["type"] == "http.disconnect"
+
+    protocol = get_connected_protocol(app)
+    protocol.transport.clear_buffer()
+
+    # Open a request that does NOT end the stream so the ASGI app waits for body.
+    client_config = H2Configuration(client_side=True, header_encoding="utf-8")
+    client_conn = H2Connection(config=client_config)
+    client_conn.initiate_connection()
+    client_conn.send_headers(
+        1,
+        [(":method", "POST"), (":path", "/"), (":scheme", "https"), (":authority", "localhost")],
+        end_stream=False,
+    )
+    protocol.data_received(client_conn.data_to_send())
+    task = asyncio.create_task(protocol.loop.run_one())
+    for _ in range(3):
+        await asyncio.sleep(0)
+
+    h2_protocol = cast(H2Protocol, protocol)
+    assert 1 in h2_protocol.streams
+    assert not app_finished.is_set()
+
+    protocol.shutdown()
+    await task
+    assert app_finished.is_set()
+
+
 async def test_shutdown_during_active_stream_closes_after_response():
     """Shutdown during an in-flight stream must close the connection
     once the last response completes, not hold it open until keep-alive expires."""

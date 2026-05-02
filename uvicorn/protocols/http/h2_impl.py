@@ -703,8 +703,9 @@ class H2Protocol(HTTP2Protocol):
 
         Closes the connection immediately if there are no in-flight streams.
         Otherwise, marks the connection as draining: any new stream that
-        arrives will be reset, and `on_response_complete` closes the
-        connection once the last in-flight stream finishes.
+        arrives will be reset, every in-flight stream is woken up so the
+        ASGI app exits `receive()` and finishes, and `on_response_complete`
+        closes the connection once the last stream completes.
         """
         self._shutdown_requested = True
 
@@ -712,6 +713,15 @@ class H2Protocol(HTTP2Protocol):
             self.conn.close_connection()
             self.transport.write(self.conn.data_to_send())
             self.transport.close()
+            return
+
+        # Wake any cycle that is currently blocked in `await receive()` so the
+        # app sees a disconnect and gets a chance to finish. Without this the
+        # graceful-shutdown timeout has to fire before the connection closes.
+        for stream in self.streams.values():
+            if stream.cycle and not stream.cycle.response_complete:
+                stream.cycle.disconnected = True
+                stream.cycle.message_event.set()
 
     def pause_writing(self) -> None:  # pragma: no cover
         """
