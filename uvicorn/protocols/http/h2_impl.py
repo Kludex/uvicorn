@@ -29,6 +29,7 @@ from h2.events import (
     WindowUpdated,
 )
 from h2.exceptions import ProtocolError
+from hyperframe.frame import GoAwayFrame
 
 from uvicorn._types import (
     ASGI3Application,
@@ -556,30 +557,40 @@ class H2Protocol(HTTP2Protocol):
     def on_response_complete(self, stream_id: int) -> None:
         self.server_state.total_requests += 1
 
-        # Clean up completed stream (defer if there's pending data to flush)
+        # Clean up completed stream (defer if there's pending data to flush).
         if stream_id in self.streams:
             stream = self.streams[stream_id]
             if stream._pending_size or stream._pending_end_stream:
-                # Data still waiting for flow control window - defer cleanup
+                # Data still waiting for flow control window. The stream will
+                # delete itself from ``self.streams`` and call ``on_stream_closed``
+                # once ``flush_pending_data`` drains the buffer.
                 stream._cleanup_pending = True
-            else:
-                del self.streams[stream_id]
+                return
 
+            del self.streams[stream_id]
+
+        self.on_stream_closed()
+
+    def on_stream_closed(self) -> None:
+        """Run housekeeping after a stream has been removed from ``self.streams``.
+
+        Either schedules the keep-alive timer or finishes a pending graceful
+        shutdown.
+        """
         if self.transport.is_closing():  # pragma: no cover
             return
 
-        # If shutdown was requested while streams were in flight, close the
-        # connection now that the last stream has finished.
-        if self._shutdown_requested and not self.streams:
-            self._unset_keepalive_if_required()
-            self.conn.close_connection()
-            self.transport.write(self.conn.data_to_send())
-            self.transport.close()
-            return
-
-        # Reset keep-alive timer if no active streams
         self._unset_keepalive_if_required()
+
         if not self.streams:
+            # If shutdown was requested while streams were in flight, send the
+            # final GOAWAY and close now that the last stream has finished.
+            if self._shutdown_requested:
+                self.conn.close_connection()
+                self.transport.write(self.conn.data_to_send())
+                self.transport.close()
+                return
+
             self.timeout_keep_alive_task = self.loop.call_later(
                 self.timeout_keep_alive, self.timeout_keep_alive_handler
             )
@@ -587,12 +598,30 @@ class H2Protocol(HTTP2Protocol):
     def shutdown(self) -> None:
         """
         Called by the server to commence a graceful shutdown.
+
+        Emits a GOAWAY frame so the peer stops opening new streams, and closes
+        the connection immediately if there are no in-flight streams.
+        Otherwise, ``on_response_complete`` closes it once the last stream
+        finishes.
         """
         self._shutdown_requested = True
+
         if not self.streams:
+            # No active streams: clean shutdown via h2's state machine.
             self.conn.close_connection()
             self.transport.write(self.conn.data_to_send())
             self.transport.close()
+            return
+
+        # Send a manual GOAWAY frame so we can keep using h2 for the in-flight
+        # streams. ``H2Connection.close_connection()`` would put h2 into the
+        # CLOSED state and reject any further send_data on the active stream.
+        goaway = GoAwayFrame(
+            stream_id=0,
+            last_stream_id=self.conn.highest_inbound_stream_id,
+            error_code=ErrorCodes.NO_ERROR,
+        )
+        self.transport.write(goaway.serialize())
 
     def pause_writing(self) -> None:  # pragma: no cover
         """
@@ -699,6 +728,7 @@ class H2Stream:
             self._cleanup_pending = False
             if self.stream_id in self.protocol.streams:
                 del self.protocol.streams[self.stream_id]
+            self.protocol.on_stream_closed()
 
     def end_stream(self) -> None:  # pragma: no cover
         """End the stream."""

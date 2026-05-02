@@ -311,6 +311,8 @@ async def test_shutdown_during_idle():
 async def test_shutdown_during_active_stream_closes_after_response():
     """Shutdown during an in-flight stream must close the connection
     once the last response completes, not hold it open until keep-alive expires."""
+    from hyperframe.frame import GoAwayFrame
+
     response_event = asyncio.Event()
     finish_response = asyncio.Event()
 
@@ -333,6 +335,8 @@ async def test_shutdown_during_active_stream_closes_after_response():
     protocol.shutdown()
     # Connection must stay open while the stream is still in flight.
     assert not protocol.transport.is_closing()
+    # A GOAWAY frame is sent so the peer stops opening new streams.
+    assert any(isinstance(frame, GoAwayFrame) for frame in _parse_frames(protocol.transport.buffer))
 
     finish_response.set()
     await task
@@ -341,6 +345,77 @@ async def test_shutdown_during_active_stream_closes_after_response():
     # keep-alive timer must not have been scheduled.
     assert protocol.transport.is_closing()
     assert h2_protocol.timeout_keep_alive_task is None
+
+
+async def test_shutdown_during_flow_controlled_stream_closes_after_flush() -> None:
+    """When the response body exceeds the flow-control window the stream cleanup
+    is deferred until WINDOW_UPDATE arrives. Shutdown must still close the
+    connection once the deferred cleanup happens."""
+    large_body = b"x" * 100_000
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [
+                    (b"content-type", b"application/octet-stream"),
+                    (b"content-length", str(len(large_body)).encode()),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": large_body, "more_body": False})
+
+    protocol = get_connected_protocol(app)
+    protocol.transport.clear_buffer()
+
+    client_config = H2Configuration(client_side=True, header_encoding="utf-8")
+    client_conn = H2Connection(config=client_config)
+    client_conn.initiate_connection()
+    client_conn.send_headers(
+        1,
+        [(":method", "GET"), (":path", "/"), (":scheme", "https"), (":authority", "example.org")],
+        end_stream=True,
+    )
+    protocol.data_received(client_conn.data_to_send())
+    await protocol.loop.run_one()
+
+    h2_protocol = cast(H2Protocol, protocol)
+    # The stream stayed in ``streams`` because cleanup is deferred until the
+    # flow-control window opens up.
+    assert 1 in h2_protocol.streams
+    assert h2_protocol.streams[1]._cleanup_pending
+
+    # Shutdown is requested while the stream is still pending data. The TCP
+    # transport must NOT close yet.
+    protocol.shutdown()
+    assert not protocol.transport.is_closing()
+
+    # The peer eventually opens the window and the server flushes the rest.
+    client_conn.increment_flow_control_window(65535, stream_id=1)
+    client_conn.increment_flow_control_window(65535)
+    protocol.data_received(client_conn.data_to_send())
+
+    # Once the buffer drains the connection should close.
+    assert protocol.transport.is_closing()
+    assert h2_protocol.timeout_keep_alive_task is None
+
+
+def _parse_frames(data: bytes) -> list[Any]:
+    from hyperframe.frame import Frame
+
+    frames: list[Any] = []
+    offset = 0
+    while offset < len(data):
+        try:
+            frame, length = Frame.parse_frame_header(memoryview(data[offset : offset + 9]))
+        except Exception:  # pragma: no cover - skip frames the helper can't decode
+            break
+        offset += 9
+        frame.parse_body(memoryview(data[offset : offset + length]))
+        offset += length
+        frames.append(frame)
+    return frames
 
 
 async def test_root_path() -> None:
