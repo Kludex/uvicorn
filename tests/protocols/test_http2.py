@@ -18,6 +18,7 @@ try:
     from h2.config import H2Configuration
     from h2.connection import H2Connection
     from h2.errors import ErrorCodes
+    from h2.events import DataReceived, ResponseReceived, StreamEnded
 
     from uvicorn.protocols.http.h2_impl import H2Protocol
 
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     from h2.config import H2Configuration
     from h2.connection import H2Connection
     from h2.errors import ErrorCodes
+    from h2.events import DataReceived, ResponseReceived, StreamEnded
 
 
 pytestmark = [pytest.mark.anyio, skip_if_no_h2]
@@ -41,6 +43,7 @@ class MockProtocol(asyncio.Protocol):
     transport: MockTransport
     scope: Scope
     connections: set[Any]
+    flow: Any
 
     def shutdown(self) -> None: ...
 
@@ -108,8 +111,6 @@ def parse_h2_response(data: bytes) -> tuple[int, dict[str, str], bytes]:
 
 def parse_h2_response_full(data: bytes, request_method: str = "GET") -> tuple[int, dict[str, str], bytes, bool]:
     """Parse HTTP/2 response and return (status, headers, body, end_stream_seen)."""
-    from h2.events import DataReceived, ResponseReceived, StreamEnded
-
     config = H2Configuration(client_side=True)
     conn = H2Connection(config=config)
     conn.initiate_connection()
@@ -306,6 +307,98 @@ async def test_shutdown_during_idle():
 
     protocol.shutdown()
     assert protocol.transport.is_closing()
+
+
+async def test_non_ascii_response_header_bytes_are_preserved() -> None:
+    """ASGI lets headers be raw bytes. The HTTP/2 path must not Latin-1-decode
+    them and let h2 re-encode as UTF-8, which would corrupt the wire bytes."""
+    raw_value = b"\xff-\xc4\x80"
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"x-binary", raw_value)],
+            }
+        )
+        await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+    protocol = get_connected_protocol(app)
+    protocol.transport.clear_buffer()
+    protocol.data_received(create_h2_request("GET", "/"))
+    await protocol.loop.run_one()
+
+    client_config = H2Configuration(client_side=True, header_encoding=None)
+    client_conn = H2Connection(config=client_config)
+    client_conn.initiate_connection()
+    client_conn.send_headers(
+        1,
+        [(b":method", b"GET"), (b":path", b"/"), (b":scheme", b"https"), (b":authority", b"localhost")],
+        end_stream=True,
+    )
+    client_conn.clear_outbound_data_buffer()
+    events = client_conn.receive_data(protocol.transport.buffer)
+    received: dict[bytes, bytes] = {}
+    for event in events:
+        if isinstance(event, ResponseReceived):
+            for name, value in event.headers:
+                received[name] = value
+    assert received[b"x-binary"] == raw_value
+
+
+async def test_send_data_pauses_writer_when_buffer_grows() -> None:
+    """When the peer withholds WINDOW_UPDATE, the per-stream buffer grows.
+    `send_data` must engage the cycle's flow control so the ASGI app awaits
+    `flow.drain()` instead of letting the buffer grow unbounded."""
+    response_started = asyncio.Event()
+    write_paused_observed = False
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        nonlocal write_paused_observed
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"application/octet-stream")],
+            }
+        )
+        response_started.set()
+        # The default initial window is 65 535 bytes; a 200 KiB chunk forces
+        # well over the high water mark of 64 KiB into the pending buffer.
+        await send({"type": "http.response.body", "body": b"y" * 200_000, "more_body": True})
+        # If backpressure is wired up, the cycle's flow control flag is now set.
+        write_paused_observed = protocol.flow.write_paused
+        await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+    protocol = get_connected_protocol(app)
+    protocol.transport.clear_buffer()
+    protocol.data_received(create_h2_request("GET", "/"))
+    task = asyncio.create_task(protocol.loop.run_one())
+    await response_started.wait()
+    # Yield a couple of times so the body chunk is processed.
+    for _ in range(3):
+        await asyncio.sleep(0)
+
+    assert write_paused_observed
+    assert protocol.flow.write_paused
+
+    # Open the windows so the rest of the buffer can flush.
+    client_config = H2Configuration(client_side=True, header_encoding="utf-8")
+    client_conn = H2Connection(config=client_config)
+    client_conn.initiate_connection()
+    client_conn.send_headers(
+        1,
+        [(":method", "GET"), (":path", "/"), (":scheme", "https"), (":authority", "localhost")],
+        end_stream=True,
+    )
+    client_conn.clear_outbound_data_buffer()
+    client_conn.increment_flow_control_window(1_000_000, stream_id=1)
+    client_conn.increment_flow_control_window(1_000_000)
+    protocol.data_received(client_conn.data_to_send())
+    await task
+
+    assert not protocol.flow.write_paused
 
 
 async def test_shutdown_during_active_stream_closes_after_response():
@@ -579,8 +672,6 @@ async def test_large_response_exceeding_flow_control_window():
     sends WINDOW_UPDATE frames. Without proper buffering, the excess data is
     silently dropped and the response is truncated.
     """
-    from h2.events import DataReceived
-
     large_body = b"x" * 100_000
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):

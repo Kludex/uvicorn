@@ -688,7 +688,7 @@ class H2Stream:
         self._pending_end_stream = False
         self._cleanup_pending = False
 
-    def send_headers(self, headers: list[tuple[str, str]], end_stream: bool = False) -> None:
+    def send_headers(self, headers: list[tuple[bytes, bytes]], end_stream: bool = False) -> None:
         """Send response headers on this stream."""
         self.conn.send_headers(self.stream_id, headers, end_stream=end_stream)
         self.transport.write(self.conn.data_to_send())
@@ -704,6 +704,13 @@ class H2Stream:
         if end_stream:
             self._pending_end_stream = True
         self.flush_pending_data()
+
+        # Apply backpressure on the ASGI cycle when the per-stream buffer
+        # outgrows the high water mark. The cycle's `send` awaits
+        # `flow.drain()`, so the app yields until the peer sends WINDOW_UPDATE
+        # frames and the buffer drains in `flush_pending_data`.
+        if self._pending_size > HIGH_WATER_LIMIT:
+            self.flow.pause_writing()
 
     def _pop_chunk(self, size: int) -> bytes:
         """Pop up to `size` bytes from the pending chunks deque."""
@@ -738,6 +745,10 @@ class H2Stream:
             self.conn.send_data(self.stream_id, b"", end_stream=True)
             self.transport.write(self.conn.data_to_send())
             self._pending_end_stream = False
+
+        # Release backpressure once the buffer has drained below the limit.
+        if self._pending_size <= HIGH_WATER_LIMIT:
+            self.flow.resume_writing()
 
         # If all pending data has been flushed and cleanup was deferred, do it now
         if not self._pending_size and not self._pending_end_stream and self._cleanup_pending:
@@ -870,21 +881,23 @@ class RequestResponseCycle:
                     status,
                 )
 
-            # Build HTTP/2 response headers
-            response_headers: list[tuple[str, str]] = [(":status", str(status))]
+            # Build HTTP/2 response headers. ASGI header values are bytes; pass
+            # them through to h2 unchanged (the connection was opened with
+            # `header_encoding=None`) so non-ASCII bytes round-trip on the wire.
+            response_headers: list[tuple[bytes, bytes]] = [(b":status", str(status).encode("ascii"))]
 
             # Add default headers
             for name, value in self.default_headers:  # pragma: no cover
                 if name.lower() != b"connection":  # Connection header not used in HTTP/2
-                    response_headers.append((name.decode("latin-1"), value.decode("latin-1")))
+                    response_headers.append((name, value))
 
             # Add response headers
             for name, value in headers:
-                header_name = name.decode("latin-1").lower()
-                if header_name == "connection":  # pragma: no cover
+                lower_name = name.lower()
+                if lower_name == b"connection":  # pragma: no cover
                     # Connection header not used in HTTP/2
                     continue
-                response_headers.append((header_name, value.decode("latin-1")))
+                response_headers.append((lower_name, value))
 
             self.stream.send_headers(response_headers)
 
