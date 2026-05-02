@@ -354,6 +354,20 @@ class H2Protocol(HTTP2Protocol):
         self.transport.write(self.conn.data_to_send())
         self.handle_events(events)
 
+        # Idle frames (SETTINGS ACK / PING / WINDOW_UPDATE / late DATA on a
+        # closed stream) cancelled the keep-alive timer at the top of this
+        # method but never re-armed it. Re-arm now if the connection is idle
+        # so `--timeout-keep-alive` still applies.
+        if (
+            not self.streams
+            and not self.transport.is_closing()
+            and self.timeout_keep_alive_task is None
+            and not self._shutdown_requested
+        ):
+            self.timeout_keep_alive_task = self.loop.call_later(
+                self.timeout_keep_alive, self.timeout_keep_alive_handler
+            )
+
     def handle_events(self, events: list[Any]) -> None:
         for event in events:
             if isinstance(event, RequestReceived):

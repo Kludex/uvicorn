@@ -381,6 +381,34 @@ async def test_authority_replaces_host_header() -> None:
     assert host_headers == [b"primary.example.org"]
 
 
+async def test_keepalive_timer_rearmed_after_idle_frames() -> None:
+    """Idle frames (PING/SETTINGS/WINDOW_UPDATE) cancel the keep-alive timer
+    on entry; we must re-arm it so the connection still respects
+    `--timeout-keep-alive` when no stream-level event followed."""
+    app = Response("ok", media_type="text/plain")
+    protocol = get_connected_protocol(app, timeout_keep_alive=1)
+    h2_protocol = cast(H2Protocol, protocol)
+
+    # Issue and complete a request so the keep-alive timer is armed.
+    protocol.transport.clear_buffer()
+    protocol.data_received(create_h2_request("GET", "/"))
+    await protocol.loop.run_one()
+    assert h2_protocol.timeout_keep_alive_task is not None
+    armed_task = h2_protocol.timeout_keep_alive_task
+
+    # Send an idle PING frame from a client. Without the re-arm logic the
+    # timer would be cancelled and never re-scheduled.
+    client_config = H2Configuration(client_side=True, header_encoding=None)
+    client_conn = H2Connection(config=client_config)
+    client_conn.initiate_connection()
+    client_conn.clear_outbound_data_buffer()
+    client_conn.ping(b"\x00" * 8)
+    protocol.data_received(client_conn.data_to_send())
+
+    assert h2_protocol.timeout_keep_alive_task is not None
+    assert h2_protocol.timeout_keep_alive_task is not armed_task
+
+
 async def test_resume_reading_waits_for_other_buffered_streams() -> None:
     """If one stream's request body is buffered above the limit, ending or
     consuming a different stream must NOT release backpressure on the
