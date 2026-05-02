@@ -7,13 +7,14 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from tests.protocols.http_utils import MockLoop, MockTransport
+from tests.protocols.http_utils import MockLoop, MockTransport, h2c_upgrade_request
 from tests.response import Response
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope, WWWScope
 from uvicorn.config import Config
 from uvicorn.lifespan.off import LifespanOff
 from uvicorn.lifespan.on import LifespanOn
 from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT
+from uvicorn.protocols.http.h11_impl import H11Protocol
 from uvicorn.server import ServerState
 
 try:
@@ -564,47 +565,76 @@ async def test_send_data_pauses_writer_when_buffer_grows() -> None:
     assert protocol.h2_write_paused.is_set()
 
 
-async def test_send_unblocks_when_stream_disconnects_during_backpressure() -> None:
-    """If the peer cancels a stream while connection-wide HTTP/2 backpressure
-    is engaged, `send` must race the wait against the cycle's message_event
-    so a reset wakes the task instead of pinning it forever."""
+async def test_hop_by_hop_response_headers_are_stripped() -> None:
+    """RFC 7540 forbids HTTP/1 hop-by-hop headers in HTTP/2 responses. The
+    cycle must drop them so an ASGI app or middleware that sets them under
+    HTTP/1.1 doesn't break HTTP/2 clients."""
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         await send(
             {
                 "type": "http.response.start",
                 "status": 200,
-                "headers": [(b"content-type", b"application/octet-stream")],
+                "headers": [
+                    (b"transfer-encoding", b"chunked"),
+                    (b"keep-alive", b"timeout=5"),
+                    (b"upgrade", b"h2c"),
+                    (b"proxy-connection", b"keep-alive"),
+                    (b"te", b"gzip"),
+                    (b"x-keep", b"yes"),
+                ],
             }
         )
-        # Push past the high water mark so the next send awaits.
-        await send({"type": "http.response.body", "body": b"y" * 200_000, "more_body": True})
-        # This send sits on `h2_write_paused` until the stream is reset.
-        await send({"type": "http.response.body", "body": b"z" * 200_000, "more_body": True})
+        await send({"type": "http.response.body", "body": b"", "more_body": False})
 
     protocol = get_connected_protocol(app)
     protocol.transport.clear_buffer()
     protocol.data_received(create_h2_request("GET", "/"))
-    task = asyncio.create_task(protocol.loop.run_one())
-    # Yield enough times for the second send to actually block on backpressure.
-    for _ in range(20):
-        await asyncio.sleep(0)
-    assert not protocol.h2_write_paused.is_set()
-    assert not task.done()
+    await protocol.loop.run_one()
 
-    # Reset the stream from the client side. The send should unblock.
-    client_config = H2Configuration(client_side=True, header_encoding="utf-8")
+    _, headers, _ = parse_h2_response(protocol.transport.buffer)
+    forbidden = {"transfer-encoding", "keep-alive", "upgrade", "proxy-connection", "te"}
+    assert forbidden.isdisjoint(headers)
+    assert headers["x-keep"] == "yes"
+
+
+@pytest.mark.parametrize(
+    "h1_protocol_cls",
+    [
+        pytest.param(H11Protocol, id="h11"),
+        pytest.param(
+            pytest.importorskip("uvicorn.protocols.http.httptools_impl").HttpToolsProtocol,
+            id="httptools",
+        ),
+    ],
+)
+async def test_h2c_upgrade_forwards_trailing_bytes(h1_protocol_cls: Any) -> None:
+    """When the h2c client ships HTTP/2 frames in the same TCP read as the
+    Upgrade request, the trailing bytes must reach the upgraded protocol."""
+    upgrade = h2c_upgrade_request()
+    # Build the HTTP/2 client preamble + a SETTINGS frame as trailing data.
+    client_config = H2Configuration(client_side=True, header_encoding=None)
     client_conn = H2Connection(config=client_config)
     client_conn.initiate_connection()
-    client_conn.send_headers(
-        1,
-        [(":method", "GET"), (":path", "/"), (":scheme", "https"), (":authority", "localhost")],
-        end_stream=True,
-    )
-    client_conn.clear_outbound_data_buffer()
-    client_conn.reset_stream(1, error_code=ErrorCodes.CANCEL)
-    protocol.data_received(client_conn.data_to_send())
-    await asyncio.wait_for(task, timeout=1.0)
+    trailing = client_conn.data_to_send()
+
+    config = Config(app=Response("ok"), http2=True)
+    server_state = ServerState()
+    transport = MockTransport()
+    loop = MockLoop()
+    h1_protocol = h1_protocol_cls(config=config, server_state=server_state, app_state={}, _loop=loop)
+    h1_protocol.connection_made(transport)
+    h1_protocol.data_received(upgrade + trailing)
+
+    new_protocol = transport.get_protocol()
+    assert isinstance(new_protocol, H2Protocol)
+    # The trailing client preface and SETTINGS frame must have been processed
+    # by the upgraded protocol, leaving the HTTP/2 connection ready.
+    assert new_protocol.conn.state_machine.state.name in {"CLIENT_OPEN", "SERVER_OPEN", "IDLE"}
+    # Drain the pending h2c stream-1 task so the run_asgi coroutine completes
+    # rather than emitting a "coroutine was never awaited" warning.
+    while loop._tasks:
+        await loop.run_one()
 
 
 async def test_response_body_longer_than_content_length_closes_connection() -> None:

@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import contextlib
 import contextvars
 import logging
 from collections import deque
@@ -46,6 +47,13 @@ from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT, FlowControl, service_unavailable
 from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
 from uvicorn.server import ServerState
+
+# RFC 7540 section 8.1.2.2: hop-by-hop and upgrade headers MUST NOT appear in
+# HTTP/2 messages. An ASGI app or middleware tuned for HTTP/1.1 may still
+# emit them, so we strip them on the way out.
+_HTTP2_FORBIDDEN_HEADERS = frozenset(
+    {b"connection", b"keep-alive", b"proxy-connection", b"transfer-encoding", b"upgrade"}
+)
 
 
 class HTTP2Protocol(asyncio.Protocol):
@@ -956,9 +964,14 @@ class RequestResponseCycle:
         if not self.protocol.h2_write_paused.is_set() and not self.disconnected:
             drain = asyncio.create_task(self.protocol.h2_write_paused.wait())
             disconnect = asyncio.create_task(self.disconnect_event.wait())
-            _, pending = await asyncio.wait({drain, disconnect}, return_when=asyncio.FIRST_COMPLETED)
-            for task in pending:
-                task.cancel()
+            try:
+                _, pending = await asyncio.wait({drain, disconnect}, return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                for task in (drain, disconnect):
+                    if not task.done():
+                        task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await task
 
         if self.disconnected:
             return
@@ -1000,11 +1013,15 @@ class RequestResponseCycle:
                 if name.lower() != b"connection":  # Connection header not used in HTTP/2
                     response_headers.append((name, value))
 
-            # Add response headers
+            # Add response headers. RFC 7540 prohibits HTTP/1-style hop-by-hop
+            # headers; an ASGI app or middleware that works under HTTP/1.1 must
+            # not corrupt the HTTP/2 response.
             for name, value in headers:
                 lower_name = name.lower()
-                if lower_name == b"connection":  # pragma: no cover
-                    # Connection header not used in HTTP/2
+                if lower_name in _HTTP2_FORBIDDEN_HEADERS:
+                    continue
+                if lower_name == b"te" and value.lower().strip() != b"trailers":
+                    # Only `TE: trailers` is allowed in HTTP/2.
                     continue
                 if lower_name == b"content-length":
                     self.expected_content_length = int(value.decode("ascii"))

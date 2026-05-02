@@ -380,6 +380,12 @@ class H11Protocol(asyncio.Protocol):
 
         self.connections.discard(self)
 
+        # Bytes the peer already sent after the upgrade request - typically
+        # the HTTP/2 client preface (`PRI * HTTP/2.0...`) and the first
+        # frames - need to be forwarded to the new protocol after the switch
+        # so the connection doesn't stall on lost initial frames.
+        trailing = self.conn.trailing_data[0]
+
         # Send 101 Switching Protocols response
         response = b"HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: h2c\r\n\r\n"
         self.transport.write(response)
@@ -402,6 +408,8 @@ class H11Protocol(asyncio.Protocol):
         )
 
         self.transport.set_protocol(h2_protocol)
+        if trailing:
+            h2_protocol.data_received(trailing)
 
     def send_400_response(self, msg: str) -> None:
         reason = STATUS_PHRASES[400]

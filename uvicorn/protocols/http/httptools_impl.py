@@ -251,12 +251,18 @@ class HttpToolsProtocol(asyncio.Protocol):
             self.logger.warning(msg)
             self.send_400_response(msg)
             return
-        except httptools.HttpParserUpgrade:
+        except httptools.HttpParserUpgrade as exc:
             upgrade_type = self._get_upgrade_type()
+            # Anything past the offset reported by httptools is data the peer
+            # has already shipped after the upgrade headers (e.g. the HTTP/2
+            # client preface arriving in the same TCP packet as the Upgrade
+            # request). Hand it to the upgraded protocol once we switch.
+            offset = exc.args[0] if exc.args else len(data)
+            trailing = data[offset:]
             if upgrade_type == "websocket":
                 self.handle_websocket_upgrade()
             elif upgrade_type == "h2c":
-                self.handle_h2c_upgrade()
+                self.handle_h2c_upgrade(trailing)
 
     def handle_websocket_upgrade(self) -> None:
         if self.logger.level <= TRACE_LOG_LEVEL:
@@ -278,8 +284,14 @@ class HttpToolsProtocol(asyncio.Protocol):
         protocol.data_received(b"".join(output))
         self.transport.set_protocol(protocol)
 
-    def handle_h2c_upgrade(self) -> None:
-        """Handle HTTP/2 cleartext (h2c) upgrade request."""
+    def handle_h2c_upgrade(self, trailing_data: bytes = b"") -> None:
+        """Handle HTTP/2 cleartext (h2c) upgrade request.
+
+        `trailing_data` carries any bytes the peer sent after the upgrade
+        request in the same TCP read; they are forwarded to the upgraded
+        protocol's `data_received` after the switch so HTTP/2 frames sent
+        immediately after the Upgrade headers are not lost.
+        """
         assert self.h2_protocol_class is not None
         # `_get_upgrade_type` validates the HTTP2-Settings header before this is reached.
         assert self._h2c_settings is not None
@@ -311,6 +323,8 @@ class HttpToolsProtocol(asyncio.Protocol):
         )
 
         self.transport.set_protocol(h2_protocol)
+        if trailing_data:
+            h2_protocol.data_received(trailing_data)
 
     def send_400_response(self, msg: str) -> None:
         content = [STATUS_LINE[400]]
