@@ -9,6 +9,8 @@ References:
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import contextvars
 import logging
 from collections import deque
@@ -29,7 +31,8 @@ from h2.events import (
     WindowUpdated,
 )
 from h2.exceptions import ProtocolError
-from hyperframe.frame import GoAwayFrame
+from hyperframe.exceptions import HyperframeError
+from hyperframe.frame import SettingsFrame
 
 from uvicorn._types import (
     ASGI3Application,
@@ -61,6 +64,15 @@ class HTTP2Protocol(asyncio.Protocol):
         _loop: Any = None,
     ) -> None: ...
 
+    @staticmethod
+    def is_valid_h2c_settings(value: bytes) -> bool:
+        """Return True if `value` is a valid HTTP2-Settings header payload.
+
+        Used by HTTP/1.1 protocols to validate an h2c upgrade request before
+        committing to `101 Switching Protocols`.
+        """
+        raise NotImplementedError
+
     def initiate_h2c_upgrade(
         self,
         transport: asyncio.Transport,
@@ -76,7 +88,7 @@ class HTTP2Protocol(asyncio.Protocol):
         2. Process the original request as stream 1
         3. Start handling HTTP/2 frames
 
-        The caller must validate `http2_settings` (presence + base64url-decodable) before invoking this method.
+        The caller must validate `http2_settings` via `is_valid_h2c_settings` before invoking this method.
         """
 
 
@@ -130,6 +142,16 @@ class H2Protocol(HTTP2Protocol):
         # Set when the server requests shutdown while streams are still active.
         self._shutdown_requested = False
 
+    @staticmethod
+    def is_valid_h2c_settings(value: bytes) -> bool:
+        """Return True if `value` is a valid base64url-encoded SETTINGS payload."""
+        try:
+            decoded = base64.urlsafe_b64decode(value)
+            SettingsFrame(0).parse_body(memoryview(decoded))
+        except (binascii.Error, ValueError, HyperframeError):
+            return False
+        return True
+
     # Protocol interface
     def connection_made(self, transport: asyncio.Transport) -> None:  # type: ignore[override]
         self.connections.add(self)
@@ -160,7 +182,7 @@ class H2Protocol(HTTP2Protocol):
 
         This is called when upgrading from HTTP/1.1 to HTTP/2 cleartext.
         The 101 Switching Protocols response has already been sent and
-        ``http2_settings`` is the validated raw HTTP2-Settings header value.
+        `http2_settings` is the validated raw HTTP2-Settings header value.
         """
         self.connections.add(self)
 
@@ -335,6 +357,12 @@ class H2Protocol(HTTP2Protocol):
     def handle_request_received(self, event: RequestReceived) -> None:
         stream_id = event.stream_id
         headers = event.headers
+
+        # Refuse to start new streams once graceful shutdown has begun.
+        if self._shutdown_requested:  # pragma: no cover
+            self.conn.reset_stream(stream_id, error_code=ErrorCodes.REFUSED_STREAM)
+            self.transport.write(self.conn.data_to_send())
+            return
 
         # Parse headers into scope format
         # h2 returns headers as bytes when header_encoding=None
@@ -562,8 +590,8 @@ class H2Protocol(HTTP2Protocol):
             stream = self.streams[stream_id]
             if stream._pending_size or stream._pending_end_stream:
                 # Data still waiting for flow control window. The stream will
-                # delete itself from ``self.streams`` and call ``on_stream_closed``
-                # once ``flush_pending_data`` drains the buffer.
+                # delete itself from `self.streams` and call `on_stream_closed`
+                # once `flush_pending_data` drains the buffer.
                 stream._cleanup_pending = True
                 return
 
@@ -572,7 +600,7 @@ class H2Protocol(HTTP2Protocol):
         self.on_stream_closed()
 
     def on_stream_closed(self) -> None:
-        """Run housekeeping after a stream has been removed from ``self.streams``.
+        """Run housekeeping after a stream has been removed from `self.streams`.
 
         Either schedules the keep-alive timer or finishes a pending graceful
         shutdown.
@@ -599,29 +627,17 @@ class H2Protocol(HTTP2Protocol):
         """
         Called by the server to commence a graceful shutdown.
 
-        Emits a GOAWAY frame so the peer stops opening new streams, and closes
-        the connection immediately if there are no in-flight streams.
-        Otherwise, ``on_response_complete`` closes it once the last stream
-        finishes.
+        Closes the connection immediately if there are no in-flight streams.
+        Otherwise, marks the connection as draining: any new stream that
+        arrives will be reset, and `on_response_complete` closes the
+        connection once the last in-flight stream finishes.
         """
         self._shutdown_requested = True
 
         if not self.streams:
-            # No active streams: clean shutdown via h2's state machine.
             self.conn.close_connection()
             self.transport.write(self.conn.data_to_send())
             self.transport.close()
-            return
-
-        # Send a manual GOAWAY frame so we can keep using h2 for the in-flight
-        # streams. ``H2Connection.close_connection()`` would put h2 into the
-        # CLOSED state and reject any further send_data on the active stream.
-        goaway = GoAwayFrame(
-            stream_id=0,
-            last_stream_id=self.conn.highest_inbound_stream_id,
-            error_code=ErrorCodes.NO_ERROR,
-        )
-        self.transport.write(goaway.serialize())
 
     def pause_writing(self) -> None:  # pragma: no cover
         """
@@ -690,7 +706,7 @@ class H2Stream:
         self.flush_pending_data()
 
     def _pop_chunk(self, size: int) -> bytes:
-        """Pop up to ``size`` bytes from the pending chunks deque."""
+        """Pop up to `size` bytes from the pending chunks deque."""
         head = self._pending_chunks[0]
         if len(head) <= size:
             self._pending_chunks.popleft()

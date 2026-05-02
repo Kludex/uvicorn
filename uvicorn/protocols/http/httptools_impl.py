@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
-import binascii
 import contextvars
 import http
 import logging
@@ -16,13 +14,6 @@ from ssl import SSLObject
 from typing import Any, Literal
 
 import httptools
-
-try:
-    from hyperframe.exceptions import HyperframeError
-    from hyperframe.frame import SettingsFrame
-except ImportError:  # pragma: no cover
-    SettingsFrame = None  # type: ignore[assignment,misc]
-    HyperframeError = Exception  # type: ignore[assignment,misc]
 
 from uvicorn._types import (
     ASGI3Application,
@@ -221,10 +212,8 @@ class HttpToolsProtocol(asyncio.Protocol):
                 seen = value
         if seen is None:
             return None
-        try:
-            decoded = base64.urlsafe_b64decode(seen)
-            SettingsFrame(0).parse_body(memoryview(decoded))
-        except (binascii.Error, ValueError, HyperframeError):
+        assert self.h2_protocol_class is not None
+        if not self.h2_protocol_class.is_valid_h2c_settings(seen):
             return None
         return seen
 

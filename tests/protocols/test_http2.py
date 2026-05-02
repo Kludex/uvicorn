@@ -311,8 +311,6 @@ async def test_shutdown_during_idle():
 async def test_shutdown_during_active_stream_closes_after_response():
     """Shutdown during an in-flight stream must close the connection
     once the last response completes, not hold it open until keep-alive expires."""
-    from hyperframe.frame import GoAwayFrame
-
     response_event = asyncio.Event()
     finish_response = asyncio.Event()
 
@@ -335,8 +333,6 @@ async def test_shutdown_during_active_stream_closes_after_response():
     protocol.shutdown()
     # Connection must stay open while the stream is still in flight.
     assert not protocol.transport.is_closing()
-    # A GOAWAY frame is sent so the peer stops opening new streams.
-    assert any(isinstance(frame, GoAwayFrame) for frame in _parse_frames(protocol.transport.buffer))
 
     finish_response.set()
     await task
@@ -399,23 +395,6 @@ async def test_shutdown_during_flow_controlled_stream_closes_after_flush() -> No
     # Once the buffer drains the connection should close.
     assert protocol.transport.is_closing()
     assert h2_protocol.timeout_keep_alive_task is None
-
-
-def _parse_frames(data: bytes) -> list[Any]:
-    from hyperframe.frame import Frame
-
-    frames: list[Any] = []
-    offset = 0
-    while offset < len(data):
-        try:
-            frame, length = Frame.parse_frame_header(memoryview(data[offset : offset + 9]))
-        except Exception:  # pragma: no cover - skip frames the helper can't decode
-            break
-        offset += 9
-        frame.parse_body(memoryview(data[offset : offset + length]))
-        offset += length
-        frames.append(frame)
-    return frames
 
 
 async def test_root_path() -> None:
