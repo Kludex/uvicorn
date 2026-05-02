@@ -894,6 +894,9 @@ class RequestResponseCycle:
         # Response state
         self.response_started = False
         self.response_complete = False
+        # Tracks remaining bytes when the response declares a Content-Length so
+        # we can refuse responses that disagree with their declared length.
+        self.expected_content_length: int | None = None
 
     async def run_asgi(self, app: ASGI3Application) -> None:
         try:
@@ -990,7 +993,14 @@ class RequestResponseCycle:
                 if lower_name == b"connection":  # pragma: no cover
                     # Connection header not used in HTTP/2
                     continue
+                if lower_name == b"content-length":
+                    self.expected_content_length = int(value.decode("ascii"))
                 response_headers.append((lower_name, value))
+
+            # 1xx, 204 and 304 responses MUST NOT include a body, and HEAD
+            # requests omit the body even when Content-Length is advertised.
+            if status < 200 or status in (204, 304) or self.scope["method"] == "HEAD":
+                self.expected_content_length = 0
 
             self.stream.send_headers(response_headers)
 
@@ -1007,6 +1017,13 @@ class RequestResponseCycle:
             # Write response body
             if self.scope["method"] == "HEAD":  # pragma: no cover
                 body = b""
+
+            if self.expected_content_length is not None:
+                if len(body) > self.expected_content_length:
+                    raise RuntimeError("Response content longer than Content-Length")
+                self.expected_content_length -= len(body)
+                if not more_body and self.expected_content_length != 0:
+                    raise RuntimeError("Response content shorter than Content-Length")
 
             if body or not more_body:
                 self.stream.send_data(body, end_stream=not more_body)

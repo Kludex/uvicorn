@@ -564,6 +564,63 @@ async def test_send_data_pauses_writer_when_buffer_grows() -> None:
     assert protocol.h2_write_paused.is_set()
 
 
+async def test_response_body_longer_than_content_length_closes_connection() -> None:
+    """If the app sends more bytes than the declared Content-Length, the
+    cycle must abort instead of silently emitting a malformed HTTP/2 response."""
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-length", b"3")],
+            }
+        )
+        await send({"type": "http.response.body", "body": b"hello", "more_body": False})
+
+    protocol = get_connected_protocol(app)
+    protocol.transport.clear_buffer()
+    protocol.data_received(create_h2_request("GET", "/"))
+    await protocol.loop.run_one()
+    assert protocol.transport.is_closing()
+
+
+async def test_response_body_shorter_than_content_length_closes_connection() -> None:
+    """If the app declares Content-Length but sends fewer bytes, the cycle
+    must abort rather than emit a truncated response on the wire."""
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-length", b"10")],
+            }
+        )
+        await send({"type": "http.response.body", "body": b"short", "more_body": False})
+
+    protocol = get_connected_protocol(app)
+    protocol.transport.clear_buffer()
+    protocol.data_received(create_h2_request("GET", "/"))
+    await protocol.loop.run_one()
+    assert protocol.transport.is_closing()
+
+
+async def test_204_status_must_not_carry_body() -> None:
+    """RFC 7230: 204/304 responses MUST NOT include a message body. The
+    HTTP/2 path mirrors HTTP/1.1 by treating it as a length mismatch."""
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send({"type": "http.response.start", "status": 204, "headers": []})
+        await send({"type": "http.response.body", "body": b"oops", "more_body": False})
+
+    protocol = get_connected_protocol(app)
+    protocol.transport.clear_buffer()
+    protocol.data_received(create_h2_request("GET", "/"))
+    await protocol.loop.run_one()
+    assert protocol.transport.is_closing()
+
+
 async def test_shutdown_wakes_streams_blocked_in_receive() -> None:
     """A graceful shutdown must wake any cycle blocked in `await receive()`
     so the ASGI app sees a disconnect, finishes, and lets the connection
