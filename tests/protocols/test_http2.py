@@ -564,6 +564,49 @@ async def test_send_data_pauses_writer_when_buffer_grows() -> None:
     assert protocol.h2_write_paused.is_set()
 
 
+async def test_send_unblocks_when_stream_disconnects_during_backpressure() -> None:
+    """If the peer cancels a stream while connection-wide HTTP/2 backpressure
+    is engaged, `send` must race the wait against the cycle's message_event
+    so a reset wakes the task instead of pinning it forever."""
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"application/octet-stream")],
+            }
+        )
+        # Push past the high water mark so the next send awaits.
+        await send({"type": "http.response.body", "body": b"y" * 200_000, "more_body": True})
+        # This send sits on `h2_write_paused` until the stream is reset.
+        await send({"type": "http.response.body", "body": b"z" * 200_000, "more_body": True})
+
+    protocol = get_connected_protocol(app)
+    protocol.transport.clear_buffer()
+    protocol.data_received(create_h2_request("GET", "/"))
+    task = asyncio.create_task(protocol.loop.run_one())
+    # Yield enough times for the second send to actually block on backpressure.
+    for _ in range(20):
+        await asyncio.sleep(0)
+    assert not protocol.h2_write_paused.is_set()
+    assert not task.done()
+
+    # Reset the stream from the client side. The send should unblock.
+    client_config = H2Configuration(client_side=True, header_encoding="utf-8")
+    client_conn = H2Connection(config=client_config)
+    client_conn.initiate_connection()
+    client_conn.send_headers(
+        1,
+        [(":method", "GET"), (":path", "/"), (":scheme", "https"), (":authority", "localhost")],
+        end_stream=True,
+    )
+    client_conn.clear_outbound_data_buffer()
+    client_conn.reset_stream(1, error_code=ErrorCodes.CANCEL)
+    protocol.data_received(client_conn.data_to_send())
+    await asyncio.wait_for(task, timeout=1.0)
+
+
 async def test_response_body_longer_than_content_length_closes_connection() -> None:
     """If the app sends more bytes than the declared Content-Length, the
     cycle must abort instead of silently emitting a malformed HTTP/2 response."""

@@ -331,6 +331,7 @@ class H2Protocol(HTTP2Protocol):
         for stream in self.streams.values():  # pragma: no cover
             if stream.cycle and not stream.cycle.response_complete:
                 stream.cycle.disconnected = True
+                stream.cycle.disconnect_event.set()
                 stream.cycle.message_event.set()
 
         self.flow.resume_writing()  # pragma: no cover
@@ -557,6 +558,7 @@ class H2Protocol(HTTP2Protocol):
                 self.h2_write_paused.set()
             if stream.cycle:
                 stream.cycle.disconnected = True
+                stream.cycle.disconnect_event.set()
                 stream.cycle.message_event.set()
             del self.streams[stream_id]
             # Run the same housekeeping `on_response_complete` would have run
@@ -721,6 +723,7 @@ class H2Protocol(HTTP2Protocol):
         for stream in self.streams.values():
             if stream.cycle and not stream.cycle.response_complete:
                 stream.cycle.disconnected = True
+                stream.cycle.disconnect_event.set()
                 stream.cycle.message_event.set()
 
     def pause_writing(self) -> None:  # pragma: no cover
@@ -885,6 +888,9 @@ class RequestResponseCycle:
 
         # Connection state
         self.disconnected = False
+        # Set when this cycle is disconnected; used to wake up `send` if it
+        # is waiting on connection-wide HTTP/2 backpressure.
+        self.disconnect_event: asyncio.Event = asyncio.Event()
         self.keep_alive = True
 
         # Request state
@@ -943,11 +949,18 @@ class RequestResponseCycle:
         if self.flow.write_paused and not self.disconnected:  # pragma: no cover
             await self.flow.drain()
         # HTTP/2 connection-level send queue may also apply backpressure when
-        # the peer's flow-control window is exhausted.
+        # the peer's flow-control window is exhausted. Race against this
+        # stream's `disconnect_event` so a reset / connection-lost while we
+        # are paused unblocks the task instead of pinning it forever waiting
+        # for a WINDOW_UPDATE that will never arrive.
         if not self.protocol.h2_write_paused.is_set() and not self.disconnected:
-            await self.protocol.h2_write_paused.wait()
+            drain = asyncio.create_task(self.protocol.h2_write_paused.wait())
+            disconnect = asyncio.create_task(self.disconnect_event.wait())
+            _, pending = await asyncio.wait({drain, disconnect}, return_when=asyncio.FIRST_COMPLETED)
+            for task in pending:
+                task.cancel()
 
-        if self.disconnected:  # pragma: no cover
+        if self.disconnected:
             return
 
         # Handle HTTP/2 Server Push
