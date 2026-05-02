@@ -860,6 +860,56 @@ async def test_connection_lost():
     assert protocol not in protocol.connections
 
 
+async def test_stream_reset_clears_buffered_pending_bytes() -> None:
+    """A RST_STREAM while data is queued behind a closed window must release
+    the connection-wide backpressure and pending byte counter."""
+    response_started = asyncio.Event()
+    finish_response = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"application/octet-stream")],
+            }
+        )
+        response_started.set()
+        await send({"type": "http.response.body", "body": b"y" * 200_000, "more_body": True})
+        await finish_response.wait()
+
+    protocol = get_connected_protocol(app)
+    protocol.transport.clear_buffer()
+    protocol.data_received(create_h2_request("GET", "/"))
+    task = asyncio.create_task(protocol.loop.run_one())
+    await response_started.wait()
+    for _ in range(3):
+        await asyncio.sleep(0)
+
+    h2_protocol = cast(H2Protocol, protocol)
+    assert h2_protocol.pending_bytes > 0
+    assert protocol.flow.write_paused
+
+    # Client resets the stream; the buffered data should be discarded and
+    # the connection-wide pending byte counter must drop.
+    client_config = H2Configuration(client_side=True, header_encoding="utf-8")
+    client_conn = H2Connection(config=client_config)
+    client_conn.initiate_connection()
+    client_conn.send_headers(
+        1,
+        [(":method", "GET"), (":path", "/"), (":scheme", "https"), (":authority", "localhost")],
+        end_stream=True,
+    )
+    client_conn.clear_outbound_data_buffer()
+    client_conn.reset_stream(1, error_code=ErrorCodes.CANCEL)
+    protocol.data_received(client_conn.data_to_send())
+
+    assert h2_protocol.pending_bytes == 0
+    assert not protocol.flow.write_paused
+    finish_response.set()
+    await task
+
+
 async def test_stream_reset():
     """Test handling of client-initiated stream reset (RST_STREAM)."""
     disconnect_received = False

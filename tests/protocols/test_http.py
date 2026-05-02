@@ -1185,6 +1185,9 @@ async def test_h2c_upgrade_disabled_with_http2_false(http_protocol_cls: type[HTT
         # `AAAA` decodes to 3 bytes, which is shorter than one SETTINGS entry (6 bytes), so
         # SettingsFrame.parse_body rejects it before we commit to the upgrade.
         pytest.param(h2c_upgrade_request(settings=b"AAAA"), id="invalid_settings_frame_body"),
+        # `AAIAAAAC` encodes ENABLE_PUSH=2, which is syntactically a valid SETTINGS body but
+        # an invalid value (must be 0 or 1). h2 raises InvalidSettingsValueError.
+        pytest.param(h2c_upgrade_request(settings=b"AAIAAAAC"), id="invalid_settings_value"),
         pytest.param(
             h2c_upgrade_request(extra_settings=b"AAMAAABkAAQBAAAAAAIAAAAA"),
             id="duplicate_http2_settings_header",

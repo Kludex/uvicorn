@@ -32,7 +32,6 @@ from h2.events import (
 )
 from h2.exceptions import ProtocolError
 from hyperframe.exceptions import HyperframeError
-from hyperframe.frame import SettingsFrame
 
 from uvicorn._types import (
     ASGI3Application,
@@ -148,11 +147,22 @@ class H2Protocol(HTTP2Protocol):
 
     @staticmethod
     def is_valid_h2c_settings(value: bytes) -> bool:
-        """Return True if `value` is a valid base64url-encoded SETTINGS payload."""
+        """Return True if `value` is a valid base64url-encoded SETTINGS payload.
+
+        Validates the full payload (frame body + setting values) by running it
+        through h2's own upgrade machinery on a throwaway connection. h2 raises
+        `InvalidSettingsValueError` for things like `ENABLE_PUSH=2`, so this
+        catches every case h2 would reject after the upgrade was committed.
+        """
         try:
-            decoded = base64.urlsafe_b64decode(value)
-            SettingsFrame(0).parse_body(memoryview(decoded))
-        except (binascii.Error, ValueError, HyperframeError):
+            base64.urlsafe_b64decode(value)
+        except (binascii.Error, ValueError):
+            return False
+        try:
+            H2Connection(config=H2Configuration(client_side=False, header_encoding=None)).initiate_upgrade_connection(
+                value
+            )
+        except (ProtocolError, HyperframeError, ValueError):
             return False
         return True
 
@@ -493,6 +503,15 @@ class H2Protocol(HTTP2Protocol):
 
         if stream_id in self.streams:
             stream = self.streams[stream_id]
+            # Drop any data the stream had buffered behind a closed flow-control
+            # window so the connection-wide pending byte count stays accurate.
+            self.pending_bytes -= stream._pending_size
+            stream._pending_chunks.clear()
+            stream._pending_size = 0
+            stream._pending_end_stream = False
+            stream._cleanup_pending = False
+            if self.pending_bytes <= HIGH_WATER_LIMIT:
+                self.flow.resume_writing()
             if stream.cycle:
                 stream.cycle.disconnected = True
                 stream.cycle.message_event.set()
