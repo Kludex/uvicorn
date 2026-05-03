@@ -206,10 +206,11 @@ class HttpToolsProtocol(asyncio.Protocol):
 
     def _get_h2c_settings(self, connection_tokens: list[bytes]) -> bytes | None:
         # Per RFC 7540 section 3.2, an h2c upgrade requires the `HTTP2-Settings`
-        # connection-option and exactly one valid `HTTP2-Settings` header field whose value
-        # is a base64url-encoded SETTINGS frame payload. Requests that carry a body cannot
-        # be upgraded because we'd lose the body bytes when we hand stream 1 to h2.
-        # Returns the validated raw header value, or None if the upgrade is not valid.
+        # connection-option and exactly one `HTTP2-Settings` header field. Requests
+        # that carry a body cannot be upgraded because we'd lose the body bytes
+        # when we hand stream 1 to h2. The actual SETTINGS payload is validated
+        # later by `H2Protocol.initiate_h2c_upgrade`, which only commits the
+        # protocol switch if hyper-h2 accepts the payload.
         if b"http2-settings" not in connection_tokens:
             return None
         seen: bytes | None = None
@@ -222,11 +223,6 @@ class HttpToolsProtocol(asyncio.Protocol):
                 return None
             elif name == b"transfer-encoding":
                 return None
-        if seen is None:
-            return None
-        assert self.h2_protocol_class is not None
-        if not self.h2_protocol_class.is_valid_h2c_settings(seen):
-            return None
         return seen
 
     def _get_upgrade_type(self) -> str | None:
@@ -300,19 +296,11 @@ class HttpToolsProtocol(asyncio.Protocol):
         immediately after the Upgrade headers are not lost.
         """
         assert self.h2_protocol_class is not None
-        # `_get_upgrade_type` validates the HTTP2-Settings header before this is reached.
         assert self._h2c_settings is not None
         if self.logger.level <= TRACE_LOG_LEVEL:  # pragma: full coverage
             prefix = "%s:%d - " % self.client if self.client else ""
             self.logger.log(TRACE_LOG_LEVEL, "%sUpgrading to HTTP/2 (h2c)", prefix)
 
-        self.connections.discard(self)
-
-        # Send 101 Switching Protocols response
-        response = b"HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: h2c\r\n\r\n"
-        self.transport.write(response)
-
-        # Create and switch to H2Protocol
         h2_protocol = self.h2_protocol_class(
             config=self.config,
             server_state=self.server_state,
@@ -320,15 +308,22 @@ class HttpToolsProtocol(asyncio.Protocol):
             _loop=self.loop,
         )
 
-        # Initialize the H2 connection for upgrade
-        h2_protocol.initiate_h2c_upgrade(
+        # Try the upgrade first; only commit `101 Switching Protocols` if h2
+        # accepts the SETTINGS payload. Otherwise the wire would be left in
+        # a half-broken state with the peer expecting HTTP/2 and the server
+        # unable to speak it.
+        if not h2_protocol.initiate_h2c_upgrade(
             self.transport,
             self.scope["method"],
             self.url.decode("ascii"),
             list(self.scope["headers"]),
             self._h2c_settings,
-        )
+        ):
+            self.send_400_response("Invalid HTTP2-Settings header for h2c upgrade")
+            return
 
+        self.connections.discard(self)
+        self.transport.write(b"HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: h2c\r\n\r\n")
         self.transport.set_protocol(h2_protocol)
         if trailing_data:
             h2_protocol.data_received(trailing_data)

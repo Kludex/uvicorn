@@ -1181,13 +1181,6 @@ async def test_h2c_upgrade_disabled_with_http2_false(http_protocol_cls: type[HTT
         pytest.param(h2c_upgrade_request(settings=None), id="missing_http2_settings_header"),
         pytest.param(h2c_upgrade_request(connection=b"Upgrade"), id="missing_connection_token"),
         pytest.param(h2c_upgrade_request(settings=b""), id="empty_http2_settings_value"),
-        pytest.param(h2c_upgrade_request(settings=b"!!not-base64!!"), id="non_base64_http2_settings"),
-        # `AAAA` decodes to 3 bytes, which is shorter than one SETTINGS entry (6 bytes), so
-        # SettingsFrame.parse_body rejects it before we commit to the upgrade.
-        pytest.param(h2c_upgrade_request(settings=b"AAAA"), id="invalid_settings_frame_body"),
-        # `AAIAAAAC` encodes ENABLE_PUSH=2, which is syntactically a valid SETTINGS body but
-        # an invalid value (must be 0 or 1). h2 raises InvalidSettingsValueError.
-        pytest.param(h2c_upgrade_request(settings=b"AAIAAAAC"), id="invalid_settings_value"),
         pytest.param(
             h2c_upgrade_request(extra_settings=b"AAMAAABkAAQBAAAAAAIAAAAA"),
             id="duplicate_http2_settings_header",
@@ -1204,12 +1197,14 @@ async def test_h2c_upgrade_disabled_with_http2_false(http_protocol_cls: type[HTT
         ),
     ],
 )
-async def test_h2c_upgrade_rejected_for_malformed_request(
+async def test_h2c_upgrade_request_falls_back_to_http1(
     http_protocol_cls: type[HTTPProtocol],
     request_bytes: bytes,
     caplog: pytest.LogCaptureFixture,
 ):
-    """A malformed h2c upgrade must NOT switch protocols and must NOT send 101."""
+    """When the upgrade request is structurally malformed (missing required
+    headers, has a body), the server falls back to plain HTTP/1.1 instead of
+    sending `101 Switching Protocols`."""
     caplog.set_level(logging.WARNING, logger="uvicorn.error")
     app = Response("Hello, world", media_type="text/plain")
     protocol = get_connected_protocol(app, http_protocol_cls, http2=True)
@@ -1220,6 +1215,34 @@ async def test_h2c_upgrade_rejected_for_malformed_request(
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
     assert protocol.transport.get_protocol() is None
     assert any("Ignoring h2c upgrade" in record.getMessage() for record in caplog.records)
+
+
+@skip_if_no_h2
+@pytest.mark.parametrize(
+    "request_bytes",
+    [
+        pytest.param(h2c_upgrade_request(settings=b"!!not-base64!!"), id="non_base64_http2_settings"),
+        # `AAAA` decodes to 3 bytes, which is shorter than one SETTINGS entry (6 bytes).
+        pytest.param(h2c_upgrade_request(settings=b"AAAA"), id="invalid_settings_frame_body"),
+        # `AAIAAAAC` encodes ENABLE_PUSH=2, which is a valid SETTINGS body shape but
+        # an invalid value (must be 0 or 1).
+        pytest.param(h2c_upgrade_request(settings=b"AAIAAAAC"), id="invalid_settings_value"),
+    ],
+)
+async def test_h2c_upgrade_with_invalid_settings_returns_400(
+    http_protocol_cls: type[HTTPProtocol],
+    request_bytes: bytes,
+):
+    """When the HTTP2-Settings payload is well-framed enough to attempt the
+    upgrade but hyper-h2 rejects the SETTINGS contents, the server replies
+    with 400 instead of leaving the wire in a half-broken state."""
+    app = Response("Hello, world", media_type="text/plain")
+    protocol = get_connected_protocol(app, http_protocol_cls, http2=True)
+    protocol.data_received(request_bytes)
+
+    assert b"HTTP/1.1 400" in protocol.transport.buffer
+    assert b"HTTP/1.1 101 Switching Protocols" not in protocol.transport.buffer
+    assert protocol.transport.get_protocol() is None
 
 
 async def test_header_upgrade_is_websocket_depend_not_installed(

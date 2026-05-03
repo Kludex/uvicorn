@@ -9,8 +9,6 @@ References:
 from __future__ import annotations
 
 import asyncio
-import base64
-import binascii
 import contextlib
 import contextvars
 import logging
@@ -76,15 +74,6 @@ class HTTP2Protocol(asyncio.Protocol):
         _loop: Any = None,
     ) -> None: ...
 
-    @staticmethod
-    def is_valid_h2c_settings(value: bytes) -> bool:
-        """Return True if `value` is a valid HTTP2-Settings header payload.
-
-        Used by HTTP/1.1 protocols to validate an h2c upgrade request before
-        committing to `101 Switching Protocols`.
-        """
-        raise NotImplementedError
-
     def initiate_h2c_upgrade(
         self,
         transport: asyncio.Transport,
@@ -92,16 +81,15 @@ class HTTP2Protocol(asyncio.Protocol):
         path: str,
         headers: list[tuple[bytes, bytes]],
         http2_settings: bytes,
-    ) -> None:
+    ) -> bool:
         """Initialize an HTTP/2 connection from an h2c upgrade request.
 
-        This method is called by HTTP/1.1 protocols when they receive an h2c upgrade request. The implementation should:
-        1. Set up the HTTP/2 connection state
-        2. Process the original request as stream 1
-        3. Start handling HTTP/2 frames
-
-        The caller must validate `http2_settings` via `is_valid_h2c_settings` before invoking this method.
+        Returns True when the upgrade succeeded and the caller should send the
+        `101 Switching Protocols` response, False when the HTTP2-Settings
+        payload was rejected by the HTTP/2 stack and the caller should keep
+        speaking HTTP/1.1.
         """
+        raise NotImplementedError
 
 
 class H2Protocol(HTTP2Protocol):
@@ -171,30 +159,6 @@ class H2Protocol(HTTP2Protocol):
         # is closed.
         self._unmatched_resets = 0
 
-    @staticmethod
-    def is_valid_h2c_settings(value: bytes) -> bool:
-        """Return True if `value` is a valid base64url-encoded SETTINGS payload.
-
-        Validates the full payload (frame body + setting values) by running it
-        through h2's own upgrade machinery on a throwaway connection. h2 raises
-        `InvalidSettingsValueError` for things like `ENABLE_PUSH=2`, so this
-        catches every case h2 would reject after the upgrade was committed.
-        """
-        try:
-            # Strict validation rejects characters outside the base64url alphabet
-            # that `urlsafe_b64decode` would otherwise silently strip
-            # (e.g. `AAMAAABk!!`).
-            base64.b64decode(value.replace(b"-", b"+").replace(b"_", b"/"), validate=True)
-        except (binascii.Error, ValueError):
-            return False
-        try:
-            H2Connection(config=H2Configuration(client_side=False, header_encoding=None)).initiate_upgrade_connection(
-                value
-            )
-        except (ProtocolError, HyperframeError, ValueError):
-            return False
-        return True
-
     # Protocol interface
     def connection_made(self, transport: asyncio.Transport) -> None:  # type: ignore[override]
         self.connections.add(self)
@@ -220,24 +184,28 @@ class H2Protocol(HTTP2Protocol):
         path: str,
         headers: list[tuple[bytes, bytes]],
         http2_settings: bytes,
-    ) -> None:
+    ) -> bool:
         """Initialize HTTP/2 connection for h2c upgrade.
 
-        This is called when upgrading from HTTP/1.1 to HTTP/2 cleartext.
-        The 101 Switching Protocols response has already been sent and
-        `http2_settings` is the validated raw HTTP2-Settings header value.
+        Returns True if hyper-h2 accepts the HTTP2-Settings payload (and the
+        caller should send `101 Switching Protocols`), False otherwise.
         """
-        self.connections.add(self)
+        # Try the upgrade up front: hyper-h2 raises if the SETTINGS payload is
+        # malformed or has out-of-spec values, and we want to discover that
+        # before the caller commits to `101 Switching Protocols`. ProtocolError
+        # and HyperframeError cover the documented failures; ValueError covers
+        # the base64 decode that h2 does internally.
+        try:
+            self.conn.initiate_upgrade_connection(http2_settings)
+        except (ProtocolError, HyperframeError, ValueError):
+            return False
 
+        self.connections.add(self)
         self.transport = transport
         self.flow = FlowControl(transport)
         self.server = get_local_addr(transport)
         self.client = get_remote_addr(transport)
         self.scheme = "http"
-
-        # Initialize HTTP/2 connection for upgrade
-        # This handles the upgrade case where client sent HTTP/1.1 request with Upgrade: h2c
-        self.conn.initiate_upgrade_connection(http2_settings)
         self.transport.write(self.conn.data_to_send())
 
         if self.logger.level <= TRACE_LOG_LEVEL:  # pragma: no cover
@@ -247,6 +215,7 @@ class H2Protocol(HTTP2Protocol):
         # The initial HTTP/1.1 request becomes stream 1 in HTTP/2
         # We need to process it as if we received a RequestReceived event
         self._handle_upgraded_request(method, path, headers)
+        return True
 
     def _handle_upgraded_request(
         self,
