@@ -83,6 +83,7 @@ docs = [
 [tool.uv]
 default-groups = ["dev", "docs"]
 required-version = ">=0.8.6"
+exclude-newer = "7 days"
 
 [project.scripts]
 uvicorn = "uvicorn.main:main"
