@@ -2,6 +2,20 @@
 toc_depth: 2
 ---
 
+## 0.47.0 (May 14, 2026)
+
+### Added
+
+* Add `ssl_context_factory` for custom `SSLContext` configuration (#2920)
+
+### Changed
+
+* Eagerly import the ASGI app in the parent process (#2919)
+
+### Fixed
+
+* Treat `fd=0` as a valid file descriptor with reload/workers (#2927)
+
 ## 0.46.0 (April 23, 2026)
 
 ### Added
