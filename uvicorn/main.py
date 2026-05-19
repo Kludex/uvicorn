@@ -340,8 +340,8 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
 @click.option(
     "--ssl-ciphers",
     type=str,
-    default="TLSv1",
-    help="Ciphers to use (see stdlib ssl module's)",
+    default=None,
+    help="Ciphers to use (see stdlib ssl module's). Defaults to OpenSSL's safe defaults.",
     show_default=True,
 )
 @click.option(
@@ -430,7 +430,7 @@ def main(
     ssl_version: int,
     ssl_cert_reqs: int,
     ssl_ca_certs: str,
-    ssl_ciphers: str,
+    ssl_ciphers: str | None,
     headers: list[str],
     use_colors: bool,
     app_dir: str,
@@ -537,7 +537,7 @@ def run(
     ssl_version: int = SSL_PROTOCOL_VERSION,
     ssl_cert_reqs: int = ssl.CERT_NONE,
     ssl_ca_certs: str | os.PathLike[str] | None = None,
-    ssl_ciphers: str = "TLSv1",
+    ssl_ciphers: str | None = None,
     ssl_context_factory: Callable[[Config, Callable[[], ssl.SSLContext]], ssl.SSLContext] | None = None,
     headers: list[tuple[str, str]] | None = None,
     use_colors: bool | None = None,

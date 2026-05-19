@@ -134,7 +134,7 @@ The [SSL context](https://docs.python.org/3/library/ssl.html#ssl.SSLContext) can
 * `--ssl-version <int>` - The SSL version to use. **Default:** *ssl.PROTOCOL_TLS_SERVER*.
 * `--ssl-cert-reqs <int>` - Whether client certificate is required. **Default:** *ssl.CERT_NONE*.
 * `--ssl-ca-certs <str>` - The CA certificates file.
-* `--ssl-ciphers <str>` - The ciphers to use. **Default:** *"TLSv1"*.
+* `--ssl-ciphers <str>` - The ciphers to use. **Default:** OpenSSL's safe defaults.
 
 To understand more about the SSL context options, please refer to the [Python documentation](https://docs.python.org/3/library/ssl.html).
 
