@@ -199,6 +199,20 @@ def test_ssl_context_factory_must_return_ssl_context() -> None:
         config.load()
 
 
+def test_ssl_ciphers_applied_when_set(
+    tls_certificate_server_cert_path: str,
+    tls_certificate_private_key_path: str,
+) -> None:
+    config = Config(
+        app=app,
+        ssl_keyfile=tls_certificate_private_key_path,
+        ssl_certfile=tls_certificate_server_cert_path,
+        ssl_ciphers="HIGH",
+    )
+    config.load()
+    assert isinstance(config.ssl, ssl.SSLContext)
+
+
 def test_is_ssl_true_when_only_factory_set() -> None:
     def ssl_context_factory(config: Config, default_ssl_context_factory: DefaultFactory) -> ssl.SSLContext:
         return ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)  # pragma: no cover
