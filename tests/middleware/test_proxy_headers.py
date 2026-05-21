@@ -573,11 +573,11 @@ def _make_http_scope(headers: list[tuple[bytes, bytes]], scheme: str = "http") -
     }
 
 
-async def _noop_receive() -> ASGIReceiveEvent:
+async def _noop_receive() -> ASGIReceiveEvent:  # pragma: no cover
     return {"type": "http.disconnect"}
 
 
-async def _noop_send(message: ASGISendEvent) -> None:
+async def _noop_send(message: ASGISendEvent) -> None:  # pragma: no cover
     return None
 
 
