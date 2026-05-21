@@ -262,6 +262,30 @@ def test_socket_bind() -> None:
     sock.close()
 
 
+def has_ipv6(host: str) -> bool:
+    if not socket.has_ipv6:
+        return False  # pragma: no cover
+    try:
+        with socket.socket(socket.AF_INET6) as sock:
+            sock.bind((host, 0))
+    except OSError:  # pragma: no cover
+        return False
+    return True
+
+
+@pytest.mark.skipif(not has_ipv6("::"), reason="IPV6 not enabled")
+def test_socket_bind_ipv6_only() -> None:
+    config = Config(app=asgi_app, host="::", port=0)
+    config.load()
+    sock = config.bind_socket()
+    assert isinstance(sock, socket.socket)
+    try:
+        assert sock.family == socket.AF_INET6
+        assert sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY) == 1
+    finally:
+        sock.close()
+
+
 def test_ssl_config(
     tls_ca_certificate_pem_path: str,
     tls_ca_certificate_private_key_path: str,
