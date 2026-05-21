@@ -264,8 +264,9 @@ Uvicorn currently supports the following headers:
 
 - `X-Forwarded-For` ([MDN Reference](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For))
 - `X-Forwarded-Proto`([MDN Reference](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-Proto))
+- `X-Forwarded-Host` ([MDN Reference](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-Host))
 
-Uvicorn can use these headers to correctly set the client and protocol in the request.
+Uvicorn can use these headers to correctly set the client, protocol, and host (including the `Host` request header and `scope["server"]`) in the request.
 However as anyone can set these headers you must configure which "clients" you will trust to have set them correctly.
 
 Uvicorn can be configured to trust IP Addresses (e.g. `127.0.0.1`), IP Networks (e.g. `10.100.0.0/16`),

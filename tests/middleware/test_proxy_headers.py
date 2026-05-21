@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 X_FORWARDED_FOR = "X-Forwarded-For"
 X_FORWARDED_PROTO = "X-Forwarded-Proto"
+X_FORWARDED_HOST = "X-Forwarded-Host"
 
 
 async def default_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
@@ -554,3 +555,128 @@ async def test_proxy_headers_empty_x_forwarded_for() -> None:
         response = await client.get("/", headers=headers)
     assert response.status_code == 200
     assert response.text == "https://127.0.0.1:123"
+
+
+async def host_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+    """Echoes the `host` header and `scope["server"]` so tests can assert both."""
+    headers = dict(scope["headers"])  # type: ignore
+    host_header = headers.get(b"host", b"").decode("latin1")
+    server = scope["server"]  # type: ignore
+    if server is not None:
+        server_repr = f"{server[0]}:{server[1]}"
+    else:
+        server_repr = "NONE"  # pragma: no cover
+    response = Response(f"host={host_header} server={server_repr}", media_type="text/plain")
+    await response(scope, receive, send)
+
+
+def make_host_client(
+    trusted_hosts: str | list[str],
+    client: tuple[str, int] = ("127.0.0.1", 123),
+) -> httpx.AsyncClient:
+    app = ProxyHeadersMiddleware(host_app, trusted_hosts)
+    transport = httpx.ASGITransport(app=app, client=client)  # type: ignore
+    return httpx.AsyncClient(transport=transport, base_url="http://testserver")
+
+
+@pytest.mark.anyio
+async def test_proxy_headers_x_forwarded_host_untrusted() -> None:
+    """X-Forwarded-Host from an untrusted peer must be ignored."""
+    async with make_host_client("192.168.0.1") as client:
+        headers = {X_FORWARDED_HOST: "malicious.example"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    assert "malicious.example" not in response.text
+
+
+@pytest.mark.anyio
+async def test_proxy_headers_empty_x_forwarded_host() -> None:
+    """Empty X-Forwarded-Host leaves the original Host header and server untouched."""
+    async with make_host_client("*") as client:
+        response = await client.get("/", headers={X_FORWARDED_HOST: "   "})
+    assert response.status_code == 200
+    assert response.text == "host=testserver server=testserver:None"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("forwarded_host", "expected_host", "expected_server"),
+    [
+        # Hostname without port -> defaults to scheme port (http -> 80)
+        ("example.com", "example.com", "example.com:80"),
+        # Hostname with port
+        ("example.com:8080", "example.com:8080", "example.com:8080"),
+        # IPv4 without port
+        ("192.0.2.10", "192.0.2.10", "192.0.2.10:80"),
+        # IPv4 with port
+        ("192.0.2.10:8080", "192.0.2.10:8080", "192.0.2.10:8080"),
+        # Bracketed IPv6 without port
+        ("[2001:db8::1]", "[2001:db8::1]", "2001:db8::1:80"),
+        # Bracketed IPv6 with port
+        ("[2001:db8::1]:8443", "[2001:db8::1]:8443", "2001:db8::1:8443"),
+    ],
+)
+async def test_proxy_headers_x_forwarded_host(forwarded_host: str, expected_host: str, expected_server: str) -> None:
+    async with make_host_client("*") as client:
+        response = await client.get("/", headers={X_FORWARDED_HOST: forwarded_host})
+    assert response.status_code == 200
+    assert response.text == f"host={expected_host} server={expected_server}"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("scheme", "expected_port"),
+    [
+        ("http", 80),
+        ("https", 443),
+        ("ws", 80),
+        ("wss", 443),
+    ],
+)
+async def test_proxy_headers_x_forwarded_host_default_port_follows_scheme(scheme: str, expected_port: int) -> None:
+    """Without an explicit port, the default scope server port follows X-Forwarded-Proto."""
+    async with make_host_client("*") as client:
+        headers = {X_FORWARDED_HOST: "example.com", X_FORWARDED_PROTO: scheme}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    assert response.text == f"host=example.com server=example.com:{expected_port}"
+
+
+@pytest.mark.anyio
+async def test_proxy_headers_x_forwarded_host_replaces_original_host_header() -> None:
+    """The forwarded host fully replaces the inbound Host header (no duplicates)."""
+    async with make_host_client("*") as client:
+        headers = {"Host": "internal.lan", X_FORWARDED_HOST: "public.example:9000"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    assert response.text == "host=public.example:9000 server=public.example:9000"
+    assert response.text.count("host=") == 1
+
+
+@pytest.mark.anyio
+async def test_proxy_headers_combined_for_proto_host() -> None:
+    """All three X-Forwarded-* headers compose: client, scheme, server, host all rewritten."""
+
+    async def echo_all(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        headers = dict(scope["headers"])  # type: ignore
+        host_header = headers.get(b"host", b"").decode("latin1")
+        server = scope["server"]  # type: ignore
+        client = scope["client"]  # type: ignore
+        scheme = scope["scheme"]  # type: ignore
+        assert server is not None
+        assert client is not None
+        body = f"scheme={scheme} client={client[0]}:{client[1]} server={server[0]}:{server[1]} host={host_header}"
+        await Response(body, media_type="text/plain")(scope, receive, send)
+
+    middleware = ProxyHeadersMiddleware(echo_all, trusted_hosts="*")
+    transport = httpx.ASGITransport(app=middleware, client=("127.0.0.1", 123))  # type: ignore
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        headers = {
+            X_FORWARDED_FOR: "1.2.3.4",
+            X_FORWARDED_PROTO: "https",
+            X_FORWARDED_HOST: "public.example:9000",
+        }
+        response = await client.get("/", headers=headers)
+
+    assert response.status_code == 200
+    assert response.text == "scheme=https client=1.2.3.4:0 server=public.example:9000 host=public.example:9000"

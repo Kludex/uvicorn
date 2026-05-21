@@ -9,15 +9,16 @@ class ProxyHeadersMiddleware:
     """Middleware for handling known proxy headers
 
     This middleware can be used when a known proxy is fronting the application,
-    and is trusted to be properly setting the `X-Forwarded-Proto` and
-    `X-Forwarded-For` headers with the connecting client information.
+    and is trusted to be properly setting the `X-Forwarded-Proto`, `X-Forwarded-For`
+    and `X-Forwarded-Host` headers with the connecting client information.
 
-    Modifies the `client` and `scheme` information so that they reference
-    the connecting client, rather that the connecting proxy.
+    Modifies the `client`, `scheme` and `server` information, plus the `host` header,
+    so that they reference the connecting client rather than the connecting proxy.
 
     References:
     - <https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers#Proxies>
     - <https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For>
+    - <https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-Host>
     """
 
     def __init__(self, app: ASGI3Application, trusted_hosts: list[str] | str = "127.0.0.1") -> None:
@@ -52,6 +53,18 @@ class ProxyHeadersMiddleware:
                     # Only set the client if we actually got something usable.
                     # See: https://github.com/Kludex/uvicorn/issues/1068
                     scope["client"] = (host, port)
+
+            if b"x-forwarded-host" in headers:
+                x_forwarded_host = headers[b"x-forwarded-host"].decode("latin1").strip()
+
+                if x_forwarded_host:
+                    host, port = _parse_host_port(x_forwarded_host)
+                    if not port:
+                        port = 443 if scope.get("scheme") in ("https", "wss") else 80
+                    scope["server"] = (host, port)
+                    scope["headers"] = [(name, value) for name, value in scope["headers"] if name != b"host"] + [
+                        (b"host", x_forwarded_host.encode("latin1"))
+                    ]
 
         return await self.app(scope, receive, send)
 
