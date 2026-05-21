@@ -10,7 +10,7 @@ import websockets.client
 
 from tests.response import Response
 from tests.utils import run_server
-from uvicorn._types import ASGIReceiveCallable, ASGIReceiveEvent, ASGISendCallable, ASGISendEvent, Scope
+from uvicorn._types import ASGIReceiveCallable, ASGIReceiveEvent, ASGISendCallable, ASGISendEvent, HTTPScope, Scope
 from uvicorn.config import Config
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware, _TrustedHosts
 
@@ -556,61 +556,65 @@ async def test_proxy_headers_empty_x_forwarded_for() -> None:
     assert response.text == "https://127.0.0.1:123"
 
 
+def _make_http_scope(headers: list[tuple[bytes, bytes]], scheme: str = "http") -> HTTPScope:
+    return {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": scheme,
+        "path": "/",
+        "raw_path": b"/",
+        "query_string": b"",
+        "root_path": "",
+        "headers": headers,
+        "client": ("127.0.0.1", 12345),
+        "server": ("127.0.0.1", 80),
+    }
+
+
+async def _noop_receive() -> ASGIReceiveEvent:
+    return {"type": "http.disconnect"}
+
+
+async def _noop_send(message: ASGISendEvent) -> None:
+    return None
+
+
 @pytest.mark.anyio
 async def test_proxy_headers_duplicate_x_forwarded_for_is_ignored() -> None:
-    client: tuple[str, int] | None = ("127.0.0.1", 12345)
+    captured: dict[str, tuple[str, int] | None] = {}
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
         assert scope["type"] == "http"
-        nonlocal client
-        client = scope["client"]
+        captured["client"] = scope["client"]
 
-    async def receive() -> ASGIReceiveEvent: ...
-
-    async def send(message: ASGISendEvent) -> None: ...
-
-    app = ProxyHeadersMiddleware(app, trusted_hosts="127.0.0.1")
-    await app(
-        {
-            "type": "http",  # type: ignore[typeddict-item]
-            "scheme": "http",
-            "client": client,
-            "headers": [
-                (b"x-forwarded-for", b"198.51.100.23, 127.0.0.1"),
-                (b"x-forwarded-for", b"203.0.113.66"),
-            ],
-        },
-        receive,
-        send,
+    middleware = ProxyHeadersMiddleware(app, trusted_hosts="127.0.0.1")
+    scope = _make_http_scope(
+        [
+            (b"x-forwarded-for", b"198.51.100.23, 127.0.0.1"),
+            (b"x-forwarded-for", b"203.0.113.66"),
+        ]
     )
-    assert client == ("127.0.0.1", 12345)
+    await middleware(scope, _noop_receive, _noop_send)
+    assert captured["client"] == ("127.0.0.1", 12345)
 
 
 @pytest.mark.anyio
 async def test_proxy_headers_duplicate_x_forwarded_proto_is_ignored() -> None:
-    scheme = "http"
+    captured: dict[str, str] = {}
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
         assert scope["type"] == "http"
-        nonlocal scheme
-        scheme = scope["scheme"]
+        captured["scheme"] = scope["scheme"]
 
-    async def receive() -> ASGIReceiveEvent: ...
-
-    async def send(message: ASGISendEvent) -> None: ...
-
-    app = ProxyHeadersMiddleware(app, trusted_hosts="127.0.0.1")
-    await app(
-        {
-            "type": "http",  # type: ignore[typeddict-item]
-            "scheme": scheme,
-            "client": ("127.0.0.1", 12345),
-            "headers": [
-                (b"x-forwarded-proto", b"http"),
-                (b"x-forwarded-proto", b"https"),
-            ],
-        },
-        receive,
-        send,
+    middleware = ProxyHeadersMiddleware(app, trusted_hosts="127.0.0.1")
+    scope = _make_http_scope(
+        [
+            (b"x-forwarded-proto", b"http"),
+            (b"x-forwarded-proto", b"https"),
+        ],
+        scheme="http",
     )
-    assert scheme == "http"
+    await middleware(scope, _noop_receive, _noop_send)
+    assert captured["scheme"] == "http"
