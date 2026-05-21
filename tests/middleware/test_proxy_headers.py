@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 X_FORWARDED_FOR = "X-Forwarded-For"
 X_FORWARDED_PROTO = "X-Forwarded-Proto"
+FORWARDED = "Forwarded"
 
 
 async def default_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
@@ -554,3 +555,330 @@ async def test_proxy_headers_empty_x_forwarded_for() -> None:
         response = await client.get("/", headers=headers)
     assert response.status_code == 200
     assert response.text == "https://127.0.0.1:123"
+
+
+# ---------------------------------------------------------------------------
+# RFC 7239 `Forwarded` header (mode="forwarded")
+# ---------------------------------------------------------------------------
+
+
+async def forwarded_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+    """Echoes scheme, client, and host header as space-separated `key=value` pairs."""
+    headers = dict(scope["headers"])  # type: ignore
+    host_header = headers.get(b"host", b"").decode("latin1")
+    client = scope["client"]  # type: ignore
+    scheme = scope["scheme"]  # type: ignore
+    assert client is not None
+    body = f"scheme={scheme} client={client[0]}:{client[1]} host={host_header}"
+    await Response(body, media_type="text/plain")(scope, receive, send)
+
+
+def parse_echo(text: str) -> dict[str, str]:
+    """Parse `forwarded_app`'s `key=value key=value ...` echo into a dict."""
+    return dict(part.split("=", 1) for part in text.split(" "))
+
+
+def make_forwarded_client(
+    trusted_hosts: str | list[str],
+    client: tuple[str, int] = ("127.0.0.1", 123),
+) -> httpx.AsyncClient:
+    """httpx client wired to a `mode='forwarded'` middleware over `forwarded_app`."""
+    app = ProxyHeadersMiddleware(forwarded_app, trusted_hosts, mode="forwarded")
+    transport = httpx.ASGITransport(app=app, client=client)  # type: ignore
+    return httpx.AsyncClient(transport=transport, base_url="http://testserver")
+
+
+@pytest.mark.anyio
+async def test_forwarded_mode_multiple_hops_picks_rightmost() -> None:
+    """Walks from the right; first hop whose `for=` is not trusted is the client."""
+    async with make_forwarded_client("10.0.0.0/8", client=("10.0.0.5", 1234)) as client:
+        headers = {FORWARDED: "for=1.2.3.4, for=10.0.0.5;proto=http, for=10.0.0.6"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    assert parse_echo(response.text)["client"] == "1.2.3.4:0"
+
+
+@pytest.mark.anyio
+async def test_forwarded_mode_falls_back_to_leftmost_when_all_trusted() -> None:
+    async with make_forwarded_client("10.0.0.0/8", client=("10.0.0.5", 1234)) as client:
+        headers = {FORWARDED: "for=10.0.0.1, for=10.0.0.2"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    assert parse_echo(response.text)["client"] == "10.0.0.1:0"
+
+
+@pytest.mark.anyio
+async def test_forwarded_mode_quoted_string_escape_is_unescaped() -> None:
+    """RFC 7230 quoted-string: `\\"` inside quotes decodes to a literal `"`."""
+    async with make_forwarded_client("*") as client:
+        headers = {FORWARDED: r'for="1.2.3.4";host="weird\"name"'}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    assert parse_echo(response.text)["client"] == "1.2.3.4:0"
+
+
+@pytest.mark.anyio
+async def test_forwarded_mode_case_insensitive_param_keys() -> None:
+    """RFC 7239 §4: parameter names are case-insensitive."""
+    async with make_forwarded_client("*") as client:
+        headers = {FORWARDED: "For=1.2.3.4;PROTO=https;Host=public.example"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    echo = parse_echo(response.text)
+    assert echo["scheme"] == "https"
+    assert echo["client"] == "1.2.3.4:0"
+    assert echo["host"] == "public.example"
+
+
+@pytest.mark.anyio
+async def test_forwarded_mode_unknown_params_ignored() -> None:
+    """Unrecognized parameters (here, `secret`) must not affect scope mutation."""
+    async with make_forwarded_client("*") as client:
+        headers = {FORWARDED: "for=1.2.3.4;secret=hunter2;proto=https"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    echo = parse_echo(response.text)
+    assert echo["client"] == "1.2.3.4:0"
+    assert echo["scheme"] == "https"
+
+
+@pytest.mark.anyio
+async def test_forwarded_mode_empty_header_does_not_mutate_scope() -> None:
+    async with make_forwarded_client("*") as client:
+        headers = {FORWARDED: ""}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    # Untouched scope: peer client is the httpx transport peer, scheme stays http.
+    echo = parse_echo(response.text)
+    assert echo["client"] == "127.0.0.1:123"
+    assert echo["scheme"] == "http"
+
+
+@pytest.mark.anyio
+async def test_forwarded_mode_malformed_pair_in_entry_is_dropped_but_entry_survives() -> None:
+    """Pairs without `=` are skipped, other params on the same hop survive."""
+    async with make_forwarded_client("*") as client:
+        headers = {FORWARDED: "for=1.2.3.4;novalue;proto=https"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    echo = parse_echo(response.text)
+    assert echo["client"] == "1.2.3.4:0"
+    assert echo["scheme"] == "https"
+
+
+@pytest.mark.anyio
+async def test_forwarded_mode_duplicate_param_drops_entry() -> None:
+    """RFC 7239 §4: each parameter appears at most once per element. Smuggling defense -
+    a single hop with two `for=` values must be rejected so an attacker cannot prepend
+    a fake value that some downstream parser might pick over the real one."""
+    async with make_forwarded_client("*") as client:
+        headers = {FORWARDED: "for=attacker.example;for=1.2.3.4"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    # Entire entry is dropped; scope falls through to the peer client.
+    assert parse_echo(response.text)["client"] == "127.0.0.1:123"
+
+
+@pytest.mark.anyio
+async def test_forwarded_mode_duplicate_param_only_drops_offending_entry() -> None:
+    """A poisoned entry must not contaminate a later, well-formed entry in the same header."""
+    async with make_forwarded_client("*") as client:
+        headers = {FORWARDED: "for=attacker.example;for=1.2.3.4, for=5.6.7.8"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    assert parse_echo(response.text)["client"] == "5.6.7.8:0"
+
+
+@pytest.mark.anyio
+async def test_forwarded_mode_missing_for_is_unanchorable() -> None:
+    """An entry without `for=` cannot identify a client and must be skipped entirely."""
+    async with make_forwarded_client("*") as client:
+        headers = {FORWARDED: "host=attacker.example;proto=https"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    # `host=`/`proto=` from an unanchorable entry must NOT apply to the request.
+    echo = parse_echo(response.text)
+    assert echo["host"] != "attacker.example"
+    assert echo["scheme"] == "http"
+
+
+@pytest.mark.anyio
+async def test_forwarded_mode_placeholder_for_filtered_under_always_trust() -> None:
+    """With `always_trust=*`, an unanchorable leftmost entry must not be the fallback."""
+    async with make_forwarded_client("*") as client:
+        headers = {FORWARDED: "for=unknown;proto=https;host=attacker.example, for=1.2.3.4"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    echo = parse_echo(response.text)
+    assert echo["client"] == "1.2.3.4:0"
+    assert echo["host"] != "attacker.example"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("placeholder", ["unknown", "Unknown", "_hidden"])
+async def test_forwarded_mode_placeholder_for_variants_are_unanchorable(placeholder: str) -> None:
+    """`unknown` (case-insensitive) and `_*` obfuscated identifiers cannot anchor a hop."""
+    async with make_forwarded_client("*") as client:
+        headers = {FORWARDED: f"for={placeholder};host=attacker.example;proto=https"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    echo = parse_echo(response.text)
+    assert echo["host"] != "attacker.example"
+    assert echo["scheme"] == "http"
+
+
+@pytest.mark.anyio
+async def test_forwarded_mode_basic() -> None:
+    async with make_forwarded_client("*") as client:
+        headers = {FORWARDED: "for=1.2.3.4;proto=https;host=public.example:9000"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    echo = parse_echo(response.text)
+    assert echo["scheme"] == "https"
+    assert echo["client"] == "1.2.3.4:0"
+    assert echo["host"] == "public.example:9000"
+
+
+@pytest.mark.anyio
+async def test_forwarded_mode_untrusted_peer_ignored() -> None:
+    async with make_forwarded_client("192.168.0.1") as client:
+        headers = {FORWARDED: "for=attacker.example;proto=https;host=attacker.example"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    echo = parse_echo(response.text)
+    assert echo["client"] != "attacker.example:0"
+    assert echo["host"] != "attacker.example"
+
+
+@pytest.mark.anyio
+async def test_forwarded_mode_ipv6_quoted() -> None:
+    async with make_forwarded_client("*") as client:
+        headers = {FORWARDED: 'for="[2001:db8::1]:443";proto=https;host="public.example"'}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    echo = parse_echo(response.text)
+    assert echo["scheme"] == "https"
+    assert echo["client"] == "2001:db8::1:443"
+    assert echo["host"] == "public.example"
+
+
+@pytest.mark.anyio
+async def test_forwarded_mode_chained_proxy_picks_rightmost_untrusted() -> None:
+    """The connecting peer (10.0.0.5) and the next-to-last hop are both trusted; client = 1.2.3.4."""
+    async with make_forwarded_client("10.0.0.0/8", client=("10.0.0.5", 1234)) as client:
+        headers = {FORWARDED: "for=1.2.3.4;proto=https, for=10.0.0.5;proto=http;host=internal.lan"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    # The rightmost untrusted hop is `for=1.2.3.4`, which carries `proto=https` only.
+    echo = parse_echo(response.text)
+    assert echo["client"] == "1.2.3.4:0"
+    assert echo["scheme"] == "https"
+    assert echo["host"] != "internal.lan"
+
+
+@pytest.mark.anyio
+async def test_forwarded_mode_placeholder_for_falls_through() -> None:
+    """`for=unknown` is unanchorable; the next anchorable hop wins."""
+    async with make_forwarded_client("10.0.0.0/8", client=("10.0.0.5", 1234)) as client:
+        headers = {FORWARDED: "for=unknown;proto=https;host=attacker.example, for=1.2.3.4;proto=http"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    echo = parse_echo(response.text)
+    assert echo["client"] == "1.2.3.4:0"
+    assert echo["host"] != "attacker.example"
+
+
+@pytest.mark.anyio
+async def test_forwarded_mode_proto_case_insensitive() -> None:
+    """RFC 3986 - URI schemes are case-insensitive. `proto=HTTPS` must work."""
+    async with make_forwarded_client("*") as client:
+        headers = {FORWARDED: "for=1.2.3.4;proto=HTTPS;host=public.example"}
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    assert parse_echo(response.text)["scheme"] == "https"
+
+
+@pytest.mark.anyio
+async def test_forwarded_mode_ignores_x_forwarded_headers() -> None:
+    """When mode='forwarded', the X-Forwarded-* family must be completely ignored."""
+    async with make_forwarded_client("*") as client:
+        headers = {
+            FORWARDED: "for=1.2.3.4;proto=https",
+            X_FORWARDED_FOR: "9.9.9.9",
+            X_FORWARDED_PROTO: "http",
+            "X-Forwarded-Host": "attacker.example",
+        }
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    echo = parse_echo(response.text)
+    assert echo["client"] == "1.2.3.4:0"
+    assert echo["scheme"] == "https"
+    assert echo["host"] != "attacker.example"
+
+
+@pytest.mark.anyio
+async def test_x_forwarded_mode_ignores_forwarded_header() -> None:
+    """And vice versa: when mode='x-forwarded' (default), `Forwarded` is ignored."""
+    app = ProxyHeadersMiddleware(forwarded_app, trusted_hosts="*", mode="x-forwarded")
+    transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 123))  # type: ignore
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        headers = {
+            FORWARDED: "for=attacker.example;proto=https;host=attacker.example",
+            X_FORWARDED_FOR: "1.2.3.4",
+            X_FORWARDED_PROTO: "https",
+        }
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    echo = parse_echo(response.text)
+    assert echo["client"] == "1.2.3.4:0"
+    assert echo["host"] != "attacker.example"
+
+
+@pytest.mark.anyio
+async def test_forwarded_mode_via_config(unused_tcp_port: int) -> None:
+    """Programmatic API: `Config(proxy_headers_mode='forwarded')` wires the right mode."""
+    config = Config(
+        app=forwarded_app,
+        loop="asyncio",
+        limit_max_requests=1,
+        proxy_headers_mode="forwarded",
+        forwarded_allow_ips="*",
+        port=unused_tcp_port,
+    )
+    async with run_server(config):
+        async with httpx.AsyncClient() as client:
+            headers = {FORWARDED: "for=1.2.3.4;proto=https;host=public.example:9000"}
+            response = await client.get(f"http://127.0.0.1:{unused_tcp_port}", headers=headers)
+    assert response.status_code == 200
+    echo = parse_echo(response.text)
+    assert echo["scheme"] == "https"
+    assert echo["client"] == "1.2.3.4:0"
+    assert echo["host"] == "public.example:9000"
+
+
+@pytest.mark.anyio
+async def test_x_forwarded_proto_last_wins_on_duplicates() -> None:
+    """X-Forwarded-Proto is single-valued; if duplicated, take the rightmost (the value
+    appended by the trusted upstream proxy, not a client-supplied earlier copy)."""
+    async with make_httpx_client("*") as client:
+        # httpx.Headers preserves multiple values for the same name in order.
+        headers = httpx.Headers(
+            [(X_FORWARDED_PROTO, "http"), (X_FORWARDED_PROTO, "https"), (X_FORWARDED_FOR, "1.2.3.4")]
+        )
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    # The default_app echoes scheme://client; last X-Forwarded-Proto value (https) wins.
+    assert response.text == "https://1.2.3.4:0"
+
+
+@pytest.mark.anyio
+async def test_forwarded_mode_joins_multiple_forwarded_headers() -> None:
+    """Multiple `Forwarded` headers are list-equivalent per RFC 7230 §3.2.2."""
+    async with make_forwarded_client("10.0.0.0/8", client=("10.0.0.5", 1234)) as client:
+        headers = httpx.Headers([(FORWARDED, "for=1.2.3.4;proto=https"), (FORWARDED, "for=10.0.0.5")])
+        response = await client.get("/", headers=headers)
+    assert response.status_code == 200
+    # Right-most untrusted in the joined list is `for=1.2.3.4` (10.0.0.5 is trusted).
+    echo = parse_echo(response.text)
+    assert echo["client"] == "1.2.3.4:0"
+    assert echo["scheme"] == "https"
