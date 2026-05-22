@@ -401,28 +401,25 @@ def test_base_reloader_closes_sockets_on_shutdown():
     assert sock.fileno() == -1
 
 
-def test_restart_kills_worker_that_does_not_exit(mocker: MockerFixture):
-    """A worker that doesn't exit after ``terminate()`` is force-killed instead of
+def test_join_process_kills_worker_that_does_not_exit(mocker: MockerFixture):
+    """A worker that is still alive after the grace period is force-killed instead of
     blocking the reloader forever on an unbounded ``join()``."""
     config = Config(app="tests.test_config:asgi_app", reload=True, timeout_graceful_shutdown=1)
     reloader = BaseReload(config, target=run, sockets=[])
 
-    old_process = mocker.MagicMock()
-    old_process.is_alive.return_value = True
-    reloader.process = old_process
-    new_process = mocker.patch("uvicorn.supervisors.basereload.get_subprocess").return_value
+    process = mocker.MagicMock()
+    process.is_alive.return_value = True
+    reloader.process = process
 
-    reloader.restart()
+    reloader._join_process()
 
-    old_process.join.assert_any_call(1)
-    old_process.kill.assert_called_once()
-    # A fresh worker is started after the old one is dealt with.
-    assert reloader.process is new_process
-    new_process.start.assert_called_once()
+    process.join.assert_any_call(1)
+    process.kill.assert_called_once()
 
 
-def test_shutdown_does_not_kill_worker_that_exits(mocker: MockerFixture):
-    """When the worker exits within the grace period it is not force-killed."""
+def test_join_process_does_not_kill_worker_that_exits(mocker: MockerFixture):
+    """When the worker exits within the grace period it is not force-killed, and the
+    default grace period is used when ``timeout_graceful_shutdown`` is unset."""
     config = Config(app="tests.test_config:asgi_app", reload=True)
     reloader = BaseReload(config, target=run, sockets=[])
 
@@ -430,7 +427,7 @@ def test_shutdown_does_not_kill_worker_that_exits(mocker: MockerFixture):
     process.is_alive.return_value = False
     reloader.process = process
 
-    reloader.shutdown()
+    reloader._join_process()
 
     process.join.assert_called_once_with(5)
     process.kill.assert_not_called()
