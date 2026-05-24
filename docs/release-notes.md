@@ -2,6 +2,16 @@
 toc_depth: 2
 ---
 
+## 0.48.0 (May 24, 2026)
+
+### Changed
+
+* Default `ssl_ciphers` to `None` and use OpenSSL defaults (#2940)
+
+### Fixed
+
+* Ignore duplicate forwarding headers in `ProxyHeadersMiddleware` (#2944)
+
 ## 0.47.0 (May 14, 2026)
 
 ### Added
