@@ -446,6 +446,20 @@ def test_env_file(
 
 
 @pytest.mark.parametrize(
+    "forwarded_allow_ips, expected",
+    [
+        (" 127.0.0.1 ", "127.0.0.1"),
+        ([" 10.0.0.1 ", " 10.0.0.2 "], ["10.0.0.1", "10.0.0.2"]),
+    ],
+)
+def test_forwarded_allow_ips_is_stripped(
+    forwarded_allow_ips: list[str] | str, expected: list[str] | str
+) -> None:
+    config = Config(app=asgi_app, forwarded_allow_ips=forwarded_allow_ips)
+    assert config.forwarded_allow_ips == expected
+
+
+@pytest.mark.parametrize(
     "access_log, handlers",
     [
         pytest.param(True, 1, id="access log enabled should have single handler"),
