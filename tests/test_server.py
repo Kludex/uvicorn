@@ -145,6 +145,17 @@ async def test_server_uses_dual_stack_ipv6_socket() -> None:
         assert sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY) == 0
 
 
+async def test_log_started_message_formats_ipv6_host(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
+    config = Config(app=app, host="::1", port=8000)
+    config.load()
+    server = Server(config=config)
+
+    server._log_started_message([])
+
+    assert "Uvicorn running on http://[::1]:8000 (Press CTRL+C to quit)" in caplog.text
+
+
 async def test_request_than_limit_max_requests_warn_log(
     unused_tcp_port: int, http_protocol_cls: type[H11Protocol | HttpToolsProtocol], caplog: pytest.LogCaptureFixture
 ):
