@@ -6,6 +6,7 @@ import contextvars
 import json
 import logging
 import signal
+import socket
 import sys
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
@@ -23,6 +24,17 @@ from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
 from uvicorn.server import Server
 
 pytestmark = pytest.mark.anyio
+
+
+def has_ipv6(host: str) -> bool:
+    if not socket.has_ipv6:
+        return False  # pragma: no cover
+    try:
+        with socket.socket(socket.AF_INET6) as sock:
+            sock.bind((host, 0))
+    except OSError:  # pragma: no cover
+        return False
+    return True
 
 
 # asyncio does NOT allow raising in signal handlers, so to detect
@@ -120,6 +132,17 @@ async def test_shutdown_on_early_exit_during_startup(unused_tcp_port: int):
 
     assert startup_complete
     assert shutdown_complete, "lifespan.shutdown was not called despite startup completing"
+
+
+@pytest.mark.skipif(not has_ipv6("::"), reason="IPV6 not enabled")
+async def test_server_uses_dual_stack_ipv6_socket() -> None:
+    config = Config(app=app, host="::", port=0, loop="asyncio")
+    async with run_server(config) as server:
+        sockets = server.servers[0].sockets
+        assert sockets is not None
+        sock = sockets[0]
+        assert sock.family == socket.AF_INET6
+        assert sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY) == 0
 
 
 async def test_request_than_limit_max_requests_warn_log(

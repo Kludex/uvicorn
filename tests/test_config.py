@@ -274,14 +274,14 @@ def has_ipv6(host: str) -> bool:
 
 
 @pytest.mark.skipif(not has_ipv6("::"), reason="IPV6 not enabled")
-def test_socket_bind_ipv6_only() -> None:
+def test_socket_bind_ipv6_dual_stack() -> None:
     config = Config(app=asgi_app, host="::", port=0)
     config.load()
     sock = config.bind_socket()
     assert isinstance(sock, socket.socket)
     try:
         assert sock.family == socket.AF_INET6
-        assert sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY) == 1
+        assert sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY) == 0
     finally:
         sock.close()
 

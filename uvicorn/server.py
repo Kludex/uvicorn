@@ -122,6 +122,7 @@ class Server:
         loop = asyncio.get_running_loop()
 
         listeners: Sequence[socket.SocketType]
+        socket_bind_logged = False
         if sockets is not None:  # pragma: full coverage
             # Explicitly passed a list of open sockets.
             # We use this when the server is run from a Gunicorn worker.
@@ -169,13 +170,23 @@ class Server:
         else:
             # Standard case. Create a socket from a host/port pair.
             try:
-                server = await loop.create_server(
-                    create_protocol,
-                    host=config.host,
-                    port=config.port,
-                    ssl=config.ssl,
-                    backlog=config.backlog,
-                )
+                if config.host and ":" in config.host:
+                    sock = config.bind_socket()
+                    socket_bind_logged = True
+                    server = await loop.create_server(
+                        create_protocol,
+                        sock=sock,
+                        ssl=config.ssl,
+                        backlog=config.backlog,
+                    )
+                else:
+                    server = await loop.create_server(
+                        create_protocol,
+                        host=config.host,
+                        port=config.port,
+                        ssl=config.ssl,
+                        backlog=config.backlog,
+                    )
             except OSError as exc:
                 logger.error(exc)
                 await self.lifespan.shutdown()
@@ -185,11 +196,10 @@ class Server:
             listeners = server.sockets
             self.servers = [server]
 
-        if sockets is None:
+        if sockets is None and not socket_bind_logged:
             self._log_started_message(listeners)
         else:
-            # We're most likely running multiple workers, so a message has already been
-            # logged by `config.bind_socket()`.
+            # A message has already been logged by `config.bind_socket()`.
             pass  # pragma: full coverage
 
         self.started = True
