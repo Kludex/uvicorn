@@ -15,7 +15,7 @@ import httpx
 import pytest
 
 from tests.protocols.test_http import SIMPLE_GET_REQUEST
-from tests.utils import run_server
+from tests.utils import has_ipv6, run_server
 from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.config import Config
 from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT
@@ -24,17 +24,6 @@ from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
 from uvicorn.server import Server
 
 pytestmark = pytest.mark.anyio
-
-
-def has_ipv6(host: str) -> bool:
-    if not socket.has_ipv6:
-        return False  # pragma: no cover
-    try:
-        with socket.socket(socket.AF_INET6) as sock:
-            sock.bind((host, 0))
-    except OSError:  # pragma: no cover
-        return False
-    return True
 
 
 # asyncio does NOT allow raising in signal handlers, so to detect

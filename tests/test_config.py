@@ -18,7 +18,7 @@ import yaml
 from pytest_mock import MockerFixture
 
 from tests.custom_loop_utils import CustomLoop
-from tests.utils import as_cwd, get_asyncio_default_loop_per_os
+from tests.utils import as_cwd, get_asyncio_default_loop_per_os, has_ipv6
 from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallable, Environ, Scope, StartResponse
 from uvicorn.config import Config, LoopFactoryType
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -260,17 +260,6 @@ def test_socket_bind() -> None:
     sock = config.bind_socket()
     assert isinstance(sock, socket.socket)
     sock.close()
-
-
-def has_ipv6(host: str) -> bool:
-    if not socket.has_ipv6:
-        return False  # pragma: no cover
-    try:
-        with socket.socket(socket.AF_INET6) as sock:
-            sock.bind((host, 0))
-    except OSError:  # pragma: no cover
-        return False
-    return True
 
 
 @pytest.mark.skipif(not has_ipv6("::"), reason="IPV6 not enabled")
