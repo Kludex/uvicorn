@@ -326,8 +326,11 @@ class Server:
             return
         # always use signal.signal, even if loop.add_signal_handler is available
         # this allows to restore previous signal handlers later on
-        original_handlers = {sig: signal.signal(sig, self.handle_exit) for sig in HANDLED_SIGNALS}
+        original_handlers = {}
         try:
+            original_handlers = {
+                sig: signal.signal(sig, self.handle_exit) for sig in HANDLED_SIGNALS
+            }
             yield
         finally:
             for sig, handler in original_handlers.items():
