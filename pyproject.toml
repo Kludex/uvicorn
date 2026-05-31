@@ -75,6 +75,7 @@ dev = [
 ]
 docs = [
     "zensical==0.0.43",
+    "mkdocstrings-python==2.0.2",
 ]
 
 [tool.uv]
