@@ -79,7 +79,7 @@ jobs:
         run: scripts/install
 
       - name: Build docs
-        run: uv run mkdocs build
+        run: uv run zensical build
 
       - name: Deploy preview to Cloudflare Pages
         id: deploy

@@ -21,11 +21,7 @@ When running locally, use `--reload` to turn on auto-reloading.
 
 The `--reload` and `--workers` arguments are **mutually exclusive**.
 
-To see the complete set of available options, use `uvicorn --help`:
-
-```bash
-{{ uvicorn_help }}
-```
+To see the complete set of available options, use `uvicorn --help`.
 
 See the [settings documentation](../settings.md) for more details on the supported options for running uvicorn.
 

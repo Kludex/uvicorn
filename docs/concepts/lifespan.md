@@ -64,7 +64,7 @@ sequenceDiagram
 ```
 
 Having the lifespan task run as a sibling task is a deliberate design choice. It could have been implemented as a parent task that spawns the
-application task. This decision has the implication that if you create a [`ContextVar`][contextvars.ContextVar]
+application task. This decision has the implication that if you create a `ContextVar`
 in the lifespan task, it will not be available in the application task.
 
 ## Usage

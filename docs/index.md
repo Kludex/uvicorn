@@ -108,9 +108,7 @@ The uvicorn command line tool is the easiest way to run your application.
 
 ### Command line options
 
-```bash
-{{ uvicorn_help }}
-```
+Run `uvicorn --help` to see the full set of command line options.
 
 For more information, see the [settings documentation](settings.md).
 

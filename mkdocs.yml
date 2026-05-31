@@ -109,24 +109,3 @@ markdown_extensions:
 
 plugins:
   - search
-  - mkdocstrings:
-      handlers:
-        python:
-          inventories:
-            - https://docs.python.org/3/objects.inv
-  - llmstxt:
-      full_output: llms-full.txt
-      markdown_description: |-
-        Uvicorn is a lightning-fast ASGI server implementation, designed to run asynchronous web applications.
-        It supports the ASGI specification, which allows for both HTTP/1.1 and WebSocket protocols.
-      sections:
-        Sections:
-          - index.md
-          - settings.md
-          - deployment/*.md
-          - server-behavior.md
-        Concepts:
-          - concepts/*.md
-
-hooks:
-  - docs/plugins/main.py
