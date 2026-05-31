@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import io
 import sys
-from collections.abc import AsyncGenerator
-from typing import Callable
+from collections.abc import AsyncGenerator, Callable
 
 import a2wsgi
 import httpx

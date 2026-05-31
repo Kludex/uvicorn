@@ -2,13 +2,14 @@ import httpx
 import pytest
 
 from tests.middleware.test_logging import caplog_for_logger
+from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.middleware.message_logger import MessageLoggerMiddleware
 
 
 @pytest.mark.anyio
-async def test_message_logger(caplog):
-    async def app(scope, receive, send):
+async def test_message_logger(caplog: pytest.LogCaptureFixture) -> None:
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
         await receive()
         await send({"type": "http.response.start", "status": 200, "headers": []})
         await send({"type": "http.response.body", "body": b"", "more_body": False})
@@ -30,8 +31,8 @@ async def test_message_logger(caplog):
 
 
 @pytest.mark.anyio
-async def test_message_logger_exc(caplog):
-    async def app(scope, receive, send):
+async def test_message_logger_exc(caplog: pytest.LogCaptureFixture) -> None:
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
         raise RuntimeError()
 
     with caplog_for_logger(caplog, "uvicorn.asgi"):

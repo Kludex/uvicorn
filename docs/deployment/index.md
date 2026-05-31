@@ -21,11 +21,7 @@ When running locally, use `--reload` to turn on auto-reloading.
 
 The `--reload` and `--workers` arguments are **mutually exclusive**.
 
-To see the complete set of available options, use `uvicorn --help`:
-
-```bash
-{{ uvicorn_help }}
-```
+To see the complete set of available options, use `uvicorn --help`.
 
 See the [settings documentation](../settings.md) for more details on the supported options for running uvicorn.
 
@@ -82,7 +78,7 @@ The default process manager monitors the status of child processes and automatic
 
 You can also manage child processes by sending specific signals to the main process. (Not supported on Windows.)
 
-- `SIGHUP`: Work processeses are graceful restarted one after another. If you update the code, the new worker process will use the new code.
+- `SIGHUP`: Work processes are graceful restarted one after another. If you update the code, the new worker process will use the new code.
 - `SIGTTIN`: Increase the number of worker processes by one.
 - `SIGTTOU`: Decrease the number of worker processes by one.
 
@@ -224,6 +220,36 @@ It's also possible to use certificates with uvicorn's worker for gunicorn.
 ```bash
 $ gunicorn --keyfile=./key.pem --certfile=./cert.pem -k uvicorn.workers.UvicornWorker main:app
 ```
+
+### Customizing the SSL context
+
+For TLS scenarios that the `--ssl-*` flags don't cover (e.g., mutual TLS, custom `SSLContext.options`, bumping `minimum_version`, loading certificates from memory), pass an `ssl_context_factory` to `uvicorn.run()` or `Config`.
+
+The factory receives the `Config` instance and a `default_ssl_context_factory` callable that builds the standard context from the `ssl_*` settings on `Config`. Use it to start from uvicorn's default and mutate it, or ignore it and build your own context from scratch - the `ssl_*` settings are only consumed by the default factory, so if you don't call it they're effectively unused.
+
+```python
+import ssl
+from collections.abc import Callable
+
+import uvicorn
+from uvicorn.config import Config
+
+
+def ssl_context_factory(config: Config, default_ssl_context_factory: Callable[[], ssl.SSLContext]) -> ssl.SSLContext:
+    context = default_ssl_context_factory()
+    context.minimum_version = ssl.TLSVersion.TLSv1_3
+    return context
+
+
+uvicorn.run(
+    "main:app",
+    ssl_keyfile="key.pem",
+    ssl_certfile="cert.pem",
+    ssl_context_factory=ssl_context_factory,
+)
+```
+
+The factory is called inside each worker process, so it works with `--reload` and `--workers > 1`. The factory itself must be picklable in those modes (a top-level function is fine; lambdas and local closures are not). The `ssl_*` settings on `Config` are only consumed by `default_ssl_context_factory()`; if you build the context yourself without calling it, those settings are ignored.
 
 ## Proxies and Forwarded Headers
 

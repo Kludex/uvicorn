@@ -5,11 +5,10 @@ import os
 import signal
 import sys
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from socket import socket
 from types import FrameType
-from typing import Callable
 
 import click
 

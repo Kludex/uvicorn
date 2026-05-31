@@ -5,6 +5,13 @@ import sys
 from collections.abc import Callable, Coroutine
 from typing import Any, TypeVar
 
+__all__ = ["asyncio_run", "iscoroutinefunction"]
+
+if sys.version_info >= (3, 14):
+    from inspect import iscoroutinefunction
+else:
+    from asyncio import iscoroutinefunction
+
 _T = TypeVar("_T")
 
 if sys.version_info >= (3, 12):
