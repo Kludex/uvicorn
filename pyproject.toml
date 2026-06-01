@@ -32,7 +32,7 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP",
 ]
 dependencies = [
-    "click>=7.0",
+    "click>8.3.2",
     "h11>=0.8",
     "typing_extensions>=4.0; python_version < '3.11'",
 ]
