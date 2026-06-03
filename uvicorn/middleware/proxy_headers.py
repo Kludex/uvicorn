@@ -44,8 +44,7 @@ class ProxyHeadersMiddleware:
             # so join the values in order before parsing.
             if x_forwarded_proto_values:
                 joined_proto = b", ".join(x_forwarded_proto_values).decode("latin1")
-                # The leftmost value is the protocol the client used to reach the first proxy.
-                x_forwarded_proto = joined_proto.split(",", 1)[0].strip()
+                x_forwarded_proto = joined_proto.rsplit(",", 1)[-1].strip()
 
                 if x_forwarded_proto in {"http", "https", "ws", "wss"}:
                     if scope["type"] == "websocket":

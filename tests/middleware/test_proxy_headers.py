@@ -601,7 +601,7 @@ async def test_proxy_headers_duplicate_x_forwarded_for_is_combined() -> None:
 
 
 @pytest.mark.anyio
-async def test_proxy_headers_duplicate_x_forwarded_proto_uses_leftmost() -> None:
+async def test_proxy_headers_duplicate_x_forwarded_proto_uses_rightmost() -> None:
     captured: dict[str, str] = {}
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
@@ -617,13 +617,11 @@ async def test_proxy_headers_duplicate_x_forwarded_proto_uses_leftmost() -> None
         scheme="http",
     )
     await middleware(scope, _noop_receive, _noop_send)
-    assert captured["scheme"] == "https"
+    assert captured["scheme"] == "http"
 
 
 @pytest.mark.anyio
 async def test_proxy_headers_haproxy_behind_alb() -> None:
-    # Reproduces https://github.com/Kludex/uvicorn/discussions/2968: two proxies in the chain
-    # (an ALB and HAProxy) each append their own X-Forwarded-For and X-Forwarded-Proto field.
     captured: dict[str, object] = {}
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
