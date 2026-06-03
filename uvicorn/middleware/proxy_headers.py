@@ -32,7 +32,6 @@ class ProxyHeadersMiddleware:
         client_host = client_addr[0] if client_addr else None
 
         if client_host in self.trusted_hosts:
-            # Keep the last X-Forwarded-Proto: it is from the closest proxy and the hardest to spoof.
             x_forwarded_proto_value: bytes | None = None
             x_forwarded_for_values: list[bytes] = []
             for name, value in scope["headers"]:
