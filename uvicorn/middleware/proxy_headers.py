@@ -41,10 +41,9 @@ class ProxyHeadersMiddleware:
                     x_forwarded_for_values.append(value)
 
             # Repeated fields are equivalent to a single comma-separated list (RFC 9110, 5.3),
-            # so join the values in order before parsing.
+            # so the rightmost value comes from the last field, after splitting it on commas.
             if x_forwarded_proto_values:
-                joined_proto = b", ".join(x_forwarded_proto_values).decode("latin1")
-                x_forwarded_proto = joined_proto.rsplit(",", 1)[-1].strip()
+                x_forwarded_proto = x_forwarded_proto_values[-1].rsplit(b",", 1)[-1].decode("latin1").strip()
 
                 if x_forwarded_proto in {"http", "https", "ws", "wss"}:
                     if scope["type"] == "websocket":
