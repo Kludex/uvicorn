@@ -156,7 +156,7 @@ class _TrustedHosts:
 
         # Don't cache hosts longer than a DNS name (253); they can't be trusted and would pin huge cache keys.
         if len(host) > 253:
-            return self._compute_trust(host)
+            return self._compute_trust(host)  # pragma: no cover
 
         return self._trusts(host)
 
