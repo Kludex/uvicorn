@@ -262,7 +262,7 @@ Uvicorn currently supports the following headers:
 - `X-Forwarded-Proto`([MDN Reference](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-Proto))
 
 Uvicorn can use these headers to correctly set the client and protocol in the request.
-When a proxy chain emits one field per hop, Uvicorn combines repeated fields in order, treating them as the equivalent comma-separated list ([RFC 9110, 5.3](https://www.rfc-editor.org/rfc/rfc9110#section-5.3)).
+When a proxy chain sends a header once per hop, repeated `X-Forwarded-For` fields are combined in order (as the equivalent comma-separated list, [RFC 9110, 5.3](https://www.rfc-editor.org/rfc/rfc9110#section-5.3)), while for `X-Forwarded-Proto` the last field is used.
 However as anyone can set these headers you must configure which "clients" you will trust to have set them correctly.
 
 Uvicorn can be configured to trust IP Addresses (e.g. `127.0.0.1`), IP Networks (e.g. `10.100.0.0/16`),
