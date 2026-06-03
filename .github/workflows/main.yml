@@ -53,8 +53,11 @@ jobs:
         shell: bash
 
   docs-preview:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+
+    env:
+      HAS_CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
 
     permissions:
       contents: read
@@ -83,6 +86,7 @@ jobs:
 
       - name: Deploy preview to Cloudflare Pages
         id: deploy
+        if: ${{ env.HAS_CLOUDFLARE_TOKEN == 'true' }}
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -93,6 +97,7 @@ jobs:
             --branch ${{ github.head_ref }}
 
       - name: Comment preview URL on PR
+        if: ${{ steps.deploy.outcome == 'success' }}
         uses: thollander/actions-comment-pull-request@24bffb9b452ba05a4f3f77933840a6a841d1b32b # v3.0.1
         with:
           message: |
