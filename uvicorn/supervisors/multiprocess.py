@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import pickle
 import signal
 import threading
 from collections.abc import Callable
@@ -36,11 +37,15 @@ class Process:
         self.process = get_subprocess(config, self.target, sockets)
 
     def ping(self, timeout: float = 5) -> bool:
-        self.parent_conn.send(b"ping")
-        if self.parent_conn.poll(timeout):
-            self.parent_conn.recv()
-            return True
-        return False
+        try:
+            self.parent_conn.send(b"ping")
+            if self.parent_conn.poll(timeout):
+                self.parent_conn.recv()
+                return True
+            return False
+        except (OSError, EOFError, pickle.UnpicklingError):
+            # The worker died and closed its side of the pipe.
+            return False
 
     def pong(self) -> None:
         self.child_conn.recv()

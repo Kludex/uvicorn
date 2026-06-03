@@ -57,6 +57,13 @@ def test_process_ping_pong_timeout() -> None:
     assert not process.ping(0.1)
 
 
+def test_process_ping_broken_pipe() -> None:
+    process = Process(Config(app=app), target=lambda x: None, sockets=[])
+    process.parent_conn.close()
+    process.child_conn.close()
+    assert not process.ping(0.1)
+
+
 @new_console_in_windows
 def test_multiprocess_run() -> None:
     """

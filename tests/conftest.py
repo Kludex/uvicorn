@@ -130,7 +130,8 @@ def reload_directory_structure(tmp_path_factory: pytest.TempPathFactory):
     │   └── file.txt
     └── main.py
     """
-    root = tmp_path_factory.mktemp("reload_directory")
+    # Resolve symlinks (e.g. /tmp -> /private/tmp on macOS) so paths match what watchfiles reports.
+    root = tmp_path_factory.mktemp("reload_directory").resolve()
     apps = ["app", "app_first", "app_second", "app_third"]
 
     root_file = root / "main.py"
