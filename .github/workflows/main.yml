@@ -57,7 +57,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      HAS_CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
 
     permissions:
       contents: read
@@ -86,7 +86,7 @@ jobs:
 
       - name: Deploy preview to Cloudflare Pages
         id: deploy
-        if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
+        if: ${{ env.HAS_CLOUDFLARE_TOKEN == 'true' }}
         uses: cloudflare/wrangler-action@da0e0dfe58b7a431659754fdf3f186c529afbe65 # v3.14.1
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
