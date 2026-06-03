@@ -6,7 +6,7 @@ import sys
 from collections.abc import Callable, Generator
 from pathlib import Path
 from threading import Thread
-from time import sleep
+from time import monotonic, sleep
 
 import pytest
 from pytest_mock import MockerFixture
@@ -75,12 +75,23 @@ class TestBaseReload:
         reloader.restart()
         if WatchFilesReload is not None and isinstance(reloader, WatchFilesReload):
             touch_soon(*files)
-        else:
-            assert not next(reloader)
-            sleep(0.1)
-            for file in files:
-                file.touch()
+            return self._wait_for_changes(reloader)
+        assert not next(reloader)
+        sleep(0.1)
+        for file in files:
+            file.touch()
         return next(reloader)
+
+    @staticmethod
+    def _wait_for_changes(reloader: BaseReload) -> list[Path] | None:
+        # The watcher yields ``None`` on each timeout until it reports the touch,
+        # so poll past those empty yields instead of trusting a single check.
+        deadline = monotonic() + 5
+        while monotonic() < deadline:
+            changes = next(reloader)
+            if changes is not None:
+                return changes
+        return None  # pragma: no cover
 
     @pytest.mark.parametrize("reloader_class", [StatReload, WatchFilesReload])
     def test_reloader_should_initialize(self) -> None:
