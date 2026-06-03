@@ -582,7 +582,7 @@ async def _noop_send(message: ASGISendEvent) -> None:  # pragma: no cover
 
 
 @pytest.mark.anyio
-async def test_proxy_headers_duplicate_x_forwarded_for_is_ignored() -> None:
+async def test_proxy_headers_duplicate_x_forwarded_for_is_combined() -> None:
     captured: dict[str, tuple[str, int] | None] = {}
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
@@ -592,16 +592,26 @@ async def test_proxy_headers_duplicate_x_forwarded_for_is_ignored() -> None:
     middleware = ProxyHeadersMiddleware(app, trusted_hosts="127.0.0.1")
     scope = _make_http_scope(
         [
-            (b"x-forwarded-for", b"198.51.100.23, 127.0.0.1"),
-            (b"x-forwarded-for", b"203.0.113.66"),
+            (b"x-forwarded-for", b"203.0.113.66, 198.51.100.23"),
+            (b"x-forwarded-for", b"127.0.0.1"),
         ]
     )
     await middleware(scope, _noop_receive, _noop_send)
-    assert captured["client"] == ("127.0.0.1", 12345)
+    assert captured["client"] == ("198.51.100.23", 0)
 
 
 @pytest.mark.anyio
-async def test_proxy_headers_duplicate_x_forwarded_proto_is_ignored() -> None:
+@pytest.mark.parametrize(
+    ("proto_headers", "expected"),
+    [
+        ([(b"x-forwarded-proto", b"https"), (b"x-forwarded-proto", b"http")], "http"),
+        ([(b"x-forwarded-proto", b"http"), (b"x-forwarded-proto", b"https")], "https"),
+    ],
+)
+async def test_proxy_headers_duplicate_x_forwarded_proto_uses_last(
+    proto_headers: list[tuple[bytes, bytes]],
+    expected: str,
+) -> None:
     captured: dict[str, str] = {}
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
@@ -609,12 +619,30 @@ async def test_proxy_headers_duplicate_x_forwarded_proto_is_ignored() -> None:
         captured["scheme"] = scope["scheme"]
 
     middleware = ProxyHeadersMiddleware(app, trusted_hosts="127.0.0.1")
+    scope = _make_http_scope(proto_headers, scheme="http")
+    await middleware(scope, _noop_receive, _noop_send)
+    assert captured["scheme"] == expected
+
+
+@pytest.mark.anyio
+async def test_proxy_headers_haproxy_behind_alb() -> None:
+    captured: dict[str, object] = {}
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        assert scope["type"] == "http"
+        captured["client"] = scope["client"]
+        captured["scheme"] = scope["scheme"]
+
+    middleware = ProxyHeadersMiddleware(app, trusted_hosts=["127.0.0.1", "10.0.0.1"])
     scope = _make_http_scope(
         [
-            (b"x-forwarded-proto", b"http"),
+            (b"x-forwarded-for", b"1.2.3.4"),
+            (b"x-forwarded-for", b"10.0.0.1"),
+            (b"x-forwarded-proto", b"https"),
             (b"x-forwarded-proto", b"https"),
         ],
         scheme="http",
     )
     await middleware(scope, _noop_receive, _noop_send)
-    assert captured["scheme"] == "http"
+    assert captured["client"] == ("1.2.3.4", 0)
+    assert captured["scheme"] == "https"

@@ -270,6 +270,8 @@ or Literals (e.g. `/path/to/socket.sock`). When running from CLI these are confi
 !!! Warning "Only trust clients you can actually trust!"
     Incorrectly trusting other clients can lead to malicious actors spoofing their apparent client address to your application.
 
+A proxy chain may send a header once per hop rather than as a single comma-separated value. Repeated `X-Forwarded-For` fields are combined in order (as the equivalent comma-separated list, [RFC 9110, 5.3](https://www.rfc-editor.org/rfc/rfc9110#section-5.3)), while for `X-Forwarded-Proto` the last field is used.
+
 For more information, check [`ProxyHeadersMiddleware`](https://github.com/Kludex/uvicorn/blob/main/uvicorn/middleware/proxy_headers.py).
 
 ### Client Port

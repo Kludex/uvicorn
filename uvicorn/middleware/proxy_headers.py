@@ -33,17 +33,16 @@ class ProxyHeadersMiddleware:
         client_host = client_addr[0] if client_addr else None
 
         if client_host in self.trusted_hosts:
-            x_forwarded_proto_values: list[bytes] = []
+            x_forwarded_proto_value: bytes | None = None
             x_forwarded_for_values: list[bytes] = []
             for name, value in scope["headers"]:
                 if name == b"x-forwarded-proto":
-                    x_forwarded_proto_values.append(value)
+                    x_forwarded_proto_value = value
                 elif name == b"x-forwarded-for":
                     x_forwarded_for_values.append(value)
 
-            # Only consume the header when exactly one copy is present to avoid spoofing issues.
-            if len(x_forwarded_proto_values) == 1:
-                x_forwarded_proto = x_forwarded_proto_values[0].decode("latin1").strip()
+            if x_forwarded_proto_value is not None:
+                x_forwarded_proto = x_forwarded_proto_value.decode("latin1").strip()
 
                 if x_forwarded_proto in {"http", "https", "ws", "wss"}:
                     if scope["type"] == "websocket":
@@ -51,8 +50,8 @@ class ProxyHeadersMiddleware:
                     else:
                         scope["scheme"] = x_forwarded_proto
 
-            if len(x_forwarded_for_values) == 1:
-                x_forwarded_for = x_forwarded_for_values[0].decode("latin1")
+            if x_forwarded_for_values:
+                x_forwarded_for = b", ".join(x_forwarded_for_values).decode("latin1")
                 host, port = self.trusted_hosts.get_trusted_client_address(x_forwarded_for)
 
                 if host:
