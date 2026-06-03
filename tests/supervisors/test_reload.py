@@ -74,17 +74,15 @@ class TestBaseReload:
         reloader.restart()
         if WatchFilesReload is not None and isinstance(reloader, WatchFilesReload):
             touch_soon(*files)
-            # A single next() can return before the touch is reported, or return
-            # an empty list from stale/filtered events. Poll until the watched
-            # files actually show up; a deadline bounds the wait for the cases
-            # where they are meant to be ignored.
+            # Poll until the touched files are reported, ignoring unrelated churn.
+            expected = set(files)
             deadline = monotonic() + 5
             seen: set[Path] = set()
             while monotonic() < deadline:
                 changes = next(reloader)
                 if changes:
-                    seen.update(changes)
-                    if seen.issuperset(files):
+                    seen.update(p for p in changes if p in expected)
+                    if seen == expected:
                         break
             return sorted(seen) if seen else None
         assert not next(reloader)
