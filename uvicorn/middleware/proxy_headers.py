@@ -40,8 +40,7 @@ class ProxyHeadersMiddleware:
                 elif name == b"x-forwarded-for":
                     x_forwarded_for_values.append(value)
 
-            # When a proxy chain sends one field per hop, the last is from the closest (trusted)
-            # proxy, so a client cannot spoof the scheme via an earlier field.
+            # The last field is from the closest (trusted) proxy, so it cannot be spoofed.
             if x_forwarded_proto_values:
                 x_forwarded_proto = x_forwarded_proto_values[-1].decode("latin1").strip()
 
