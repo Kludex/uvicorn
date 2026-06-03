@@ -84,17 +84,14 @@ jobs:
       - name: Build docs
         run: uv run zensical build
 
-      - name: Deploy preview to Cloudflare Pages
+      - name: Deploy preview to Cloudflare Workers
         id: deploy
         if: ${{ env.HAS_CLOUDFLARE_TOKEN == 'true' }}
-        uses: cloudflare/wrangler-action@da0e0dfe58b7a431659754fdf3f186c529afbe65 # v3.14.1
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          command: >
-            pages deploy ./site
-            --project-name uvicorn
-            --commit-hash ${{ github.event.pull_request.head.sha }}
-            --branch ${{ github.head_ref }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: versions upload --tag pr-${{ github.event.pull_request.number }}
 
       - name: Comment preview URL on PR
         if: ${{ steps.deploy.outcome == 'success' }}
