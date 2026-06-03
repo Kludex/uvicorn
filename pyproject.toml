@@ -40,7 +40,7 @@ dependencies = [
 [project.optional-dependencies]
 standard = [
     "colorama>=0.4; sys_platform == 'win32'",
-    "httptools>=0.6.3",
+    "httptools>=0.8.0",
     "python-dotenv>=0.13",
     "PyYAML>=5.1",
     "uvloop>=0.15.1; sys_platform != 'win32' and (sys_platform != 'cygwin' and platform_python_implementation != 'PyPy')",
@@ -82,6 +82,9 @@ docs = [
 default-groups = ["dev", "docs"]
 required-version = ">=0.9.17"
 exclude-newer = "7 days"
+
+[tool.uv.exclude-newer-package]
+httptools = "2026-05-26"
 
 [project.scripts]
 uvicorn = "uvicorn.main:main"

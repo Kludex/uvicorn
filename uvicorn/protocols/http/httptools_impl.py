@@ -129,7 +129,7 @@ class HttpToolsProtocol(asyncio.Protocol):
             self.transport.close()
             self._unset_keepalive_if_required()
 
-        self.parser = None
+        self.parser = None  # type: ignore[assignment]
 
     def eof_received(self) -> None:
         pass
