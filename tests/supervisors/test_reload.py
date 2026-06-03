@@ -75,7 +75,7 @@ class TestBaseReload:
         reloader.restart()
         if WatchFilesReload is not None and isinstance(reloader, WatchFilesReload):
             touch_soon(*files)
-            # The watcher yields ``None`` on each timeout until it reports the
+            # The watcher yields `None` on each timeout until it reports the
             # touch, so poll past those empty yields instead of trusting a
             # single check.
             deadline = monotonic() + 5
