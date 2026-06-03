@@ -32,17 +32,17 @@ class ProxyHeadersMiddleware:
         client_host = client_addr[0] if client_addr else None
 
         if client_host in self.trusted_hosts:
-            x_forwarded_proto_values: list[bytes] = []
+            # Keep the last X-Forwarded-Proto: it is from the closest proxy and the hardest to spoof.
+            x_forwarded_proto_value: bytes | None = None
             x_forwarded_for_values: list[bytes] = []
             for name, value in scope["headers"]:
                 if name == b"x-forwarded-proto":
-                    x_forwarded_proto_values.append(value)
+                    x_forwarded_proto_value = value
                 elif name == b"x-forwarded-for":
                     x_forwarded_for_values.append(value)
 
-            # Prefer the last field: it is the closest proxy and the hardest for a client to spoof.
-            if x_forwarded_proto_values:
-                x_forwarded_proto = x_forwarded_proto_values[-1].decode("latin1").strip()
+            if x_forwarded_proto_value is not None:
+                x_forwarded_proto = x_forwarded_proto_value.decode("latin1").strip()
 
                 if x_forwarded_proto in {"http", "https", "ws", "wss"}:
                     if scope["type"] == "websocket":
