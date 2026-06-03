@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import ipaddress
 
 from uvicorn._types import ASGI3Application, ASGIReceiveCallable, ASGISendCallable, Scope
@@ -106,6 +107,8 @@ class _TrustedHosts:
                         # Was not a valid IP Address
                         self.trusted_literals.add(host)
 
+        self._trusts = functools.lru_cache(maxsize=4096)(self._compute_trust)
+
     def __contains__(self, host: str | None) -> bool:
         if self.always_trust:
             return True
@@ -113,12 +116,16 @@ class _TrustedHosts:
         if not host:
             return False
 
+        # Don't cache hosts longer than a DNS name (253); they can't be trusted and would pin huge cache keys.
+        if len(host) > 253:
+            return self._compute_trust(host)
+
+        return self._trusts(host)
+
+    def _compute_trust(self, host: str) -> bool:
         try:
             ip = ipaddress.ip_address(host)
-            if ip in self.trusted_hosts:
-                return True
-            return any(ip in net for net in self.trusted_networks)
-
+            return ip in self.trusted_hosts or any(ip in net for net in self.trusted_networks)
         except ValueError:
             return host in self.trusted_literals
 
