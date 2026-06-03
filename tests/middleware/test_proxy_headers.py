@@ -602,15 +602,22 @@ async def test_proxy_headers_duplicate_x_forwarded_for_is_combined() -> None:
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    "proto_headers",
+    ("proto_headers", "expected"),
     [
-        [(b"x-forwarded-proto", b"https"), (b"x-forwarded-proto", b"http")],
-        [(b"x-forwarded-proto", b"https, http")],
-        [(b"x-forwarded-proto", b"https"), (b"x-forwarded-proto", b"ws, http")],
+        # Separate fields, single comma field, and a mix all combine to the same rightmost token.
+        ([(b"x-forwarded-proto", b"https"), (b"x-forwarded-proto", b"http")], "http"),
+        ([(b"x-forwarded-proto", b"https, http")], "http"),
+        ([(b"x-forwarded-proto", b"https"), (b"x-forwarded-proto", b"ws, http")], "http"),
+        # A spoofed leftmost value is ignored in the upgrade direction too.
+        ([(b"x-forwarded-proto", b"http"), (b"x-forwarded-proto", b"https")], "https"),
+        ([(b"x-forwarded-proto", b"http,  https ")], "https"),
+        # A trailing empty field is ignored and the original scheme is kept.
+        ([(b"x-forwarded-proto", b"https,")], "http"),
     ],
 )
 async def test_proxy_headers_duplicate_x_forwarded_proto_uses_rightmost(
     proto_headers: list[tuple[bytes, bytes]],
+    expected: str,
 ) -> None:
     captured: dict[str, str] = {}
 
@@ -621,7 +628,7 @@ async def test_proxy_headers_duplicate_x_forwarded_proto_uses_rightmost(
     middleware = ProxyHeadersMiddleware(app, trusted_hosts="127.0.0.1")
     scope = _make_http_scope(proto_headers, scheme="http")
     await middleware(scope, _noop_receive, _noop_send)
-    assert captured["scheme"] == "http"
+    assert captured["scheme"] == expected
 
 
 @pytest.mark.anyio
