@@ -40,10 +40,10 @@ class ProxyHeadersMiddleware:
                 elif name == b"x-forwarded-for":
                     x_forwarded_for_values.append(value)
 
-            # Repeated fields are equivalent to a single comma-separated list (RFC 9110, 5.3),
-            # so the rightmost value comes from the last field, after splitting it on commas.
+            # When a proxy chain sends one field per hop, the last is from the closest (trusted)
+            # proxy, so a client cannot spoof the scheme via an earlier field.
             if x_forwarded_proto_values:
-                x_forwarded_proto = x_forwarded_proto_values[-1].rsplit(b",", 1)[-1].decode("latin1").strip()
+                x_forwarded_proto = x_forwarded_proto_values[-1].decode("latin1").strip()
 
                 if x_forwarded_proto in {"http", "https", "ws", "wss"}:
                     if scope["type"] == "websocket":
