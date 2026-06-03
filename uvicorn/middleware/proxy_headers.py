@@ -40,7 +40,7 @@ class ProxyHeadersMiddleware:
                 elif name == b"x-forwarded-for":
                     x_forwarded_for_values.append(value)
 
-            # The last field is from the closest (trusted) proxy, so it cannot be spoofed.
+            # Prefer the last field: it is the closest proxy and the hardest for a client to spoof.
             if x_forwarded_proto_values:
                 x_forwarded_proto = x_forwarded_proto_values[-1].decode("latin1").strip()
 
