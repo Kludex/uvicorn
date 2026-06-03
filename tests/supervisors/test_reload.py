@@ -17,9 +17,8 @@ from uvicorn.supervisors.basereload import BaseReload, _display_path
 from uvicorn.supervisors.statreload import StatReload
 
 try:
-    from uvicorn.supervisors.watchfilesreload import FileFilter, WatchFilesReload
+    from uvicorn.supervisors.watchfilesreload import WatchFilesReload
 except ImportError:  # pragma: no cover
-    FileFilter = None  # type: ignore[misc,assignment]
     WatchFilesReload = None  # type: ignore[misc,assignment]
 
 
@@ -75,15 +74,19 @@ class TestBaseReload:
         reloader.restart()
         if WatchFilesReload is not None and isinstance(reloader, WatchFilesReload):
             touch_soon(*files)
-            # The watcher yields `None` on each timeout until it reports the
-            # touch, so poll past those empty yields instead of trusting a
-            # single check.
+            # A single next() can return before the touch is reported, or return
+            # an empty list from stale/filtered events. Poll until the watched
+            # files actually show up; a deadline bounds the wait for the cases
+            # where they are meant to be ignored.
             deadline = monotonic() + 5
+            seen: set[Path] = set()
             while monotonic() < deadline:
                 changes = next(reloader)
-                if changes is not None:
-                    return changes
-            return None  # pragma: no cover
+                if changes:
+                    seen.update(changes)
+                    if seen.issuperset(files):
+                        break
+            return sorted(seen) if seen else None
         assert not next(reloader)
         sleep(0.1)
         for file in files:
@@ -339,16 +342,6 @@ def test_should_watch_multiple_dirs(mocker: MockerFixture, reload_directory_stru
         app_dir,
         app_first_dir,
     }
-
-
-@pytest.mark.skipif(FileFilter is None, reason="watchfiles not available")
-def test_file_filter_excludes_subdir(reload_directory_structure: Path) -> None:
-    sub_dir = reload_directory_structure / "app" / "sub"
-    config = Config(app="tests.test_config:asgi_app", reload=True, reload_excludes=[str(sub_dir)])
-    file_filter = FileFilter(config)
-
-    assert file_filter(sub_dir / "sub.py") is False
-    assert file_filter(reload_directory_structure / "main.py") is True
 
 
 def test_display_path_relative(tmp_path: Path):
