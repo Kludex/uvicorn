@@ -601,7 +601,17 @@ async def test_proxy_headers_duplicate_x_forwarded_for_is_combined() -> None:
 
 
 @pytest.mark.anyio
-async def test_proxy_headers_duplicate_x_forwarded_proto_uses_rightmost() -> None:
+@pytest.mark.parametrize(
+    "proto_headers",
+    [
+        [(b"x-forwarded-proto", b"https"), (b"x-forwarded-proto", b"http")],
+        [(b"x-forwarded-proto", b"https, http")],
+        [(b"x-forwarded-proto", b"https"), (b"x-forwarded-proto", b"ws, http")],
+    ],
+)
+async def test_proxy_headers_duplicate_x_forwarded_proto_uses_rightmost(
+    proto_headers: list[tuple[bytes, bytes]],
+) -> None:
     captured: dict[str, str] = {}
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
@@ -609,13 +619,7 @@ async def test_proxy_headers_duplicate_x_forwarded_proto_uses_rightmost() -> Non
         captured["scheme"] = scope["scheme"]
 
     middleware = ProxyHeadersMiddleware(app, trusted_hosts="127.0.0.1")
-    scope = _make_http_scope(
-        [
-            (b"x-forwarded-proto", b"https"),
-            (b"x-forwarded-proto", b"http"),
-        ],
-        scheme="http",
-    )
+    scope = _make_http_scope(proto_headers, scheme="http")
     await middleware(scope, _noop_receive, _noop_send)
     assert captured["scheme"] == "http"
 
