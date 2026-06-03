@@ -583,9 +583,6 @@ async def _noop_send(message: ASGISendEvent) -> None:  # pragma: no cover
 
 @pytest.mark.anyio
 async def test_proxy_headers_duplicate_x_forwarded_for_is_combined() -> None:
-    # Repeated X-Forwarded-For fields are equivalent to one comma-separated list (RFC 9110, 5.3).
-    # The proxy chain here is 203.0.113.66 -> 198.51.100.23 -> 127.0.0.1, so the leftmost
-    # untrusted host is the real client.
     captured: dict[str, tuple[str, int] | None] = {}
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
@@ -605,7 +602,6 @@ async def test_proxy_headers_duplicate_x_forwarded_for_is_combined() -> None:
 
 @pytest.mark.anyio
 async def test_proxy_headers_duplicate_x_forwarded_proto_uses_leftmost() -> None:
-    # The leftmost value is the protocol the client used to reach the first proxy.
     captured: dict[str, str] = {}
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
