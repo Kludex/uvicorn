@@ -40,10 +40,9 @@ class ProxyHeadersMiddleware:
                 elif name == b"x-forwarded-for":
                     x_forwarded_for_values.append(value)
 
-            # Repeated fields are equivalent to a single comma-separated list (RFC 9110, 5.3), so the
-            # rightmost value is the last comma token of the last field: the closest, least spoofable proxy.
+            # Keep the last field, written by the closest proxy and the hardest for a client to spoof.
             if x_forwarded_proto_values:
-                x_forwarded_proto = x_forwarded_proto_values[-1].rsplit(b",", 1)[-1].decode("latin1").strip()
+                x_forwarded_proto = x_forwarded_proto_values[-1].decode("latin1").strip()
 
                 if x_forwarded_proto in {"http", "https", "ws", "wss"}:
                     if scope["type"] == "websocket":

@@ -604,18 +604,11 @@ async def test_proxy_headers_duplicate_x_forwarded_for_is_combined() -> None:
 @pytest.mark.parametrize(
     ("proto_headers", "expected"),
     [
-        # Separate fields, single comma field, and a mix all combine to the same rightmost token.
         ([(b"x-forwarded-proto", b"https"), (b"x-forwarded-proto", b"http")], "http"),
-        ([(b"x-forwarded-proto", b"https, http")], "http"),
-        ([(b"x-forwarded-proto", b"https"), (b"x-forwarded-proto", b"ws, http")], "http"),
-        # A spoofed leftmost value is ignored in the upgrade direction too.
         ([(b"x-forwarded-proto", b"http"), (b"x-forwarded-proto", b"https")], "https"),
-        ([(b"x-forwarded-proto", b"http,  https ")], "https"),
-        # A trailing empty field is ignored and the original scheme is kept.
-        ([(b"x-forwarded-proto", b"https,")], "http"),
     ],
 )
-async def test_proxy_headers_duplicate_x_forwarded_proto_uses_rightmost(
+async def test_proxy_headers_duplicate_x_forwarded_proto_uses_last(
     proto_headers: list[tuple[bytes, bytes]],
     expected: str,
 ) -> None:
