@@ -75,23 +75,20 @@ class TestBaseReload:
         reloader.restart()
         if WatchFilesReload is not None and isinstance(reloader, WatchFilesReload):
             touch_soon(*files)
-            return self._wait_for_changes(reloader)
+            # The watcher yields ``None`` on each timeout until it reports the
+            # touch, so poll past those empty yields instead of trusting a
+            # single check.
+            deadline = monotonic() + 5
+            while monotonic() < deadline:
+                changes = next(reloader)
+                if changes is not None:
+                    return changes
+            return None  # pragma: no cover
         assert not next(reloader)
         sleep(0.1)
         for file in files:
             file.touch()
         return next(reloader)
-
-    @staticmethod
-    def _wait_for_changes(reloader: BaseReload) -> list[Path] | None:
-        # The watcher yields ``None`` on each timeout until it reports the touch,
-        # so poll past those empty yields instead of trusting a single check.
-        deadline = monotonic() + 5
-        while monotonic() < deadline:
-            changes = next(reloader)
-            if changes is not None:
-                return changes
-        return None  # pragma: no cover
 
     @pytest.mark.parametrize("reloader_class", [StatReload, WatchFilesReload])
     def test_reloader_should_initialize(self) -> None:
@@ -345,7 +342,7 @@ def test_should_watch_multiple_dirs(mocker: MockerFixture, reload_directory_stru
 
 
 @pytest.mark.skipif(FileFilter is None, reason="watchfiles not available")
-def test_file_filter_excludes_subdir(reload_directory_structure: Path):
+def test_file_filter_excludes_subdir(reload_directory_structure: Path) -> None:
     sub_dir = reload_directory_structure / "app" / "sub"
     config = Config(app="tests.test_config:asgi_app", reload=True, reload_excludes=[str(sub_dir)])
     file_filter = FileFilter(config)
