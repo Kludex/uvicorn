@@ -7,7 +7,7 @@ toc_depth: 2
 ### Changed
 
 * Bump `httptools` minimum version to 0.8.0 (#2962)
-* Consume duplicate forwarding headers in `ProxyHeadersMiddleware` (#2971)
+* Consume duplicate forwarding headers in `ProxyHeadersMiddleware` (reverses the 0.48.0 behavior of ignoring them) (#2971)
 
 ## 0.48.0 (May 24, 2026)
 
