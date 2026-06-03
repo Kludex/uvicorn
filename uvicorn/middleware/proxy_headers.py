@@ -40,9 +40,12 @@ class ProxyHeadersMiddleware:
                 elif name == b"x-forwarded-for":
                     x_forwarded_for_values.append(value)
 
-            # Only consume the header when exactly one copy is present to avoid spoofing issues.
-            if len(x_forwarded_proto_values) == 1:
-                x_forwarded_proto = x_forwarded_proto_values[0].decode("latin1").strip()
+            # Repeated fields are equivalent to a single comma-separated list (RFC 9110, 5.3),
+            # so join the values in order before parsing.
+            if x_forwarded_proto_values:
+                joined_proto = b", ".join(x_forwarded_proto_values).decode("latin1")
+                # The leftmost value is the protocol the client used to reach the first proxy.
+                x_forwarded_proto = joined_proto.split(",", 1)[0].strip()
 
                 if x_forwarded_proto in {"http", "https", "ws", "wss"}:
                     if scope["type"] == "websocket":
@@ -50,8 +53,8 @@ class ProxyHeadersMiddleware:
                     else:
                         scope["scheme"] = x_forwarded_proto
 
-            if len(x_forwarded_for_values) == 1:
-                x_forwarded_for = x_forwarded_for_values[0].decode("latin1")
+            if x_forwarded_for_values:
+                x_forwarded_for = b", ".join(x_forwarded_for_values).decode("latin1")
                 host, port = self.trusted_hosts.get_trusted_client_address(x_forwarded_for)
 
                 if host:

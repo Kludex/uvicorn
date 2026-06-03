@@ -277,6 +277,13 @@ For more information, check [`ProxyHeadersMiddleware`](https://github.com/Kludex
 Currently if the `ProxyHeadersMiddleware` is able to retrieve a trusted client value then the client's port will be set to `0`.
 This is because port information is lost when using these headers.
 
+### Repeated Headers
+
+Some proxy chains emit one `X-Forwarded-For` (or `X-Forwarded-Proto`) field per hop instead of a single comma-separated one.
+Uvicorn combines repeated fields in order, treating them as the equivalent comma-separated list ([RFC 9110, 5.3](https://www.rfc-editor.org/rfc/rfc9110#section-5.3)).
+For `X-Forwarded-For` the usual trust walk applies, so the leftmost untrusted host is reported as the client.
+For `X-Forwarded-Proto` the leftmost value is used, as it reflects the protocol the client used to reach the first proxy.
+
 ### UNIX Domain Sockets (UDS)
 
 Although it is common for UNIX Domain Sockets to be used for communicating between various HTTP servers, they can mess with some of the expected received values as they will be various non-address strings or missing values.
