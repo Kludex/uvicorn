@@ -18,6 +18,7 @@ from uvicorn._types import (
     ASGI3Application,
     ASGIReceiveEvent,
     ASGISendEvent,
+    ASGIVersions,
     HTTPRequestEvent,
     HTTPScope,
 )
@@ -70,6 +71,7 @@ class HttpToolsProtocol(asyncio.Protocol):
 
         self.ws_protocol_class = config.ws_protocol_class
         self.root_path = config.root_path
+        self.scope_asgi: ASGIVersions = {"version": config.asgi_version, "spec_version": "2.3"}
         self.limit_concurrency = config.limit_concurrency
         self.app_state = app_state
 
@@ -224,7 +226,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.headers = []
         self.scope = {  # type: ignore[typeddict-item]
             "type": "http",
-            "asgi": {"version": self.config.asgi_version, "spec_version": "2.3"},
+            "asgi": self.scope_asgi,
             "http_version": "1.1",
             "server": self.server,
             "client": self.client,

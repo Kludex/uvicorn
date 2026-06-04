@@ -20,6 +20,7 @@ from websockets.server import ServerProtocol
 from uvicorn._types import (
     ASGIReceiveEvent,
     ASGISendEvent,
+    ASGIVersions,
     WebSocketScope,
 )
 from uvicorn.config import Config
@@ -56,6 +57,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.loop = _loop or asyncio.get_event_loop()
         self.logger = logging.getLogger("uvicorn.error")
         self.root_path = config.root_path
+        self.scope_asgi: ASGIVersions = {"version": config.asgi_version, "spec_version": "2.4"}
         self.app_state = app_state
 
         # Shared server state
@@ -197,7 +199,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         raw_path, _, query_string = event.path.partition("?")
         self.scope: WebSocketScope = {
             "type": "websocket",
-            "asgi": {"version": self.config.asgi_version, "spec_version": "2.4"},
+            "asgi": self.scope_asgi,
             "http_version": "1.1",
             "scheme": self.scheme,
             "server": self.server,

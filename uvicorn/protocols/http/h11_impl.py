@@ -16,6 +16,7 @@ from uvicorn._types import (
     ASGI3Application,
     ASGIReceiveEvent,
     ASGISendEvent,
+    ASGIVersions,
     HTTPRequestEvent,
     HTTPResponseBodyEvent,
     HTTPResponseStartEvent,
@@ -63,6 +64,7 @@ class H11Protocol(asyncio.Protocol):
         )
         self.ws_protocol_class = config.ws_protocol_class
         self.root_path = config.root_path
+        self.scope_asgi: ASGIVersions = {"version": config.asgi_version, "spec_version": "2.3"}
         self.limit_concurrency = config.limit_concurrency
         self.app_state = app_state
 
@@ -203,7 +205,7 @@ class H11Protocol(asyncio.Protocol):
                 full_raw_path = self.root_path.encode("ascii") + raw_path
                 self.scope = {
                     "type": "http",
-                    "asgi": {"version": self.config.asgi_version, "spec_version": "2.3"},
+                    "asgi": self.scope_asgi,
                     "http_version": event.http_version.decode("ascii"),
                     "server": self.server,
                     "client": self.client,

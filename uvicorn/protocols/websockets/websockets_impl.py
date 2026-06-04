@@ -20,6 +20,7 @@ from websockets.typing import Subprotocol
 from uvicorn._types import (
     ASGI3Application,
     ASGISendEvent,
+    ASGIVersions,
     WebSocketConnectEvent,
     WebSocketDisconnectEvent,
     WebSocketReceiveEvent,
@@ -69,6 +70,7 @@ class WebSocketProtocol(WebSocketServerProtocol):
         self.app = cast(ASGI3Application, config.loaded_app)
         self.loop = _loop or asyncio.get_event_loop()
         self.root_path = config.root_path
+        self.scope_asgi: ASGIVersions = {"version": config.asgi_version, "spec_version": "2.4"}
         self.app_state = app_state
 
         # Shared server state
@@ -178,7 +180,7 @@ class WebSocketProtocol(WebSocketServerProtocol):
 
         self.scope = {
             "type": "websocket",
-            "asgi": {"version": self.config.asgi_version, "spec_version": "2.4"},
+            "asgi": self.scope_asgi,
             "http_version": "1.1",
             "scheme": self.scheme,
             "server": self.server,
