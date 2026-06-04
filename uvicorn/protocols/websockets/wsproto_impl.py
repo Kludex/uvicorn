@@ -18,7 +18,6 @@ from wsproto.utilities import LocalProtocolError, RemoteProtocolError
 from uvicorn._types import (
     ASGI3Application,
     ASGISendEvent,
-    ASGIVersions,
     WebSocketEvent,
     WebSocketReceiveEvent,
     WebSocketScope,
@@ -82,7 +81,7 @@ class WSProtocol(asyncio.Protocol):
         self.loop = _loop or asyncio.get_event_loop()
         self.logger = logging.getLogger("uvicorn.error")
         self.root_path = config.root_path
-        self.scope_asgi: ASGIVersions = {"version": config.asgi_version, "spec_version": "2.4"}
+        self.asgi_version = config.asgi_version
         self.app_state = app_state
 
         # Shared server state
@@ -213,7 +212,7 @@ class WSProtocol(asyncio.Protocol):
         full_raw_path = self.root_path.encode("ascii") + raw_path.encode("ascii")
         self.scope: WebSocketScope = {
             "type": "websocket",
-            "asgi": self.scope_asgi,
+            "asgi": {"version": self.asgi_version, "spec_version": "2.4"},
             "http_version": "1.1",
             "scheme": self.scheme,
             "server": self.server,
