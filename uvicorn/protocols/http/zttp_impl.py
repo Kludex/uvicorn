@@ -174,10 +174,9 @@ class ZttpProtocol(asyncio.Protocol):
 
             elif isinstance(event, zttp.Request):
                 self.headers = [(key.lower(), value) for key, value in event.headers]
-                raw_path, _, query_string = event.target.partition(b"?")
-                path = unquote(raw_path.decode("ascii"))
+                path = unquote(event.path.decode("ascii"))
                 full_path = self.root_path + path
-                full_raw_path = self.root_path.encode("ascii") + raw_path
+                full_raw_path = self.root_path.encode("ascii") + event.path
                 self.scope = {
                     "type": "http",
                     "asgi": {"version": self.asgi_version, "spec_version": "2.3"},
@@ -189,7 +188,7 @@ class ZttpProtocol(asyncio.Protocol):
                     "root_path": self.root_path,
                     "path": full_path,
                     "raw_path": full_raw_path,
-                    "query_string": query_string,
+                    "query_string": event.query,
                     "headers": self.headers,
                     "state": self.app_state.copy(),
                 }
