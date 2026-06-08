@@ -445,6 +445,7 @@ class RequestResponseCycle:
             bodyless = self.scope["method"] == "HEAD" or status in (204, 304) or status < 200
             has_content_length = False
             for name, value in headers:
+                name = name.lower()
                 if name == b"content-length":
                     has_content_length = True
                     self.expected_content_length = int(value.decode())
@@ -456,7 +457,7 @@ class RequestResponseCycle:
             # A response carrying both Content-Length and Transfer-Encoding is
             # a framing conflict that zttp rejects, so drop the Content-Length.
             if self.chunked_encoding and has_content_length:
-                headers = [(name, value) for name, value in headers if name != b"content-length"]
+                headers = [(name, value) for name, value in headers if name.lower() != b"content-length"]
                 has_content_length = False
                 self.expected_content_length = 0
 
