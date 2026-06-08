@@ -5,7 +5,6 @@ import contextvars
 import http
 import logging
 import sys
-import warnings
 from collections.abc import Callable
 from typing import Any, Literal
 from urllib.parse import unquote
@@ -27,11 +26,9 @@ from uvicorn.protocols.http.flow_control import CLOSE_HEADER, HIGH_WATER_LIMIT, 
 from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
 from uvicorn.server import ServerState
 
-warnings.warn(
+EXPERIMENTAL_WARNING = (
     "The 'zttp' HTTP/1.1 protocol is experimental. I'd really appreciate if you try it out and report back! "
-    "See the docs at https://zttp.marcelotryle.com/.",
-    UserWarning,
-    stacklevel=2,
+    "See the docs at https://zttp.marcelotryle.com/."
 )
 
 
@@ -219,6 +216,9 @@ class ZttpProtocol(asyncio.Protocol):
 
                 self._unset_keepalive_if_required()
 
+                expect_100_continue = any(
+                    name == b"expect" and value.lower() == b"100-continue" for name, value in self.headers
+                )
                 self.cycle = RequestResponseCycle(
                     scope=self.scope,
                     conn=self.conn,
@@ -229,6 +229,8 @@ class ZttpProtocol(asyncio.Protocol):
                     access_log=self.access_log,
                     default_headers=self.server_state.default_headers,
                     message_event=asyncio.Event(),
+                    expect_100_continue=expect_100_continue,
+                    keep_alive=event.http_version != b"1.0",
                     on_response=self.on_response_complete,
                 )
                 if self.config.reset_contextvars:
@@ -243,7 +245,7 @@ class ZttpProtocol(asyncio.Protocol):
 
             elif isinstance(event, zttp.Data):
                 if self.cycle is None or self.cycle.response_complete:
-                    continue
+                    continue  # pragma: full coverage
                 self.cycle.body += event.data
                 if len(self.cycle.body) > HIGH_WATER_LIMIT:
                     self.flow.pause_reading()
@@ -251,7 +253,7 @@ class ZttpProtocol(asyncio.Protocol):
 
             elif isinstance(event, zttp.EndOfMessage):
                 if self.cycle is None or self.cycle.response_complete:
-                    continue
+                    continue  # pragma: full coverage
                 self.cycle.more_body = False
                 self.cycle.message_event.set()
 
@@ -349,6 +351,8 @@ class RequestResponseCycle:
         access_log: bool,
         default_headers: list[tuple[bytes, bytes]],
         message_event: asyncio.Event,
+        expect_100_continue: bool,
+        keep_alive: bool,
         on_response: Callable[..., None],
     ) -> None:
         self.scope = scope
@@ -364,7 +368,8 @@ class RequestResponseCycle:
 
         # Connection state
         self.disconnected = False
-        self.keep_alive = True
+        self.keep_alive = keep_alive
+        self.waiting_for_100_continue = expect_100_continue
 
         # Request state
         self.body = bytearray()
@@ -374,6 +379,8 @@ class RequestResponseCycle:
         self.response_started = False
         self.response_complete = False
         self.bodyless = False
+        self.chunked_encoding = False
+        self.expected_content_length = 0
 
     # ASGI exception wrapper
     async def run_asgi(self, app: ASGI3Application) -> None:
@@ -435,6 +442,7 @@ class RequestResponseCycle:
                 raise RuntimeError(f"Expected ASGI message 'http.response.start', but got '{message['type']}'.")
 
             self.response_started = True
+            self.waiting_for_100_continue = False
 
             status = message["status"]
             headers = self.default_headers + list(message.get("headers", []))
@@ -442,12 +450,29 @@ class RequestResponseCycle:
             if CLOSE_HEADER in self.scope["headers"] and CLOSE_HEADER not in headers:
                 headers = headers + [CLOSE_HEADER]
 
+            bodyless = self.scope["method"] == "HEAD" or status in (204, 304) or status < 200
+            has_content_length = False
+            for name, value in headers:
+                if name == b"content-length":
+                    has_content_length = True
+                    self.expected_content_length = int(value.decode())
+                elif name == b"transfer-encoding" and value.lower() == b"chunked":
+                    self.chunked_encoding = True
+                elif name == b"connection" and value.lower() == b"close":
+                    self.keep_alive = False
+
+            # A response carrying both Content-Length and Transfer-Encoding is
+            # a framing conflict that zttp rejects, so drop the Content-Length.
+            if self.chunked_encoding and has_content_length:
+                headers = [(name, value) for name, value in headers if name != b"content-length"]
+                has_content_length = False
+                self.expected_content_length = 0
+
             # zttp refuses to frame the body unless the response declares
             # Content-Length or Transfer-Encoding, so add chunked encoding
             # ourselves when the application provides neither.
-            bodyless = self.scope["method"] == "HEAD" or status in (204, 304) or status < 200
-            has_framing = any(name in (b"content-length", b"transfer-encoding") for name, _ in headers)
-            if not bodyless and not has_framing:
+            if not bodyless and not self.chunked_encoding and not has_content_length:
+                self.chunked_encoding = True
                 headers = headers + [(b"transfer-encoding", b"chunked")]
 
             if self.access_log:
@@ -475,12 +500,24 @@ class RequestResponseCycle:
             more_body = message.get("more_body", False)
 
             # Write response body
-            if not self.bodyless and body:
-                self.conn.send_data(body)
-                self.transport.write(self.conn.data_to_send())
+            if self.bodyless:
+                self.expected_content_length = 0
+            elif self.chunked_encoding:
+                if body:
+                    self.conn.send_data(body)
+                    self.transport.write(self.conn.data_to_send())
+            else:
+                if len(body) > self.expected_content_length:
+                    raise RuntimeError("Response content longer than Content-Length")
+                self.expected_content_length -= len(body)
+                if body:
+                    self.conn.send_data(body)
+                    self.transport.write(self.conn.data_to_send())
 
             # Handle response completion
             if not more_body:
+                if self.expected_content_length != 0:
+                    raise RuntimeError("Response content shorter than Content-Length")
                 self.response_complete = True
                 self.message_event.set()
                 self.conn.end_message()
@@ -496,6 +533,10 @@ class RequestResponseCycle:
             self.on_response()
 
     async def receive(self) -> ASGIReceiveEvent:
+        if self.waiting_for_100_continue and not self.transport.is_closing():
+            self.transport.write(b"HTTP/1.1 100 Continue\r\n\r\n")
+            self.waiting_for_100_continue = False
+
         if not self.disconnected and not self.response_complete:
             self.flow.resume_reading()
             await self.message_event.wait()
