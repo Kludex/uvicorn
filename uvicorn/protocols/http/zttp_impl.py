@@ -5,6 +5,7 @@ import contextvars
 import http
 import logging
 import sys
+import warnings
 from collections.abc import Callable
 from typing import Any, Literal
 from urllib.parse import unquote
@@ -26,9 +27,11 @@ from uvicorn.protocols.http.flow_control import CLOSE_HEADER, HIGH_WATER_LIMIT, 
 from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
 from uvicorn.server import ServerState
 
-EXPERIMENTAL_WARNING = (
+warnings.warn(
     "The 'zttp' HTTP/1.1 protocol is experimental. I'd really appreciate if you try it out and report back! "
-    "See the docs at https://zttp.marcelotryle.com/."
+    "See the docs at https://zttp.marcelotryle.com/.",
+    UserWarning,
+    stacklevel=2,
 )
 
 
@@ -477,7 +480,7 @@ class RequestResponseCycle:
             # Write response status line and headers
             reason = STATUS_PHRASES[status]
             self.bodyless = bodyless
-            self.conn.send_response(b"1.1", status, reason, headers, bodyless)
+            self.conn.send_response(b"1.1", status, reason, headers)
             self.transport.write(self.conn.data_to_send())
 
         elif not self.response_complete:

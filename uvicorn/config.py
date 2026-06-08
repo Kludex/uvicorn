@@ -9,7 +9,6 @@ import os
 import socket
 import ssl
 import sys
-import warnings
 from collections.abc import Awaitable, Callable
 from configparser import RawConfigParser
 from pathlib import Path
@@ -471,11 +470,6 @@ class Config:
             self.http_protocol_class: type[asyncio.Protocol] = http_protocol_class
         else:
             self.http_protocol_class = self.http
-
-        if self.http_protocol_class.__module__ == "uvicorn.protocols.http.zttp_impl":
-            from uvicorn.protocols.http.zttp_impl import EXPERIMENTAL_WARNING
-
-            warnings.warn(EXPERIMENTAL_WARNING, UserWarning, stacklevel=2)
 
         if isinstance(self.ws, str):
             ws_protocol_class = import_from_string(WS_PROTOCOLS.get(self.ws, self.ws))
