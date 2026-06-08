@@ -7,10 +7,11 @@ import logging
 import sys
 import warnings
 from collections.abc import Callable, Generator
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 from urllib.parse import unquote
 
 import zttp
+from zttp import Event
 
 from uvicorn._types import (
     ASGI3Application,
@@ -26,9 +27,6 @@ from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.protocols.http.flow_control import CLOSE_HEADER, HIGH_WATER_LIMIT, FlowControl, service_unavailable
 from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
 from uvicorn.server import ServerState
-
-if TYPE_CHECKING:
-    from zttp._zttp import Event
 
 warnings.warn(
     "The 'zttp' HTTP/1.1 protocol is experimental. I'd really appreciate if you try it out and report back! "
