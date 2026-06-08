@@ -131,10 +131,6 @@ class ZttpProtocol(asyncio.Protocol):
             self.timeout_keep_alive_task.cancel()
             self.timeout_keep_alive_task = None
 
-    def _get_upgrade(self) -> bytes | None:
-        upgrade = self.conn.upgrade()
-        return upgrade.lower() if upgrade is not None else None
-
     def _should_upgrade_to_ws(self) -> bool:
         if self.ws_protocol_class is None:
             return False
@@ -148,7 +144,9 @@ class ZttpProtocol(asyncio.Protocol):
             self.logger.warning(msg)
 
     def _should_upgrade(self) -> bool:
-        upgrade = self._get_upgrade()
+        upgrade = self.conn.upgrade()
+        if upgrade is not None:
+            upgrade = upgrade.lower()
         if upgrade == b"websocket" and self._should_upgrade_to_ws():
             return True
         if upgrade is not None:
