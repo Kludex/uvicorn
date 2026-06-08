@@ -129,16 +129,8 @@ class ZttpProtocol(asyncio.Protocol):
             self.timeout_keep_alive_task = None
 
     def _get_upgrade(self) -> bytes | None:
-        connection = []
-        upgrade = None
-        for name, value in self.headers:
-            if name == b"connection":
-                connection = [token.lower().strip() for token in value.split(b",")]
-            if name == b"upgrade":
-                upgrade = value.lower()
-        if b"upgrade" in connection:
-            return upgrade
-        return None
+        upgrade = self.conn.upgrade()
+        return upgrade.lower() if upgrade is not None else None
 
     def _should_upgrade_to_ws(self) -> bool:
         if self.ws_protocol_class is None:
@@ -216,9 +208,6 @@ class ZttpProtocol(asyncio.Protocol):
 
                 self._unset_keepalive_if_required()
 
-                expect_100_continue = any(
-                    name == b"expect" and value.lower() == b"100-continue" for name, value in self.headers
-                )
                 self.cycle = RequestResponseCycle(
                     scope=self.scope,
                     conn=self.conn,
@@ -229,8 +218,8 @@ class ZttpProtocol(asyncio.Protocol):
                     access_log=self.access_log,
                     default_headers=self.server_state.default_headers,
                     message_event=asyncio.Event(),
-                    expect_100_continue=expect_100_continue,
-                    keep_alive=event.http_version != b"1.0",
+                    expect_100_continue=event.expect_continue,
+                    keep_alive=not self.conn.should_close(),
                     on_response=self.on_response_complete,
                 )
                 if self.config.reset_contextvars:
