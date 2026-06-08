@@ -25,7 +25,7 @@ from uvicorn.middleware.message_logger import MessageLoggerMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from uvicorn.middleware.wsgi import WSGIMiddleware
 
-HTTPProtocolType = Literal["auto", "h11", "httptools"]
+HTTPProtocolType = Literal["auto", "h11", "httptools", "zttp"]
 WSProtocolType = Literal["auto", "none", "websockets", "websockets-sansio", "wsproto"]
 LifespanType = Literal["auto", "on", "off"]
 LoopFactoryType = Literal["none", "auto", "asyncio", "uvloop"]
@@ -43,6 +43,7 @@ HTTP_PROTOCOLS: dict[str, str] = {
     "auto": "uvicorn.protocols.http.auto:AutoHTTPProtocol",
     "h11": "uvicorn.protocols.http.h11_impl:H11Protocol",
     "httptools": "uvicorn.protocols.http.httptools_impl:HttpToolsProtocol",
+    "zttp": "uvicorn.protocols.http.zttp_impl:ZttpProtocol",
 }
 WS_PROTOCOLS: dict[str, str | None] = {
     "auto": "uvicorn.protocols.websockets.auto:AutoWebSocketsProtocol",
