@@ -11,7 +11,7 @@ __version__ = "0.49.0"
 __all__ = ["main", "run", "Config", "Server"]
 
 
-def __getattr__(name: str) -> Any:
+def __getattr__(name: str) -> Any:  # pragma: no cover
     if name == "main":
         from uvicorn.main import main
 

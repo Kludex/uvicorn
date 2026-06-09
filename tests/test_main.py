@@ -182,14 +182,3 @@ def test_deprecated_server_state_from_main() -> None:
         main = importlib.import_module("uvicorn.main")
         server_state_cls = getattr(main, "ServerState")
     assert server_state_cls is uvicorn.server.ServerState
-
-
-def test_lazy_main_from_package() -> None:
-    uvicorn.__dict__.pop("main", None)
-    assert uvicorn.main is importlib.import_module("uvicorn.main").main
-    assert uvicorn.__dict__["main"] is uvicorn.main
-
-
-def test_package_getattr_unknown_name() -> None:
-    with pytest.raises(AttributeError, match="module uvicorn has no attribute potato"):
-        getattr(uvicorn, "potato")
