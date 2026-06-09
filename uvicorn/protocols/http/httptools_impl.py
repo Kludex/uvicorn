@@ -31,6 +31,9 @@ HEADER_RE = re.compile(b'[\x00-\x1f\x7f()<>@,;:\\[\\]={} \t\\\\"]')
 HEADER_VALUE_RE = re.compile(b"[\x00-\x08\x0a-\x1f\x7f]")
 
 
+HTTP2_PREFACE = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+
+
 def _get_status_line(status_code: int) -> bytes:
     try:
         phrase = http.HTTPStatus(status_code).phrase.encode()
@@ -69,6 +72,7 @@ class HttpToolsProtocol(asyncio.Protocol):
             pass
 
         self.ws_protocol_class = config.ws_protocol_class
+        self.h2_protocol_class = config.h2_protocol_class
         self.root_path = config.root_path
         self.asgi_version = config.asgi_version
         self.limit_concurrency = config.limit_concurrency
@@ -97,6 +101,11 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.expect_100_continue = False
         self.cycle: RequestResponseCycle = None  # type: ignore[assignment]
 
+        # HTTP/2 prior-knowledge detection state, active until the first bytes
+        # of a cleartext connection rule the HTTP/2 preface out.
+        self._h2_sniff = False
+        self._h2_buffer = b""
+
     # Protocol interface
     def connection_made(  # type: ignore[override]
         self, transport: asyncio.Transport
@@ -108,6 +117,15 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.server = get_local_addr(transport)
         self.client = get_remote_addr(transport)
         self.scheme = "https" if is_ssl(transport) else "http"
+
+        if self.h2_protocol_class is not None:  # pragma: no-zttp-h2
+            if self.scheme == "https":
+                ssl_object = transport.get_extra_info("ssl_object")
+                if ssl_object is not None and ssl_object.selected_alpn_protocol() == "h2":
+                    self._upgrade_to_h2(transport)
+                    return
+            else:
+                self._h2_sniff = True
 
         if self.logger.level <= TRACE_LOG_LEVEL:
             prefix = "%s:%d - " % self.client if self.client else ""
@@ -167,8 +185,33 @@ class HttpToolsProtocol(asyncio.Protocol):
         upgrade = self._get_upgrade()
         return upgrade == b"websocket" and self._should_upgrade_to_ws()
 
+    def _upgrade_to_h2(self, transport: asyncio.Transport, initial_data: bytes = b"") -> None:  # pragma: no-zttp-h2
+        assert self.h2_protocol_class is not None
+        self.connections.discard(self)
+        protocol = self.h2_protocol_class(  # type: ignore[call-arg]
+            config=self.config,
+            server_state=self.server_state,
+            app_state=self.app_state,
+            _loop=self.loop,
+        )
+        transport.set_protocol(protocol)
+        protocol.connection_made(transport)
+        if initial_data:
+            protocol.data_received(initial_data)
+
     def data_received(self, data: bytes) -> None:
         self._unset_keepalive_if_required()
+
+        if self._h2_sniff:  # pragma: no-zttp-h2
+            data = self._h2_buffer + data
+            if len(data) < len(HTTP2_PREFACE) and HTTP2_PREFACE.startswith(data):
+                self._h2_buffer = data
+                return
+            self._h2_sniff = False
+            self._h2_buffer = b""
+            if data.startswith(HTTP2_PREFACE):
+                self._upgrade_to_h2(self.transport, initial_data=data)
+                return
 
         try:
             self.parser.feed_data(data)

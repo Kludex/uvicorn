@@ -135,6 +135,7 @@ filterwarnings = [
     # httptools in Python 3.14t needs the `PYTHON_GIL=0` environment variable, or raises a RuntimeWarning.
     "ignore: The global interpreter lock (GIL)*:RuntimeWarning",
     "ignore:The 'zttp' HTTP/1.1 protocol is experimental.*:UserWarning",
+    "ignore:Uvicorn's HTTP/2 support is experimental.*:UserWarning",
 ]
 
 [tool.coverage.run]
@@ -165,8 +166,10 @@ exclude_lines = [
 ]
 "sys_platform != 'win32'" = ["uvicorn/loops/asyncio.py"]
 "not is_installed('zttp')" = ["uvicorn/protocols/http/zttp_impl.py"]
+"not is_installed('zttp') or package_version('zttp') < (0, 0, 11)" = ["uvicorn/protocols/http/zttp_h2_impl.py"]
 
 [tool.coverage.coverage_conditional_plugin.rules]
+no-zttp-h2 = "not is_installed('zttp') or package_version('zttp') < (0, 0, 11)"
 py-win32 = "sys_platform == 'win32'"
 py-not-win32 = "sys_platform != 'win32'"
 py-linux = "sys_platform == 'linux'"
