@@ -18,7 +18,7 @@ from uvicorn.server import Server
 from uvicorn.supervisors import ChangeReload, Multiprocess
 
 HEADERS = "Content-Security-Policy:default-src 'self'; script-src https://example.com"
-main = importlib.import_module("uvicorn.main")
+main = importlib.import_module("uvicorn.__main__")
 
 
 @contextlib.contextmanager

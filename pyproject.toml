@@ -87,7 +87,7 @@ exclude-newer = "7 days"
 httptools = "2026-05-26"
 
 [project.scripts]
-uvicorn = "uvicorn.main:main"
+uvicorn = "uvicorn.__main__:main"
 
 [project.urls]
 Changelog = "https://uvicorn.dev/release-notes"
@@ -138,7 +138,7 @@ filterwarnings = [
 parallel = true
 source_pkgs = ["uvicorn", "tests"]
 plugins = ["coverage_conditional_plugin"]
-omit = ["uvicorn/workers.py", "uvicorn/__main__.py", "uvicorn/_compat.py", "tests/benchmarks/*"]
+omit = ["uvicorn/workers.py", "uvicorn/_compat.py", "tests/benchmarks/*"]
 
 [tool.coverage.report]
 precision = 2
