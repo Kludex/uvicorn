@@ -9,8 +9,7 @@ from multiprocessing import Pipe
 from socket import socket
 from typing import Any
 
-import click
-
+from uvicorn._ansi import style
 from uvicorn._subprocess import get_subprocess
 from uvicorn.config import Config
 
@@ -144,7 +143,7 @@ class Multiprocess:
 
     def run(self) -> None:
         message = f"Started parent process [{os.getpid()}]"
-        color_message = "Started parent process [{}]".format(click.style(str(os.getpid()), fg="cyan", bold=True))
+        color_message = "Started parent process [{}]".format(style(str(os.getpid()), fg="cyan", bold=True))
         logger.info(message, extra={"color_message": color_message})
 
         self.init_processes()
@@ -157,7 +156,7 @@ class Multiprocess:
         self.join_all()
 
         message = f"Stopping parent process [{os.getpid()}]"
-        color_message = "Stopping parent process [{}]".format(click.style(str(os.getpid()), fg="cyan", bold=True))
+        color_message = "Stopping parent process [{}]".format(style(str(os.getpid()), fg="cyan", bold=True))
         logger.info(message, extra={"color_message": color_message})
 
     def keep_subprocess_alive(self) -> None:
