@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
-import http
 import logging
 import sys
 import warnings
@@ -34,16 +33,6 @@ warnings.warn(
     UserWarning,
     stacklevel=2,
 )
-
-
-def _get_status_phrase(status_code: int) -> bytes:
-    try:
-        return http.HTTPStatus(status_code).phrase.encode()
-    except ValueError:
-        return b""
-
-
-STATUS_PHRASES = {status_code: _get_status_phrase(status_code) for status_code in range(100, 600)}
 
 
 class ZttpProtocol(asyncio.Protocol):
@@ -269,14 +258,13 @@ class ZttpProtocol(asyncio.Protocol):
         self.transport.set_protocol(protocol)
 
     def send_400_response(self, msg: str) -> None:
-        reason = STATUS_PHRASES[400]
         body = msg.encode("ascii")
         headers: list[tuple[bytes, bytes]] = [
             (b"content-type", b"text/plain; charset=utf-8"),
             (b"content-length", str(len(body)).encode("ascii")),
             (b"connection", b"close"),
         ]
-        self.conn.send_response(b"1.1", 400, reason, headers)
+        self.conn.send_response(400, headers)
         self.conn.send_data(body)
         self.conn.end_message()
         self.transport.write(self.conn.data_to_send())
@@ -479,9 +467,8 @@ class RequestResponseCycle:
                 )
 
             # Write response status line and headers
-            reason = STATUS_PHRASES[status]
             self.bodyless = bodyless
-            self.conn.send_response(b"1.1", status, reason, headers)
+            self.conn.send_response(status, headers)
             self.transport.write(self.conn.data_to_send())
 
         elif not self.response_complete:
