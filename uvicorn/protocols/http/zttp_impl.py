@@ -233,7 +233,7 @@ class ZttpProtocol(asyncio.Protocol):
 
                 elif isinstance(event, zttp.Data):
                     if self.cycle is None or self.cycle.response_complete:
-                        continue  # pragma: full coverage
+                        continue  # pragma: no cover
                     self.cycle.body += event.data
                     if len(self.cycle.body) > HIGH_WATER_LIMIT:
                         self.flow.pause_reading()
@@ -241,7 +241,7 @@ class ZttpProtocol(asyncio.Protocol):
 
                 elif isinstance(event, zttp.EndOfMessage):
                     if self.cycle is None or self.cycle.response_complete:
-                        continue  # pragma: full coverage
+                        continue  # pragma: no cover
                     self.cycle.more_body = False
                     self.cycle.message_event.set()
         except zttp.RemoteProtocolError:
@@ -250,7 +250,7 @@ class ZttpProtocol(asyncio.Protocol):
             self.send_400_response(msg)
 
     def handle_websocket_upgrade(self, event: zttp.Request) -> None:
-        if self.logger.level <= TRACE_LOG_LEVEL:  # pragma: full coverage
+        if self.logger.level <= TRACE_LOG_LEVEL:  # pragma: no cover
             prefix = "%s:%d - " % self.client if self.client else ""
             self.logger.log(TRACE_LOG_LEVEL, "%sUpgrading to WebSocket", prefix)
 
@@ -314,13 +314,13 @@ class ZttpProtocol(asyncio.Protocol):
         """
         Called by the transport when the write buffer exceeds the high water mark.
         """
-        self.flow.pause_writing()  # pragma: full coverage
+        self.flow.pause_writing()  # pragma: no cover
 
     def resume_writing(self) -> None:
         """
         Called by the transport when the write buffer drops below the low water mark.
         """
-        self.flow.resume_writing()  # pragma: full coverage
+        self.flow.resume_writing()  # pragma: no cover
 
     def timeout_keep_alive_handler(self) -> None:
         """
@@ -423,10 +423,10 @@ class RequestResponseCycle:
     # ASGI interface
     async def send(self, message: ASGISendEvent) -> None:
         if self.flow.write_paused and not self.disconnected:
-            await self.flow.drain()  # pragma: full coverage
+            await self.flow.drain()  # pragma: no cover
 
         if self.disconnected:
-            return  # pragma: full coverage
+            return  # pragma: no cover
 
         if not self.response_started:
             # Sending response status line and headers
