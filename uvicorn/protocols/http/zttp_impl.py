@@ -527,7 +527,8 @@ class RequestResponseCycle:
 
     async def receive(self) -> ASGIReceiveEvent:
         if self.waiting_for_100_continue and not self.transport.is_closing():
-            self.transport.write(b"HTTP/1.1 100 Continue\r\n\r\n")
+            self.conn.send_informational(100)
+            self.transport.write(self.conn.data_to_send())
             self.waiting_for_100_continue = False
 
         if not self.disconnected and not self.response_complete:
