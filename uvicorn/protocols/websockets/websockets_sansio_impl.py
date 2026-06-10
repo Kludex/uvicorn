@@ -165,9 +165,9 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 if event.opcode == Opcode.CONT:
                     self.handle_cont(event)  # pragma: no cover
                 elif event.opcode == Opcode.TEXT:
-                    self.handle_data(event, "text")
+                    self.handle_text(event)
                 elif event.opcode == Opcode.BINARY:
-                    self.handle_data(event, "bytes")
+                    self.handle_bytes(event)
                 elif event.opcode == Opcode.PING:
                     self.handle_ping()
                 elif event.opcode == Opcode.PONG:
@@ -223,8 +223,15 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         if event.fin:
             self.send_receive_event_to_app(self.bytes)
 
-    def handle_data(self, event: Frame, data_type: Literal["text", "bytes"]) -> None:
-        self.curr_msg_data_type = data_type
+    def handle_text(self, event: Frame) -> None:
+        self.curr_msg_data_type = "text"
+        if event.fin:
+            self.send_receive_event_to_app(event.data)
+        else:
+            self.bytes = bytearray(event.data)
+
+    def handle_bytes(self, event: Frame) -> None:
+        self.curr_msg_data_type = "bytes"
         if event.fin:
             self.send_receive_event_to_app(event.data)
         else:
