@@ -9,6 +9,7 @@ import pytest
 import websockets.exceptions
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.extensions.permessage_deflate import ClientPerMessageDeflateFactory
+from websockets.frames import Opcode
 from websockets.typing import Subprotocol
 
 from tests.response import Response
@@ -778,12 +779,13 @@ async def test_fragmented_message_exceeding_max_size(
     assert exc_info.value.rcvd.code == 1009
 
 
+@pytest.mark.parametrize("opcode", [Opcode.TEXT, Opcode.BINARY])
 async def test_fragmented_message_reassembly(
-    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int, opcode: Opcode
 ):
     """Server reassembles a fragmented message and delivers it to the app intact."""
 
-    received: list[bytes] = []
+    received: list[str | bytes] = []
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         assert scope["type"] == "websocket"
@@ -792,18 +794,23 @@ async def test_fragmented_message_reassembly(
         await send({"type": "websocket.accept"})
         message = await receive()
         assert message["type"] == "websocket.receive"
-        payload = message.get("bytes")
-        assert payload is not None
+        if opcode is Opcode.TEXT:
+            payload: str | bytes | None = message.get("text")
+            assert isinstance(payload, str)
+        else:
+            payload = message.get("bytes")
+            assert isinstance(payload, bytes)
         received.append(payload)
         await send({"type": "websocket.close"})
 
     config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
     async with run_server(config):
         async with connect(f"ws://127.0.0.1:{unused_tcp_port}") as ws:
-            payload = b"A" * 512
-            await ws.send([payload] * 6)
+            fragment = "A" * 512 if opcode is Opcode.TEXT else b"A" * 512
+            await ws.send([fragment] * 6)
 
-    assert received == [b"A" * 512 * 6]
+    expected = "A" * 512 * 6 if opcode is Opcode.TEXT else b"A" * 512 * 6
+    assert received == [expected]
 
 
 async def test_server_reject_connection(

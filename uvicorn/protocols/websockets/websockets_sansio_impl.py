@@ -105,8 +105,9 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.ping_sent_at: float = 0.0
         self.last_ping_rtt: float = 0.0
 
-        # Buffers
-        self.bytes = bytearray()
+        # Incoming message state
+        self.frames: list[bytes] = []
+        self.curr_msg_data_type: Literal["text", "bytes"] = "bytes"
 
     def connection_made(self, transport: BaseTransport) -> None:
         """Called when a connection is made."""
@@ -218,33 +219,35 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.tasks.add(task)
 
     def handle_cont(self, event: Frame) -> None:
-        self.bytes.extend(event.data)
+        self.frames.append(event.data)
         if event.fin:
             self.send_receive_event_to_app()
 
     def handle_text(self, event: Frame) -> None:
-        self.bytes = bytearray(event.data)
-        self.curr_msg_data_type: Literal["text", "bytes"] = "text"
+        self.curr_msg_data_type = "text"
+        self.frames = [event.data]
         if event.fin:
             self.send_receive_event_to_app()
 
     def handle_bytes(self, event: Frame) -> None:
-        self.bytes = bytearray(event.data)
         self.curr_msg_data_type = "bytes"
+        self.frames = [event.data]
         if event.fin:
             self.send_receive_event_to_app()
 
     def send_receive_event_to_app(self) -> None:
+        data = self.frames[0] if len(self.frames) == 1 else b"".join(self.frames)
+        self.frames = []
         if self.curr_msg_data_type == "text":
             try:
-                self.queue.put_nowait({"type": "websocket.receive", "text": self.bytes.decode()})
+                self.queue.put_nowait({"type": "websocket.receive", "text": data.decode()})
             except UnicodeDecodeError:  # pragma: no cover
                 self.logger.exception("Invalid UTF-8 sequence received from client.")
                 self.conn.send_close(1007)
                 self.handle_parser_exception()
                 return
         else:
-            self.queue.put_nowait({"type": "websocket.receive", "bytes": bytes(self.bytes)})
+            self.queue.put_nowait({"type": "websocket.receive", "bytes": data})
         if not self.read_paused:
             self.read_paused = True
             self.transport.pause_reading()
