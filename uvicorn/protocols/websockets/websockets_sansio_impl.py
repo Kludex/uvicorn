@@ -105,8 +105,9 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.ping_sent_at: float = 0.0
         self.last_ping_rtt: float = 0.0
 
-        # Buffers
+        # Incoming message state
         self.bytes = bytearray()
+        self.curr_msg_data_type: Literal["text", "bytes"] = "bytes"
 
     def connection_made(self, transport: BaseTransport) -> None:
         """Called when a connection is made."""
@@ -164,9 +165,9 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 if event.opcode == Opcode.CONT:
                     self.handle_cont(event)  # pragma: no cover
                 elif event.opcode == Opcode.TEXT:
-                    self.handle_text(event)
+                    self.handle_data(event, "text")
                 elif event.opcode == Opcode.BINARY:
-                    self.handle_bytes(event)
+                    self.handle_data(event, "bytes")
                 elif event.opcode == Opcode.PING:
                     self.handle_ping()
                 elif event.opcode == Opcode.PONG:
@@ -222,15 +223,8 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         if event.fin:
             self.send_receive_event_to_app(self.bytes)
 
-    def handle_text(self, event: Frame) -> None:
-        self.curr_msg_data_type: Literal["text", "bytes"] = "text"
-        if event.fin:
-            self.send_receive_event_to_app(event.data)
-        else:
-            self.bytes = bytearray(event.data)
-
-    def handle_bytes(self, event: Frame) -> None:
-        self.curr_msg_data_type = "bytes"
+    def handle_data(self, event: Frame, data_type: Literal["text", "bytes"]) -> None:
+        self.curr_msg_data_type = data_type
         if event.fin:
             self.send_receive_event_to_app(event.data)
         else:

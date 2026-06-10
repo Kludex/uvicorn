@@ -777,13 +777,12 @@ async def test_fragmented_message_exceeding_max_size(
     assert exc_info.value.rcvd.code == 1009
 
 
-@pytest.mark.parametrize("opcode", [Opcode.TEXT, Opcode.BINARY])
-async def test_fragmented_message_reassembly(
-    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int, opcode: Opcode
+async def test_fragmented_binary_message_reassembly(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
 ):
-    """Server reassembles a fragmented message and delivers it to the app intact."""
+    """Server reassembles a fragmented binary message and delivers it to the app intact."""
 
-    received: list[str | bytes] = []
+    received: list[bytes] = []
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         assert scope["type"] == "websocket"
@@ -792,8 +791,8 @@ async def test_fragmented_message_reassembly(
         await send({"type": "websocket.accept"})
         message = await receive()
         assert message["type"] == "websocket.receive"
-        payload = message.get("text") if opcode is Opcode.TEXT else message.get("bytes")
-        assert isinstance(payload, str if opcode is Opcode.TEXT else bytes)
+        payload = message.get("bytes")
+        assert isinstance(payload, bytes)
         received.append(payload)
         await send({"type": "websocket.close"})
 
@@ -801,13 +800,43 @@ async def test_fragmented_message_reassembly(
     async with run_server(config):
         async with websockets.connect(f"ws://127.0.0.1:{unused_tcp_port}") as ws:
             payload = b"A" * 512
-            await ws.write_frame(False, opcode, payload)
+            await ws.write_frame(False, Opcode.BINARY, payload)
             for _ in range(4):
                 await ws.write_frame(False, Opcode.CONT, payload)
             await ws.write_frame(True, Opcode.CONT, payload)
 
-    expected = "A" * 512 * 6 if opcode is Opcode.TEXT else b"A" * 512 * 6
-    assert received == [expected]
+    assert received == [b"A" * 512 * 6]
+
+
+async def test_fragmented_text_message_reassembly(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+):
+    """Server reassembles a fragmented text message and delivers it to the app intact."""
+
+    received: list[str] = []
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert scope["type"] == "websocket"
+        connect = await receive()
+        assert connect["type"] == "websocket.connect"
+        await send({"type": "websocket.accept"})
+        message = await receive()
+        assert message["type"] == "websocket.receive"
+        payload = message.get("text")
+        assert isinstance(payload, str)
+        received.append(payload)
+        await send({"type": "websocket.close"})
+
+    config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
+    async with run_server(config):
+        async with websockets.connect(f"ws://127.0.0.1:{unused_tcp_port}") as ws:
+            payload = b"A" * 512
+            await ws.write_frame(False, Opcode.TEXT, payload)
+            for _ in range(4):
+                await ws.write_frame(False, Opcode.CONT, payload)
+            await ws.write_frame(True, Opcode.CONT, payload)
+
+    assert received == ["A" * 512 * 6]
 
 
 async def test_server_reject_connection(
