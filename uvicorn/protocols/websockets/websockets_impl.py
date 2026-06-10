@@ -25,8 +25,7 @@ from uvicorn._types import (
     WebSocketReceiveEvent,
     WebSocketScope,
 )
-from uvicorn.config import Config
-from uvicorn.exceptions import UvicornDeprecationWarning
+from uvicorn.config import Config, UvicornDeprecationWarning
 from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.protocols.utils import (
     ClientDisconnected,

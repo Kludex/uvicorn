@@ -1687,7 +1687,6 @@ dev = [
     { name = "types-click" },
     { name = "types-pyyaml" },
     { name = "uvicorn", extra = ["standard"] },
-    { name = "websockets" },
     { name = "wsproto" },
 ]
 docs = [
@@ -1729,7 +1728,6 @@ dev = [
     { name = "types-click", specifier = "==7.1.8" },
     { name = "types-pyyaml", specifier = "==6.0.12.20250915" },
     { name = "uvicorn", extras = ["standard"] },
-    { name = "websockets", specifier = "==16.0" },
     { name = "wsproto", specifier = "==1.3.2" },
 ]
 docs = [

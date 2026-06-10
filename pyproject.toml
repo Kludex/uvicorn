@@ -71,7 +71,6 @@ dev = [
     # Explicit optionals,
     "a2wsgi==1.10.10",
     "wsproto==1.3.2",
-    "websockets==16.0",
 ]
 docs = [
     "zensical==0.0.43",
