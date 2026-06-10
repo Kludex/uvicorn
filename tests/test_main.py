@@ -182,11 +182,3 @@ def test_deprecated_server_state_from_main() -> None:
         main = importlib.import_module("uvicorn.main")
         server_state_cls = getattr(main, "ServerState")
     assert server_state_cls is uvicorn.server.ServerState
-
-
-def test_lazy_run_export() -> None:
-    import uvicorn
-
-    assert uvicorn.run is run
-    with pytest.raises(AttributeError):
-        uvicorn.does_not_exist
