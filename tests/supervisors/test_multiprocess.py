@@ -7,6 +7,7 @@ import socket
 import threading
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -14,7 +15,7 @@ import pytest
 from uvicorn import Config
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.supervisors import Multiprocess
-from uvicorn.supervisors.multiprocess import Process
+from uvicorn.supervisors.multiprocess import WORKER_BOOT_ERROR, Process
 
 
 def new_console_in_windows(test_function: Callable[[], Any]) -> Callable[[], Any]:  # pragma: no cover
@@ -90,6 +91,33 @@ def test_multiprocess_health_check() -> None:
         time.sleep(0.1)
     supervisor.signal_queue.append(signal.SIGINT)
     supervisor.join_all()
+
+
+def test_multiprocess_shuts_down_on_worker_boot_failure() -> None:
+    """A worker that fails to load the app exits the supervisor instead of being restarted forever.
+
+    Regression for https://github.com/encode/uvicorn/discussions/2440: the bad import string is
+    only detectable in the worker, as the parent doesn't import the app module anymore
+    (https://github.com/Kludex/uvicorn/discussions/2980).
+    """
+    config = Config(app="tests.supervisors.test_multiprocess:app_does_not_exist", workers=2)
+    supervisor = Multiprocess(config, target=run, sockets=[])
+    with pytest.raises(SystemExit) as exc_info:
+        supervisor.run()
+    assert exc_info.value.code == WORKER_BOOT_ERROR
+
+
+def test_multiprocess_shuts_down_on_app_module_crash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An exception in the app module body is a boot failure, not a reason to restart the worker."""
+    module = tmp_path / "crash_on_import_app.py"
+    module.write_text("raise RuntimeError('boom')\n")
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    config = Config(app="crash_on_import_app:app", workers=2)
+    supervisor = Multiprocess(config, target=run, sockets=[])
+    with pytest.raises(SystemExit) as exc_info:
+        supervisor.run()
+    assert exc_info.value.code == WORKER_BOOT_ERROR
 
 
 @new_console_in_windows
