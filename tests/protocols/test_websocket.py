@@ -1119,6 +1119,29 @@ async def test_server_can_read_messages_in_buffer_after_close(
     assert disconnect_message == {"type": "websocket.disconnect", "code": 1000, "reason": ""}
 
 
+async def test_shutdown_waits_for_app_task_to_complete(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+):
+    app_completed = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        message = await receive()
+        assert message["type"] == "websocket.connect"
+        await send({"type": "websocket.accept"})
+        message = await receive()
+        assert message["type"] == "websocket.disconnect"
+        await asyncio.sleep(0.3)
+        app_completed.set()
+
+    config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
+    async with run_server(config):
+        async with connect(f"ws://127.0.0.1:{unused_tcp_port}"):
+            pass
+        # Let the server process the client close, so only the app task is left running.
+        await asyncio.sleep(0.1)
+    assert app_completed.is_set()
+
+
 async def test_frame_after_close_handshake_is_ignored(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
 ):
