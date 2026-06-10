@@ -792,8 +792,12 @@ async def test_fragmented_message_reassembly(
         await send({"type": "websocket.accept"})
         message = await receive()
         assert message["type"] == "websocket.receive"
-        payload = message.get("text") if opcode is Opcode.TEXT else message.get("bytes")
-        assert isinstance(payload, str if opcode is Opcode.TEXT else bytes)
+        if opcode is Opcode.TEXT:
+            payload: str | bytes | None = message.get("text")
+            assert isinstance(payload, str)
+        else:
+            payload = message.get("bytes")
+            assert isinstance(payload, bytes)
         received.append(payload)
         await send({"type": "websocket.close"})
 
