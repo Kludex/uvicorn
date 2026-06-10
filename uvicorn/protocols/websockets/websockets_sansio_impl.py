@@ -221,7 +221,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
     def handle_cont(self, event: Frame) -> None:
         self.bytes.extend(event.data)
         if event.fin:
-            self.send_receive_event_to_app(self.bytes)
+            self.send_receive_event_to_app(bytes(self.bytes))
 
     def handle_text(self, event: Frame) -> None:
         self.curr_msg_data_type = "text"
@@ -237,7 +237,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         else:
             self.bytes = bytearray(event.data)
 
-    def send_receive_event_to_app(self, data: bytes | bytearray) -> None:
+    def send_receive_event_to_app(self, data: bytes) -> None:
         if self.curr_msg_data_type == "text":
             try:
                 self.queue.put_nowait({"type": "websocket.receive", "text": data.decode()})
@@ -247,7 +247,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 self.handle_parser_exception()
                 return
         else:
-            self.queue.put_nowait({"type": "websocket.receive", "bytes": bytes(data)})
+            self.queue.put_nowait({"type": "websocket.receive", "bytes": data})
         if not self.read_paused:
             self.read_paused = True
             self.transport.pause_reading()
