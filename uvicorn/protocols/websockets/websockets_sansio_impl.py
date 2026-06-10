@@ -106,7 +106,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.last_ping_rtt: float = 0.0
 
         # Incoming message state
-        self.frames: list[bytes | bytearray | memoryview] = []
+        self.frames: list[bytes] = []
         self.curr_msg_data_type: Literal["text", "bytes"] = "bytes"
 
     def connection_made(self, transport: BaseTransport) -> None:
@@ -219,25 +219,24 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.tasks.add(task)
 
     def handle_cont(self, event: Frame) -> None:
-        self.frames.append(event.data)
+        self.frames.append(event.data)  # type: ignore[arg-type]
         if event.fin:
             self.send_receive_event_to_app()
 
     def handle_text(self, event: Frame) -> None:
         self.curr_msg_data_type = "text"
-        self.frames = [event.data]
+        self.frames = [event.data]  # type: ignore[list-item]
         if event.fin:
             self.send_receive_event_to_app()
 
     def handle_bytes(self, event: Frame) -> None:
         self.curr_msg_data_type = "bytes"
-        self.frames = [event.data]
+        self.frames = [event.data]  # type: ignore[list-item]
         if event.fin:
             self.send_receive_event_to_app()
 
     def send_receive_event_to_app(self) -> None:
-        # `bytes()` on a `bytes` object returns it as-is, keeping the single-frame path copy-free.
-        data = bytes(self.frames[0]) if len(self.frames) == 1 else b"".join(self.frames)
+        data = self.frames[0] if len(self.frames) == 1 else b"".join(self.frames)
         self.frames = []
         if self.curr_msg_data_type == "text":
             try:
