@@ -12,7 +12,7 @@ from typing import Any
 
 import click
 
-from uvicorn._subprocess import get_subprocess
+from uvicorn._subprocess import WORKER_BOOT_ERROR, get_subprocess
 from uvicorn.config import Config
 
 SIGNALS = {
@@ -23,8 +23,6 @@ SIGNALS = {
 
 logger = logging.getLogger("uvicorn.error")
 
-WORKER_BOOT_ERROR = 3
-
 
 class Process:
     def __init__(
@@ -34,7 +32,6 @@ class Process:
         sockets: list[socket],
     ) -> None:
         self.real_target = target
-        self.config = config
 
         self.parent_conn, self.child_conn = Pipe()
         self.process = get_subprocess(config, self.target, sockets)
@@ -65,18 +62,6 @@ class Process:
             )
 
         threading.Thread(target=self.always_pong, daemon=True).start()
-
-        # Load before the event loop starts (#941), but after the pong thread is up so
-        # a slow app import doesn't trip the parent's healthcheck.
-        try:
-            if not self.config.loaded:
-                self.config.load()
-        except SystemExit:
-            sys.exit(WORKER_BOOT_ERROR)
-        except Exception:
-            logger.exception("Error loading ASGI app.")
-            sys.exit(WORKER_BOOT_ERROR)
-
         return self.real_target(sockets)
 
     def is_alive(self, timeout: float = 5) -> bool:
@@ -114,10 +99,6 @@ class Process:
     @property
     def pid(self) -> int | None:
         return self.process.pid
-
-    @property
-    def exitcode(self) -> int | None:
-        return self.process.exitcode
 
 
 class Multiprocess:
@@ -198,7 +179,7 @@ class Multiprocess:
             if self.should_exit.is_set():
                 return  # pragma: full coverage
 
-            if process.exitcode == WORKER_BOOT_ERROR:
+            if process.process.exitcode == WORKER_BOOT_ERROR:
                 logger.error(f"Child process [{process.pid}] failed to boot, shutting down.")
                 self.worker_boot_error = True
                 self.should_exit.set()

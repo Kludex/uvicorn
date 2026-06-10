@@ -5,6 +5,7 @@ starting child processes.
 
 from __future__ import annotations
 
+import logging
 import multiprocessing
 import os
 import sys
@@ -16,6 +17,10 @@ from uvicorn.config import Config
 
 multiprocessing.allow_connection_pickling()
 spawn = multiprocessing.get_context("spawn")
+
+logger = logging.getLogger("uvicorn.error")
+
+WORKER_BOOT_ERROR = 3
 
 
 def get_subprocess(
@@ -82,3 +87,8 @@ def subprocess_started(
         # suppress the exception to avoid a traceback from subprocess.Popen
         # the parent already expects us to end, so no vital information is lost
         pass
+    except SystemExit:
+        sys.exit(WORKER_BOOT_ERROR)
+    except Exception:
+        logger.exception("Exception in worker process")
+        sys.exit(WORKER_BOOT_ERROR)

@@ -12,10 +12,11 @@ from typing import Any
 
 import pytest
 
-from uvicorn import Config
+from uvicorn import Config, Server
+from uvicorn._subprocess import WORKER_BOOT_ERROR
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.supervisors import Multiprocess
-from uvicorn.supervisors.multiprocess import WORKER_BOOT_ERROR, Process
+from uvicorn.supervisors.multiprocess import Process
 
 
 def new_console_in_windows(test_function: Callable[[], Any]) -> Callable[[], Any]:  # pragma: no cover
@@ -101,7 +102,7 @@ def test_multiprocess_shuts_down_on_worker_boot_failure() -> None:
     (https://github.com/Kludex/uvicorn/discussions/2980).
     """
     config = Config(app="tests.supervisors.test_multiprocess:app_does_not_exist", workers=2)
-    supervisor = Multiprocess(config, target=run, sockets=[])
+    supervisor = Multiprocess(config, target=Server(config).run, sockets=[])
     with pytest.raises(SystemExit) as exc_info:
         supervisor.run()
     assert exc_info.value.code == WORKER_BOOT_ERROR
@@ -114,7 +115,7 @@ def test_multiprocess_shuts_down_on_app_module_crash(tmp_path: Path, monkeypatch
     monkeypatch.syspath_prepend(str(tmp_path))
 
     config = Config(app="crash_on_import_app:app", workers=2)
-    supervisor = Multiprocess(config, target=run, sockets=[])
+    supervisor = Multiprocess(config, target=Server(config).run, sockets=[])
     with pytest.raises(SystemExit) as exc_info:
         supervisor.run()
     assert exc_info.value.code == WORKER_BOOT_ERROR
