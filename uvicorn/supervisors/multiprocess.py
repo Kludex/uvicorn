@@ -3,16 +3,16 @@ from __future__ import annotations
 import logging
 import os
 import signal
+import sys
 import threading
-from collections.abc import Callable
 from multiprocessing import Pipe
 from socket import socket
-from typing import Any
 
 import click
 
 from uvicorn._subprocess import get_subprocess
 from uvicorn.config import Config
+from uvicorn.server import STARTUP_FAILURE, Server
 
 SIGNALS = {
     getattr(signal, f"SIG{x}"): x
@@ -27,12 +27,13 @@ class Process:
     def __init__(
         self,
         config: Config,
-        target: Callable[[list[socket] | None], None],
         sockets: list[socket],
     ) -> None:
-        self.real_target = target
+        self.config = config
+        self._ready = False
 
         self.parent_conn, self.child_conn = Pipe()
+        self.ready_parent_conn, self.ready_child_conn = Pipe(duplex=False)
         self.process = get_subprocess(config, self.target, sockets)
 
     def ping(self, timeout: float = 5) -> bool:
@@ -50,7 +51,7 @@ class Process:
         while True:
             self.pong()
 
-    def target(self, sockets: list[socket] | None = None) -> Any:  # pragma: no cover
+    def target(self, sockets: list[socket] | None = None) -> None:  # pragma: no cover
         if os.name == "nt":  # pragma: py-not-win32
             # Windows doesn't support SIGTERM, so we use SIGBREAK instead.
             # And then we raise SIGTERM when SIGBREAK is received.
@@ -61,7 +62,20 @@ class Process:
             )
 
         threading.Thread(target=self.always_pong, daemon=True).start()
-        return self.real_target(sockets)
+
+        server = Server(config=self.config)
+        server.on_started = self.notify_started
+        server.run(sockets)
+
+    def notify_started(self) -> None:
+        self.ready_child_conn.send(b"ready")
+
+    @property
+    def ready(self) -> bool:
+        if not self._ready and self.ready_parent_conn.poll(0):
+            self.ready_parent_conn.recv()
+            self._ready = True
+        return self._ready
 
     def is_alive(self, timeout: float = 5) -> bool:
         if not self.process.is_alive():
@@ -85,6 +99,8 @@ class Process:
 
             self.parent_conn.close()
             self.child_conn.close()
+            self.ready_parent_conn.close()
+            self.ready_child_conn.close()
 
     def kill(self) -> None:
         # In Windows, the method will call `TerminateProcess` to kill the process.
@@ -104,17 +120,16 @@ class Multiprocess:
     def __init__(
         self,
         config: Config,
-        target: Callable[[list[socket] | None], None],
         sockets: list[socket],
     ) -> None:
         self.config = config
-        self.target = target
         self.sockets = sockets
 
         self.processes_num = config.workers
         self.processes: list[Process] = []
 
         self.should_exit = threading.Event()
+        self.startup_failed = False
 
         self.signal_queue: list[int] = []
         for sig in SIGNALS:
@@ -122,7 +137,7 @@ class Multiprocess:
 
     def init_processes(self) -> None:
         for _ in range(self.processes_num):
-            process = Process(self.config, self.target, self.sockets)
+            process = Process(self.config, self.sockets)
             process.start()
             self.processes.append(process)
 
@@ -138,7 +153,7 @@ class Multiprocess:
         for idx, process in enumerate(self.processes):
             process.terminate()
             process.join()
-            new_process = Process(self.config, self.target, self.sockets)
+            new_process = Process(self.config, self.sockets)
             new_process.start()
             self.processes[idx] = new_process
 
@@ -160,6 +175,9 @@ class Multiprocess:
         color_message = "Stopping parent process [{}]".format(click.style(str(os.getpid()), fg="cyan", bold=True))
         logger.info(message, extra={"color_message": color_message})
 
+        if self.startup_failed:
+            sys.exit(STARTUP_FAILURE)
+
     def keep_subprocess_alive(self) -> None:
         if self.should_exit.is_set():
             return  # parent process is exiting, no need to keep subprocess alive
@@ -174,8 +192,14 @@ class Multiprocess:
             if self.should_exit.is_set():
                 return  # pragma: full coverage
 
+            if not process.ready:
+                logger.error(f"Child process [{process.pid}] died before startup completed, shutting down.")
+                self.startup_failed = True
+                self.should_exit.set()
+                return
+
             logger.info(f"Child process [{process.pid}] died")
-            process = Process(self.config, self.target, self.sockets)
+            process = Process(self.config, self.sockets)
             process.start()
             self.processes[idx] = process
 
@@ -208,7 +232,7 @@ class Multiprocess:
     def handle_ttin(self) -> None:  # pragma: py-win32
         logger.info("Received SIGTTIN, increasing the number of processes.")
         self.processes_num += 1
-        process = Process(self.config, self.target, self.sockets)
+        process = Process(self.config, self.sockets)
         process.start()
         self.processes.append(process)
 

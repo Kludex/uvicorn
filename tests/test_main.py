@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import inspect
 import socket
@@ -165,6 +166,20 @@ def test_run_match_config_params() -> None:
         key: repr(value) for key, value in inspect.signature(run).parameters.items() if key not in ("app_dir",)
     }
     assert config_params == run_params
+
+
+async def test_server_on_started_callback(unused_tcp_port: int) -> None:
+    config = Config(app=app, loop="asyncio", port=unused_tcp_port)
+    server = Server(config=config)
+    started_events: list[bool] = []
+    server.on_started = lambda: started_events.append(server.started)
+
+    task = asyncio.create_task(server.serve())
+    while not server.started:
+        await asyncio.sleep(0.01)
+    assert started_events == [True]
+    await server.shutdown()
+    task.cancel()
 
 
 async def test_exit_on_create_server_with_invalid_host() -> None:

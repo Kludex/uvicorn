@@ -3,7 +3,6 @@ from __future__ import annotations
 import functools
 import os
 import signal
-import socket
 import threading
 import time
 from collections.abc import Callable
@@ -13,6 +12,7 @@ import pytest
 
 from uvicorn import Config
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
+from uvicorn.server import STARTUP_FAILURE
 from uvicorn.supervisors import Multiprocess
 from uvicorn.supervisors.multiprocess import Process
 
@@ -41,20 +41,30 @@ async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
     pass  # pragma: no cover
 
 
-def run(sockets: list[socket.socket] | None) -> None:
-    while True:  # pragma: no cover
-        time.sleep(1)
+async def lifespan_failure_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+    assert scope["type"] == "lifespan"
+    message = await receive()
+    if message["type"] == "lifespan.startup":
+        raise RuntimeError("Startup failed")
 
 
 def test_process_ping_pong() -> None:
-    process = Process(Config(app=app), target=lambda x: None, sockets=[])
+    process = Process(Config(app=app), sockets=[])
     threading.Thread(target=process.always_pong, daemon=True).start()
     assert process.ping()
 
 
 def test_process_ping_pong_timeout() -> None:
-    process = Process(Config(app=app), target=lambda x: None, sockets=[])
+    process = Process(Config(app=app), sockets=[])
     assert not process.ping(0.1)
+
+
+def test_process_ready() -> None:
+    process = Process(Config(app=app), sockets=[])
+    assert not process.ready
+    process.notify_started()
+    assert process.ready
+    assert process.ready
 
 
 @new_console_in_windows
@@ -66,7 +76,7 @@ def test_multiprocess_run() -> None:
     quit immediately.
     """
     config = Config(app=app, workers=2)
-    supervisor = Multiprocess(config, target=run, sockets=[])
+    supervisor = Multiprocess(config, sockets=[])
     threading.Thread(target=supervisor.run, daemon=True).start()
     supervisor.signal_queue.append(signal.SIGINT)
     supervisor.join_all()
@@ -78,9 +88,12 @@ def test_multiprocess_health_check() -> None:
     Ensure that the health check works as expected.
     """
     config = Config(app=app, workers=2)
-    supervisor = Multiprocess(config, target=run, sockets=[])
+    supervisor = Multiprocess(config, sockets=[])
     threading.Thread(target=supervisor.run, daemon=True).start()
-    time.sleep(1)
+    deadline = time.monotonic() + 10
+    while len(supervisor.processes) < 2 or not all(p.ready for p in supervisor.processes):  # pragma: no cover
+        assert time.monotonic() < deadline, "Timed out waiting for processes to become ready"
+        time.sleep(0.1)
     process = supervisor.processes[0]
     process.kill()
     assert not process.is_alive()
@@ -92,13 +105,32 @@ def test_multiprocess_health_check() -> None:
     supervisor.join_all()
 
 
+def test_multiprocess_stops_on_startup_failure() -> None:
+    """A worker that dies before startup completes shuts the supervisor down instead of
+    being restarted forever (https://github.com/encode/uvicorn/discussions/2440)."""
+    config = Config(app="tests.supervisors.test_multiprocess:app_does_not_exist", workers=2)
+    supervisor = Multiprocess(config, sockets=[])
+    with pytest.raises(SystemExit) as exc_info:
+        supervisor.run()
+    assert exc_info.value.code == STARTUP_FAILURE
+
+
+def test_multiprocess_stops_on_lifespan_startup_failure() -> None:
+    """A lifespan startup failure is a startup failure too, not a reason to restart the worker."""
+    config = Config(app=lifespan_failure_app, lifespan="on", workers=2)
+    supervisor = Multiprocess(config, sockets=[])
+    with pytest.raises(SystemExit) as exc_info:
+        supervisor.run()
+    assert exc_info.value.code == STARTUP_FAILURE
+
+
 @new_console_in_windows
 def test_multiprocess_sigterm() -> None:
     """
     Ensure that the SIGTERM signal is handled as expected.
     """
     config = Config(app=app, workers=2)
-    supervisor = Multiprocess(config, target=run, sockets=[])
+    supervisor = Multiprocess(config, sockets=[])
     threading.Thread(target=supervisor.run, daemon=True).start()
     time.sleep(1)
     supervisor.signal_queue.append(signal.SIGTERM)
@@ -112,7 +144,7 @@ def test_multiprocess_sigbreak() -> None:  # pragma: py-not-win32
     Ensure that the SIGBREAK signal is handled as expected.
     """
     config = Config(app=app, workers=2)
-    supervisor = Multiprocess(config, target=run, sockets=[])
+    supervisor = Multiprocess(config, sockets=[])
     threading.Thread(target=supervisor.run, daemon=True).start()
     time.sleep(1)
     supervisor.signal_queue.append(getattr(signal, "SIGBREAK"))
@@ -125,7 +157,7 @@ def test_multiprocess_sighup() -> None:
     Ensure that the SIGHUP signal is handled as expected.
     """
     config = Config(app=app, workers=2)
-    supervisor = Multiprocess(config, target=run, sockets=[])
+    supervisor = Multiprocess(config, sockets=[])
     threading.Thread(target=supervisor.run, daemon=True).start()
     time.sleep(1)
     pids = [p.pid for p in supervisor.processes]
@@ -148,7 +180,7 @@ def test_multiprocess_sigttin() -> None:
     Ensure that the SIGTTIN signal is handled as expected.
     """
     config = Config(app=app, workers=2)
-    supervisor = Multiprocess(config, target=run, sockets=[])
+    supervisor = Multiprocess(config, sockets=[])
     threading.Thread(target=supervisor.run, daemon=True).start()
     supervisor.signal_queue.append(signal.SIGTTIN)
     time.sleep(1)
@@ -163,7 +195,7 @@ def test_multiprocess_sigttou() -> None:
     Ensure that the SIGTTOU signal is handled as expected.
     """
     config = Config(app=app, workers=2)
-    supervisor = Multiprocess(config, target=run, sockets=[])
+    supervisor = Multiprocess(config, sockets=[])
     threading.Thread(target=supervisor.run, daemon=True).start()
     supervisor.signal_queue.append(signal.SIGTTOU)
     time.sleep(1)

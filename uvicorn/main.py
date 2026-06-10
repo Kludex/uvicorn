@@ -28,7 +28,7 @@ from uvicorn.config import (
     LoopFactoryType,
     WSProtocolType,
 )
-from uvicorn.server import Server
+from uvicorn.server import STARTUP_FAILURE, Server
 from uvicorn.supervisors import ChangeReload, Multiprocess
 
 LEVEL_CHOICES = click.Choice(list(LOG_LEVELS.keys()))
@@ -39,8 +39,6 @@ INTERFACE_CHOICES = click.Choice(INTERFACES)
 def _metavar_from_type(_type: Any) -> str:
     return f"[{'|'.join(key for key in get_args(_type) if key != 'none')}]"
 
-
-STARTUP_FAILURE = 3
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -615,7 +613,7 @@ def run(
             ChangeReload(config, target=server.run, sockets=[sock]).run()
         elif config.workers > 1:
             sock = config.bind_socket()
-            Multiprocess(config, target=server.run, sockets=[sock]).run()
+            Multiprocess(config, sockets=[sock]).run()
         else:
             server.run()
     except KeyboardInterrupt:  # pragma: full coverage

@@ -12,7 +12,7 @@ import socket
 import sys
 import threading
 import time
-from collections.abc import Generator, Sequence
+from collections.abc import Callable, Generator, Sequence
 from email.utils import formatdate
 from types import FrameType
 from typing import TYPE_CHECKING, TypeAlias
@@ -40,6 +40,8 @@ if sys.platform == "win32":  # pragma: py-not-win32
 
 logger = logging.getLogger("uvicorn.error")
 
+STARTUP_FAILURE = 3
+
 
 class ServerState:
     """
@@ -62,6 +64,7 @@ class Server:
         self.should_exit = False
         self.force_exit = False
         self.last_notified = 0.0
+        self.on_started: Callable[[], None] | None = None
 
         self._captured_signals: list[int] = []
 
@@ -193,6 +196,8 @@ class Server:
             pass  # pragma: full coverage
 
         self.started = True
+        if self.on_started is not None:
+            self.on_started()
 
     def _log_started_message(self, listeners: Sequence[socket.SocketType]) -> None:
         config = self.config
