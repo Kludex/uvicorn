@@ -300,21 +300,13 @@ async def test_send_and_close_connection(
             await self.send({"type": "websocket.send", "text": "123"})
             await self.send({"type": "websocket.close"})
 
-    async def get_data(url: str):
-        async with connect(url) as websocket:
-            data = await websocket.recv()
-            is_open = True
-            try:
-                await websocket.recv()
-            except Exception:
-                is_open = False
-            return (data, is_open)
-
     config = Config(app=App, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
     async with run_server(config):
-        (data, is_open) = await get_data(f"ws://127.0.0.1:{unused_tcp_port}")
-        assert data == "123"
-        assert not is_open
+        async with connect(f"ws://127.0.0.1:{unused_tcp_port}") as websocket:
+            data = await websocket.recv()
+            assert data == "123"
+            with pytest.raises(websockets.exceptions.ConnectionClosed):
+                await websocket.recv()
 
 
 async def test_send_text_data_to_server(
@@ -374,21 +366,13 @@ async def test_send_after_protocol_close(
             with pytest.raises(Exception):
                 await self.send({"type": "websocket.send", "text": "123"})
 
-    async def get_data(url: str):
-        async with connect(url) as websocket:
-            data = await websocket.recv()
-            is_open = True
-            try:
-                await websocket.recv()
-            except Exception:
-                is_open = False
-            return (data, is_open)
-
     config = Config(app=App, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
     async with run_server(config):
-        (data, is_open) = await get_data(f"ws://127.0.0.1:{unused_tcp_port}")
-        assert data == "123"
-        assert not is_open
+        async with connect(f"ws://127.0.0.1:{unused_tcp_port}") as websocket:
+            data = await websocket.recv()
+            assert data == "123"
+            with pytest.raises(websockets.exceptions.ConnectionClosed):
+                await websocket.recv()
 
 
 async def test_missing_handshake(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
@@ -1133,6 +1117,30 @@ async def test_server_can_read_messages_in_buffer_after_close(
 
     assert frames == [b"abc", b"abc", b"abc"]
     assert disconnect_message == {"type": "websocket.disconnect", "code": 1000, "reason": ""}
+
+
+async def test_frame_after_close_handshake_is_ignored(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+):
+    """A frame arriving after the close handshake, e.g. a pong the client sent while the
+    server's close reply was in flight, must not crash the protocol (seen on Windows,
+    where the proactor delivers reads pending at transport close)."""
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        while True:
+            message = await receive()
+            if message["type"] == "websocket.connect":
+                await send({"type": "websocket.accept"})
+            elif message["type"] == "websocket.disconnect":
+                break
+
+    config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
+    async with run_server(config) as server:
+        async with connect(f"ws://127.0.0.1:{unused_tcp_port}"):
+            protocol = next(iter(server.server_state.connections))
+        masked_pong = b"\x8a\x80\x00\x00\x00\x00"
+        protocol.data_received(masked_pong)
+        assert protocol.transport.is_closing()
 
 
 async def test_default_server_headers(
