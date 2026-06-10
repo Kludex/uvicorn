@@ -220,31 +220,33 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
     def handle_cont(self, event: Frame) -> None:
         self.bytes.extend(event.data)
         if event.fin:
-            self.send_receive_event_to_app()
+            self.send_receive_event_to_app(self.bytes)
 
     def handle_text(self, event: Frame) -> None:
-        self.bytes = bytearray(event.data)
         self.curr_msg_data_type: Literal["text", "bytes"] = "text"
         if event.fin:
-            self.send_receive_event_to_app()
+            self.send_receive_event_to_app(event.data)
+        else:
+            self.bytes = bytearray(event.data)
 
     def handle_bytes(self, event: Frame) -> None:
-        self.bytes = bytearray(event.data)
         self.curr_msg_data_type = "bytes"
         if event.fin:
-            self.send_receive_event_to_app()
+            self.send_receive_event_to_app(event.data)
+        else:
+            self.bytes = bytearray(event.data)
 
-    def send_receive_event_to_app(self) -> None:
+    def send_receive_event_to_app(self, data: bytes | bytearray) -> None:
         if self.curr_msg_data_type == "text":
             try:
-                self.queue.put_nowait({"type": "websocket.receive", "text": self.bytes.decode()})
+                self.queue.put_nowait({"type": "websocket.receive", "text": data.decode()})
             except UnicodeDecodeError:  # pragma: no cover
                 self.logger.exception("Invalid UTF-8 sequence received from client.")
                 self.conn.send_close(1007)
                 self.handle_parser_exception()
                 return
         else:
-            self.queue.put_nowait({"type": "websocket.receive", "bytes": bytes(self.bytes)})
+            self.queue.put_nowait({"type": "websocket.receive", "bytes": bytes(data)})
         if not self.read_paused:
             self.read_paused = True
             self.transport.pause_reading()
