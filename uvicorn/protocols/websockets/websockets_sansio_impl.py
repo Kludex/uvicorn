@@ -106,7 +106,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.last_ping_rtt: float = 0.0
 
         # Incoming message state
-        self.bytes = bytearray()
+        self.frames: list[bytes] = []
         self.curr_msg_data_type: Literal["text", "bytes"] = "bytes"
 
     def connection_made(self, transport: BaseTransport) -> None:
@@ -219,25 +219,25 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.tasks.add(task)
 
     def handle_cont(self, event: Frame) -> None:
-        self.bytes.extend(event.data)
+        self.frames.append(event.data)
         if event.fin:
-            self.send_receive_event_to_app(bytes(self.bytes))
+            self.send_receive_event_to_app()
 
     def handle_text(self, event: Frame) -> None:
         self.curr_msg_data_type = "text"
+        self.frames = [event.data]
         if event.fin:
-            self.send_receive_event_to_app(event.data)
-        else:
-            self.bytes = bytearray(event.data)
+            self.send_receive_event_to_app()
 
     def handle_bytes(self, event: Frame) -> None:
         self.curr_msg_data_type = "bytes"
+        self.frames = [event.data]
         if event.fin:
-            self.send_receive_event_to_app(event.data)
-        else:
-            self.bytes = bytearray(event.data)
+            self.send_receive_event_to_app()
 
-    def send_receive_event_to_app(self, data: bytes) -> None:
+    def send_receive_event_to_app(self) -> None:
+        data = self.frames[0] if len(self.frames) == 1 else b"".join(self.frames)
+        self.frames = []
         if self.curr_msg_data_type == "text":
             try:
                 self.queue.put_nowait({"type": "websocket.receive", "text": data.decode()})
