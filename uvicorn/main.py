@@ -340,8 +340,8 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
 @click.option(
     "--ssl-ciphers",
     type=str,
-    default="TLSv1",
-    help="Ciphers to use (see stdlib ssl module's)",
+    default=None,
+    help="Ciphers to use (see stdlib ssl module's). Defaults to OpenSSL's safe defaults.",
     show_default=True,
 )
 @click.option(
@@ -371,6 +371,13 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     type=int,
     default=None,
     help="For h11, the maximum number of bytes to buffer of an incomplete event.",
+)
+@click.option(
+    "--reset-contextvars",
+    is_flag=True,
+    default=False,
+    help="Run each ASGI request in a fresh contextvars.Context. Hides context set in the lifespan.",
+    show_default=True,
 )
 @click.option(
     "--factory",
@@ -423,11 +430,12 @@ def main(
     ssl_version: int,
     ssl_cert_reqs: int,
     ssl_ca_certs: str,
-    ssl_ciphers: str,
+    ssl_ciphers: str | None,
     headers: list[str],
     use_colors: bool,
     app_dir: str,
     h11_max_incomplete_event_size: int | None,
+    reset_contextvars: bool,
     factory: bool,
 ) -> None:
     run(
@@ -480,6 +488,7 @@ def main(
         factory=factory,
         app_dir=app_dir,
         h11_max_incomplete_event_size=h11_max_incomplete_event_size,
+        reset_contextvars=reset_contextvars,
     )
 
 
@@ -507,7 +516,7 @@ def run(
     reload_delay: float = 0.25,
     workers: int | None = None,
     env_file: str | os.PathLike[str] | None = None,
-    log_config: dict[str, Any] | str | RawConfigParser | IO[Any] | None = LOGGING_CONFIG,
+    log_config: dict[str, Any] | str | os.PathLike[str] | RawConfigParser | IO[Any] | None = LOGGING_CONFIG,
     log_level: str | int | None = None,
     access_log: bool = True,
     proxy_headers: bool = True,
@@ -528,12 +537,14 @@ def run(
     ssl_version: int = SSL_PROTOCOL_VERSION,
     ssl_cert_reqs: int = ssl.CERT_NONE,
     ssl_ca_certs: str | os.PathLike[str] | None = None,
-    ssl_ciphers: str = "TLSv1",
+    ssl_ciphers: str | None = None,
+    ssl_context_factory: Callable[[Config, Callable[[], ssl.SSLContext]], ssl.SSLContext] | None = None,
     headers: list[tuple[str, str]] | None = None,
     use_colors: bool | None = None,
     app_dir: str | None = None,
     factory: bool = False,
     h11_max_incomplete_event_size: int | None = None,
+    reset_contextvars: bool = False,
 ) -> None:
     if app_dir is not None:
         sys.path.insert(0, app_dir)
@@ -583,17 +594,20 @@ def run(
         ssl_cert_reqs=ssl_cert_reqs,
         ssl_ca_certs=ssl_ca_certs,
         ssl_ciphers=ssl_ciphers,
+        ssl_context_factory=ssl_context_factory,
         headers=headers,
         use_colors=use_colors,
         factory=factory,
         h11_max_incomplete_event_size=h11_max_incomplete_event_size,
+        reset_contextvars=reset_contextvars,
     )
-    server = Server(config=config)
-
     if (config.reload or config.workers > 1) and not isinstance(app, str):
         logger = logging.getLogger("uvicorn.error")
         logger.warning("You must pass the application as an import string to enable 'reload' or 'workers'.")
         sys.exit(1)
+
+    config.load_app()
+    server = Server(config=config)
 
     try:
         if config.should_reload:
@@ -604,8 +618,8 @@ def run(
             Multiprocess(config, target=server.run, sockets=[sock]).run()
         else:
             server.run()
-    except KeyboardInterrupt:
-        pass  # pragma: full coverage
+    except KeyboardInterrupt:  # pragma: full coverage
+        pass
     finally:
         if config.uds and os.path.exists(config.uds):
             os.remove(config.uds)  # pragma: py-win32

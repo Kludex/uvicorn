@@ -6,7 +6,7 @@ import sys
 from collections.abc import Callable, Generator
 from pathlib import Path
 from threading import Thread
-from time import sleep
+from time import monotonic, sleep
 
 import pytest
 from pytest_mock import MockerFixture
@@ -74,11 +74,21 @@ class TestBaseReload:
         reloader.restart()
         if WatchFilesReload is not None and isinstance(reloader, WatchFilesReload):
             touch_soon(*files)
-        else:
-            assert not next(reloader)
-            sleep(0.1)
-            for file in files:
-                file.touch()
+            # Poll until the touched files are reported, ignoring unrelated churn.
+            expected = set(files)
+            deadline = monotonic() + 5
+            seen: set[Path] = set()
+            while monotonic() < deadline:
+                changes = next(reloader)
+                if changes:
+                    seen.update(p for p in changes if p in expected)
+                    if seen == expected:
+                        break
+            return sorted(seen) if seen else None
+        assert not next(reloader)
+        sleep(0.1)
+        for file in files:
+            file.touch()
         return next(reloader)
 
     @pytest.mark.parametrize("reloader_class", [StatReload, WatchFilesReload])

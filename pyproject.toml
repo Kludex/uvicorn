@@ -40,7 +40,7 @@ dependencies = [
 [project.optional-dependencies]
 standard = [
     "colorama>=0.4; sys_platform == 'win32'",
-    "httptools>=0.6.3",
+    "httptools>=0.8.0",
     "python-dotenv>=0.13",
     "PyYAML>=5.1",
     "uvloop>=0.15.1; sys_platform != 'win32' and (sys_platform != 'cygwin' and platform_python_implementation != 'PyPy')",
@@ -53,7 +53,7 @@ dev = [
     # We add uvicorn[standard] so `uv sync` considers the extras.
     "uvicorn[standard]",
     "ruff==0.15.1",
-    "pytest==9.0.2",
+    "pytest==9.0.3",
     "pytest-mock==3.15.1",
     "pytest-xdist[psutil]==3.8.0",
     "pytest-codspeed>=4.1.1",
@@ -74,15 +74,17 @@ dev = [
     "websockets==13.1",
 ]
 docs = [
-    "mkdocs==1.6.1",
-    "mkdocs-material==9.7.1",
+    "zensical==0.0.43",
     "mkdocstrings-python==2.0.2",
-    "mkdocs-llmstxt==0.5.0",
 ]
 
 [tool.uv]
 default-groups = ["dev", "docs"]
-required-version = ">=0.8.6"
+required-version = ">=0.9.17"
+exclude-newer = "7 days"
+
+[tool.uv.exclude-newer-package]
+httptools = "2026-05-26"
 
 [project.scripts]
 uvicorn = "uvicorn.main:main"

@@ -2,6 +2,82 @@
 toc_depth: 2
 ---
 
+## 0.49.0 (June 3, 2026)
+
+### Changed
+
+* Bump `httptools` minimum version to 0.8.0 (#2962)
+* Consume duplicate forwarding headers in `ProxyHeadersMiddleware` (reverses the 0.48.0 behavior of ignoring them) (#2971)
+
+## 0.48.0 (May 24, 2026)
+
+### Changed
+
+* Default `ssl_ciphers` to `None` and use OpenSSL defaults (#2940)
+
+### Fixed
+
+* Ignore duplicate forwarding headers in `ProxyHeadersMiddleware` (#2944)
+
+## 0.47.0 (May 14, 2026)
+
+### Added
+
+* Add `ssl_context_factory` for custom `SSLContext` configuration (#2920)
+
+### Changed
+
+* Eagerly import the ASGI app in the parent process (#2919)
+
+### Fixed
+
+* Treat `fd=0` as a valid file descriptor with reload/workers (#2927)
+
+## 0.46.0 (April 23, 2026)
+
+### Added
+
+* Support `ws_max_size` in `wsproto` implementation (#2915)
+* Support `ws_ping_interval` and `ws_ping_timeout` in `wsproto` implementation (#2916)
+
+### Changed
+
+* Use `bytearray` for incoming WebSocket message buffer in `websockets-sansio` (#2917)
+
+## 0.45.0 (April 21, 2026)
+
+### Added
+
+* Add `--reset-contextvars` flag to isolate ASGI request context (#2912)
+* Accept `os.PathLike` for `log_config` (#2905)
+* Accept `log_level` strings case-insensitively (#2907)
+
+### Changed
+
+* Revert "Emit `http.disconnect` on server shutdown for streaming responses" (#2913)
+* Revert "Explicitly start ASGI run with empty context" (#2911)
+
+### Fixed
+
+* Preserve forwarded client ports in proxy headers middleware (#2903)
+* Raise helpful `ImportError` when PyYAML is missing for YAML log config (#2906)
+
+## 0.44.0 (April 6, 2026)
+
+### Added
+
+* Implement websocket keepalive pings for websockets-sansio (#2888)
+
+## 0.43.0 (April 3, 2026)
+
+You can quit Uvicorn now. We heard you, @pamelafox - all 47 of your Ctrl+C's (thanks for flagging it, and thanks to @tiangolo for the fix 🙏). [See the tweet](https://x.com/pamelafox/status/2039097686155227623).
+
+### Changed
+
+* Emit `http.disconnect` ASGI `receive()` event on server shutting down for streaming responses (#2829)
+* Use native `context` parameter for `create_task` on Python 3.11+ (#2859)
+* Drop cast in ASGI types (#2875)
+
 ## 0.42.0 (March 16, 2026)
 
 ### Changed

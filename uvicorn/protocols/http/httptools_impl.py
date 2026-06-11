@@ -5,11 +5,12 @@ import contextvars
 import http
 import logging
 import re
+import sys
 import urllib
 from asyncio.events import TimerHandle
 from collections import deque
 from collections.abc import Callable
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 import httptools
 
@@ -18,7 +19,6 @@ from uvicorn._types import (
     ASGIReceiveEvent,
     ASGISendEvent,
     HTTPRequestEvent,
-    HTTPResponseStartEvent,
     HTTPScope,
 )
 from uvicorn.config import Config
@@ -70,6 +70,7 @@ class HttpToolsProtocol(asyncio.Protocol):
 
         self.ws_protocol_class = config.ws_protocol_class
         self.root_path = config.root_path
+        self.asgi_version = config.asgi_version
         self.limit_concurrency = config.limit_concurrency
         self.app_state = app_state
 
@@ -129,7 +130,7 @@ class HttpToolsProtocol(asyncio.Protocol):
             self.transport.close()
             self._unset_keepalive_if_required()
 
-        self.parser = None
+        self.parser = None  # type: ignore[assignment]
 
     def eof_received(self) -> None:
         pass
@@ -224,7 +225,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.headers = []
         self.scope = {  # type: ignore[typeddict-item]
             "type": "http",
-            "asgi": {"version": self.config.asgi_version, "spec_version": "2.3"},
+            "asgi": {"version": self.asgi_version, "spec_version": "2.3"},
             "http_version": "1.1",
             "server": self.server,
             "client": self.client,
@@ -289,18 +290,25 @@ class HttpToolsProtocol(asyncio.Protocol):
         )
         if existing_cycle is None or existing_cycle.response_complete:
             # Standard case - start processing the request.
-            # For the asyncio loop, we need to explicitly start with an empty context
-            # as it can be polluted from previous ASGI runs.
-            # See https://github.com/python/cpython/issues/140947 for details.
-            task = contextvars.Context().run(self.loop.create_task, self.cycle.run_asgi(app))
-            # TODO: Replace the line above with the line below for Python >= 3.11
-            # task = self.loop.create_task(self.cycle.run_asgi(app), context=contextvars.Context())
-            task.add_done_callback(self.tasks.discard)
-            self.tasks.add(task)
+            self._start_asgi_task(self.cycle, app)
         else:
             # Pipelined HTTP requests need to be queued up.
             self.flow.pause_reading()
             self.pipeline.appendleft((self.cycle, app))
+
+    def _start_asgi_task(self, cycle: RequestResponseCycle, app: ASGI3Application) -> None:
+        if self.config.reset_contextvars:
+            # Opt-in workaround for https://github.com/python/cpython/issues/140947:
+            # asyncio can leak context vars between tasks. Hides context set in the
+            # lifespan or by external instrumentation.
+            if sys.version_info >= (3, 11):  # pragma: py-lt-311
+                task = self.loop.create_task(cycle.run_asgi(app), context=contextvars.Context())
+            else:  # pragma: py-gte-311
+                task = contextvars.Context().run(self.loop.create_task, cycle.run_asgi(app))
+        else:
+            task = self.loop.create_task(cycle.run_asgi(app))
+        task.add_done_callback(self.tasks.discard)
+        self.tasks.add(task)
 
     def on_body(self, body: bytes) -> None:
         if (self.parser.should_upgrade() and self._should_upgrade()) or self.cycle.response_complete:
@@ -332,9 +340,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         # Keep-Alive timeout instead.
         if self.pipeline:
             cycle, app = self.pipeline.pop()
-            task = self.loop.create_task(cycle.run_asgi(app))
-            task.add_done_callback(self.tasks.discard)
-            self.tasks.add(task)
+            self._start_asgi_task(cycle, app)
         else:
             self.timeout_keep_alive_task = self.loop.call_later(
                 self.timeout_keep_alive, self.timeout_keep_alive_handler
@@ -455,8 +461,6 @@ class RequestResponseCycle:
 
     # ASGI interface
     async def send(self, message: ASGISendEvent) -> None:
-        message_type = message["type"]
-
         if self.flow.write_paused and not self.disconnected:
             await self.flow.drain()  # pragma: full coverage
 
@@ -465,10 +469,8 @@ class RequestResponseCycle:
 
         if not self.response_started:
             # Sending response status line and headers
-            if message_type != "http.response.start":
-                msg = "Expected ASGI message 'http.response.start', but got '%s'."
-                raise RuntimeError(msg % message_type)
-            message = cast("HTTPResponseStartEvent", message)
+            if message["type"] != "http.response.start":
+                raise RuntimeError(f"Expected ASGI message 'http.response.start', but got '{message['type']}'.")
 
             self.response_started = True
             self.waiting_for_100_continue = False
@@ -519,11 +521,10 @@ class RequestResponseCycle:
 
         elif not self.response_complete:
             # Sending response body
-            if message_type != "http.response.body":
-                msg = "Expected ASGI message 'http.response.body', but got '%s'."
-                raise RuntimeError(msg % message_type)
+            if message["type"] != "http.response.body":
+                raise RuntimeError(f"Expected ASGI message 'http.response.body', but got '{message['type']}'.")
 
-            body = cast(bytes, message.get("body", b""))
+            body = message.get("body", b"")
             more_body = message.get("more_body", False)
 
             # Write response body
@@ -557,8 +558,7 @@ class RequestResponseCycle:
 
         else:
             # Response already sent
-            msg = "Unexpected ASGI message '%s' sent, after response already completed."
-            raise RuntimeError(msg % message_type)
+            raise RuntimeError(f"Unexpected ASGI message '{message['type']}' sent, after response already completed.")
 
     async def receive(self) -> ASGIReceiveEvent:
         if self.waiting_for_100_continue and not self.transport.is_closing():
