@@ -15,7 +15,7 @@ import pytest
 from uvicorn import Config
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.supervisors import Multiprocess
-from uvicorn.supervisors.multiprocess import Process, _recv_exactly
+from uvicorn.supervisors.multiprocess import Process
 
 
 def new_console_in_windows(test_function: Callable[[], Any]) -> Callable[[], Any]:  # pragma: no cover
@@ -100,37 +100,15 @@ def test_process_is_alive_when_not_started() -> None:
     assert not process.is_alive(timeout=0.1)
 
 
-def test_recv_exactly_reassembles_short_reads() -> None:
-    """Stream sockets may deliver fewer bytes than requested; `_recv_exactly` loops until complete."""
-    sender, receiver = socket.socketpair()
-
-    def send_in_chunks() -> None:
-        sender.sendall(b"po")
-        time.sleep(0.05)
-        sender.sendall(b"ng")
-
-    with sender, receiver:
-        threading.Thread(target=send_in_chunks, daemon=True).start()
-        assert _recv_exactly(receiver, 4) == b"pong"
-
-
-def test_recv_exactly_raises_when_peer_closes() -> None:
-    sender, receiver = socket.socketpair()
-    with receiver:
-        sender.close()
-        with pytest.raises(OSError):
-            _recv_exactly(receiver, 4)
-
-
-def test_always_pong_exits_when_socket_closed() -> None:
-    """`always_pong` exits gracefully once its socket is closed instead of raising."""
+def test_always_pong_exits_when_peer_disconnects() -> None:
+    """`always_pong` exits gracefully when the parent end closes (its `recv` returns EOF)."""
     process = Process(Config(app=app), target=lambda x: None, sockets=[])
     thread = threading.Thread(target=process.always_pong)
     thread.start()
-    process.child_sock.close()
     process.parent_sock.close()
     thread.join(timeout=5)
     assert not thread.is_alive()
+    process.child_sock.close()
 
 
 @new_console_in_windows

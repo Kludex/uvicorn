@@ -22,18 +22,6 @@ SIGNALS = {
 logger = logging.getLogger("uvicorn.error")
 
 
-def _recv_exactly(sock: socket.socket, size: int) -> bytes:
-    # Stream sockets have no message boundaries, so a single `recv` may return fewer bytes than
-    # requested. `MSG_WAITALL` would handle this but is not available on Windows, so we loop.
-    buffer = bytearray()
-    while len(buffer) < size:
-        chunk = sock.recv(size - len(buffer))
-        if not chunk:
-            raise OSError("socket closed before all bytes were received")
-        buffer.extend(chunk)
-    return bytes(buffer)
-
-
 class Process:
     def __init__(
         self,
@@ -52,16 +40,18 @@ class Process:
         self.child_sock.close()
 
     def ping(self, timeout: float = 5) -> bool:
+        # A single byte can't be a partial read: `recv(1)` returns one byte or b"" on EOF.
         try:
             self.parent_sock.settimeout(timeout)
-            self.parent_sock.sendall(b"ping")
-            return _recv_exactly(self.parent_sock, 4) == b"pong"
+            self.parent_sock.sendall(b"\x00")
+            return self.parent_sock.recv(1) == b"\x00"
         except OSError:
             return False
 
     def pong(self) -> None:
-        _recv_exactly(self.child_sock, 4)  # Receive "ping"
-        self.child_sock.sendall(b"pong")
+        if not self.child_sock.recv(1):
+            raise OSError("socket closed")
+        self.child_sock.sendall(b"\x00")
 
     def always_pong(self) -> None:
         try:
