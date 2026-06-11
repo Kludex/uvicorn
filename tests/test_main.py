@@ -5,6 +5,7 @@ import socket
 import sys
 from logging import WARNING
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -15,7 +16,7 @@ from uvicorn import Server
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.config import Config
 from uvicorn.main import run
-from uvicorn.supervisors import Multiprocess
+from uvicorn.supervisors import ChangeReload, Multiprocess
 
 pytestmark = pytest.mark.anyio
 
@@ -89,25 +90,28 @@ def test_run_invalid_app_config_combination(caplog: pytest.LogCaptureFixture) ->
     )
 
 
-def test_run_fails_fast_in_parent_on_bad_app_path(
-    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    ("kwargs", "supervisor_cls"),
+    [
+        pytest.param({"workers": 2}, Multiprocess, id="multiprocess"),
+        pytest.param({"reload": True}, ChangeReload, id="reload"),
+    ],
+)
+def test_run_does_not_import_app_in_parent_with_subprocesses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kwargs: dict[str, Any], supervisor_cls: type
 ) -> None:
-    """Bad app path with `--workers > 1` exits in the parent.
+    """Subprocess workers import the app themselves; the parent holding its own copy is pure
+    memory overhead (https://github.com/Kludex/uvicorn/discussions/2980)."""
+    module = tmp_path / "lazy_parent_app.py"
+    module.write_text("app = object()\n")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.setattr(supervisor_cls, "run", lambda self: None)
 
-    Regression for https://github.com/encode/uvicorn/discussions/2440: without
-    parent-side validation the supervisor restarts dying workers forever.
-    """
+    with socket.socket() as sock:
+        monkeypatch.setattr(Config, "bind_socket", lambda self: sock)
+        run("lazy_parent_app:app", **kwargs)
 
-    def fail(*args: object, **kwargs: object) -> None:  # pragma: no cover
-        pytest.fail("parent reached supervisor; should have exited on bad app path")
-
-    monkeypatch.setattr(Config, "bind_socket", fail)
-    monkeypatch.setattr(Multiprocess, "run", fail)
-
-    with pytest.raises(SystemExit) as exit_exception:
-        run("tests.test_main:nonexistent_attr", workers=2)
-    assert exit_exception.value.code == 1
-    assert any("Error loading ASGI app" in record.message for record in caplog.records)
+    assert "lazy_parent_app" not in sys.modules
 
 
 def test_run_imports_app_before_starting_event_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -604,7 +604,9 @@ def run(
         logger.warning("You must pass the application as an import string to enable 'reload' or 'workers'.")
         sys.exit(1)
 
-    config.load_app()
+    # Subprocess workers import the app themselves; loading it in the parent only wastes memory (#2980).
+    if not config.use_subprocess:
+        config.load_app()
     server = Server(config=config)
 
     try:
