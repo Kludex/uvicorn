@@ -15,7 +15,7 @@ import pytest
 from uvicorn import Config
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.supervisors import Multiprocess
-from uvicorn.supervisors.multiprocess import Process
+from uvicorn.supervisors.multiprocess import Process, _recv_exactly
 
 
 def new_console_in_windows(test_function: Callable[[], Any]) -> Callable[[], Any]:  # pragma: no cover
@@ -40,18 +40,24 @@ def new_console_in_windows(test_function: Callable[[], Any]) -> Callable[[], Any
 
 @contextmanager
 def with_running_supervisor(supervisor: Multiprocess):
-    """Context manager that runs supervisor in a thread and ensures cleanup on exit."""
+    """Run the supervisor in a thread, waiting for its workers to start, and ensure cleanup on exit.
+
+    The supervisor is expected to exit on its own once the test body queues a terminating signal.
+    `should_exit` is only set as a fallback so a failing test cannot leak the thread.
+    """
     thread = threading.Thread(target=supervisor.run, daemon=True)
     thread.start()
-    time.sleep(1)  # Wait for supervisor to start
+    deadline = time.monotonic() + 10
+    while len(supervisor.processes) < supervisor.processes_num:  # pragma: no cover
+        assert time.monotonic() < deadline, "Timed out waiting for supervisor to start its workers"
+        time.sleep(0.05)
     try:
         yield thread
+        thread.join(timeout=10)
+        assert not thread.is_alive(), "Supervisor thread did not exit after the queued signal"
     finally:
-        # Signal supervisor to exit (in case test failed before sending SIGINT)
         supervisor.should_exit.set()
         thread.join(timeout=10)
-        if thread.is_alive():
-            raise RuntimeError("Supervisor thread did not exit in time")
 
 
 async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
@@ -92,6 +98,39 @@ def test_process_is_alive_when_not_started() -> None:
     """Test is_alive returns False for a process that hasn't started."""
     process = Process(Config(app=app), target=lambda x: None, sockets=[])
     assert not process.is_alive(timeout=0.1)
+
+
+def test_recv_exactly_reassembles_short_reads() -> None:
+    """Stream sockets may deliver fewer bytes than requested; `_recv_exactly` loops until complete."""
+    sender, receiver = socket.socketpair()
+
+    def send_in_chunks() -> None:
+        sender.sendall(b"po")
+        time.sleep(0.05)
+        sender.sendall(b"ng")
+
+    with sender, receiver:
+        threading.Thread(target=send_in_chunks, daemon=True).start()
+        assert _recv_exactly(receiver, 4) == b"pong"
+
+
+def test_recv_exactly_raises_when_peer_closes() -> None:
+    sender, receiver = socket.socketpair()
+    with receiver:
+        sender.close()
+        with pytest.raises(OSError):
+            _recv_exactly(receiver, 4)
+
+
+def test_always_pong_exits_when_socket_closed() -> None:
+    """`always_pong` exits gracefully once its socket is closed instead of raising."""
+    process = Process(Config(app=app), target=lambda x: None, sockets=[])
+    thread = threading.Thread(target=process.always_pong)
+    thread.start()
+    process.child_sock.close()
+    process.parent_sock.close()
+    thread.join(timeout=5)
+    assert not thread.is_alive()
 
 
 @new_console_in_windows

@@ -22,6 +22,18 @@ SIGNALS = {
 logger = logging.getLogger("uvicorn.error")
 
 
+def _recv_exactly(sock: socket.socket, size: int) -> bytes:
+    # Stream sockets have no message boundaries, so a single `recv` may return fewer bytes than
+    # requested. `MSG_WAITALL` would handle this but is not available on Windows, so we loop.
+    buffer = bytearray()
+    while len(buffer) < size:
+        chunk = sock.recv(size - len(buffer))
+        if not chunk:
+            raise OSError("socket closed before all bytes were received")
+        buffer.extend(chunk)
+    return bytes(buffer)
+
+
 class Process:
     def __init__(
         self,
@@ -34,8 +46,8 @@ class Process:
         self.parent_sock, self.child_sock = socket.socketpair()
         self.process = get_subprocess(config, self.target, sockets)
 
-    def __del__(self) -> None:
-        # Just in case the process is never joined, close the sockets.
+    def __del__(self) -> None:  # pragma: no cover
+        # Close the sockets if the process was constructed but never started/joined.
         self.parent_sock.close()
         self.child_sock.close()
 
@@ -43,19 +55,12 @@ class Process:
         try:
             self.parent_sock.settimeout(timeout)
             self.parent_sock.sendall(b"ping")
-            data = self.parent_sock.recv(4)
-            return data == b"pong"
-        except (TimeoutError, OSError):
+            return _recv_exactly(self.parent_sock, 4) == b"pong"
+        except OSError:
             return False
-        finally:
-            # Reset to blocking mode
-            try:
-                self.parent_sock.settimeout(None)
-            except OSError:
-                pass  # Socket may be closed
 
     def pong(self) -> None:
-        self.child_sock.recv(4)  # Receive "ping"
+        _recv_exactly(self.child_sock, 4)  # Receive "ping"
         self.child_sock.sendall(b"pong")
 
     def always_pong(self) -> None:
@@ -110,11 +115,7 @@ class Process:
     def join(self) -> None:
         logger.info(f"Waiting for child process [{self.process.pid}]")
         self.process.join()
-        # Cleanup parent's socket after process exits
-        try:
-            self.parent_sock.close()
-        except OSError:
-            pass  # Already closed
+        self.parent_sock.close()
 
     @property
     def pid(self) -> int | None:
