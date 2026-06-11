@@ -170,14 +170,18 @@ def test_run_match_config_params() -> None:
 
 async def test_server_on_started_callback(unused_tcp_port: int) -> None:
     config = Config(app=app, loop="asyncio", port=unused_tcp_port)
-    server = Server(config=config)
-    started_events: list[bool] = []
-    server.on_started = lambda: started_events.append(server.started)
+    calls = 0
+
+    def on_started() -> None:
+        nonlocal calls
+        calls += 1
+
+    server = Server(config=config, on_started=on_started)
 
     task = asyncio.create_task(server.serve())
     while not server.started:
         await asyncio.sleep(0.01)
-    assert started_events == [True]
+    assert calls == 1
     await server.shutdown()
     task.cancel()
 
