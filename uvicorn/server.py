@@ -56,15 +56,15 @@ class ServerState:
 
 
 class Server:
-    def __init__(self, config: Config) -> None:
+    def __init__(self, config: Config, on_started: Callable[[], None] | None = None) -> None:
         self.config = config
         self.server_state = ServerState()
+        self.on_started = on_started
 
         self.started = False
         self.should_exit = False
         self.force_exit = False
         self.last_notified = 0.0
-        self.on_started: Callable[[], None] | None = None
 
         self._captured_signals: list[int] = []
 

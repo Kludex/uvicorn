@@ -63,8 +63,7 @@ class Process:
 
         threading.Thread(target=self.always_pong, daemon=True).start()
 
-        server = Server(config=self.config)
-        server.on_started = self.notify_started
+        server = Server(config=self.config, on_started=self.notify_started)
         server.run(sockets)
 
     def notify_started(self) -> None:
