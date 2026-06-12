@@ -37,12 +37,16 @@ class FileFilter:
     def __call__(self, path: Path) -> bool:
         for include_pattern in self.includes:
             if path.match(include_pattern):
-                if str(path).endswith(include_pattern):
-                    return True  # pragma: full coverage
-
                 for exclude_dir in self.exclude_dirs:
                     if exclude_dir in path.parents:
                         return False  # pragma: no cover
+
+                # Exact-path includes (e.g. ".dotted" or "ext/ext.jpg") must
+                # bypass the pattern-level excludes so that hidden files and
+                # other non-glob entries listed in --reload-include are watched,
+                # but they still respect directory-level excludes above.
+                if str(path).endswith(include_pattern):
+                    return True  # pragma: full coverage
 
                 for exclude_pattern in self.excludes:
                     if path.match(exclude_pattern):

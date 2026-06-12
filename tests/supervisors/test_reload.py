@@ -409,3 +409,38 @@ def test_base_reloader_closes_sockets_on_shutdown():
     assert sock.fileno() != -1
     reloader.shutdown()
     assert sock.fileno() == -1
+
+
+@pytest.mark.skipif(WatchFilesReload is None, reason="watchfiles not available")
+def test_file_filter_explicit_include_respects_exclude_dirs(tmp_path: Path):
+    """Exact-name entries in --reload-include must still be blocked by --reload-exclude dirs.
+
+    When the include pattern has no wildcards (e.g. ".dotted" or "ext/ext.jpg"),
+    FileFilter used to return True immediately after the endswith check, skipping
+    the exclude_dirs guard entirely.  A file inside an excluded directory should
+    be rejected even when its name matches an explicit include pattern.
+    """
+    from uvicorn.supervisors.watchfilesreload import FileFilter
+
+    excluded_dir = tmp_path / "vendor"
+    excluded_dir.mkdir()
+
+    config = Config(
+        app="tests.test_config:asgi_app",
+        reload=True,
+        reload_includes=[".dotted"],
+        reload_excludes=[str(excluded_dir)],
+    )
+    file_filter = FileFilter(config)
+
+    # Explicit include outside the excluded dir: must be watched.
+    assert file_filter(tmp_path / "src" / ".dotted") is True
+
+    # Explicit include inside the excluded dir: must NOT be watched.
+    assert file_filter(excluded_dir / ".dotted") is False
+
+    # Regular *.py outside excluded dir: must be watched.
+    assert file_filter(tmp_path / "app.py") is True
+
+    # Regular *.py inside excluded dir: must NOT be watched.
+    assert file_filter(excluded_dir / "app.py") is False
