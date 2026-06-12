@@ -12,7 +12,7 @@ import socket
 import sys
 import threading
 import time
-from collections.abc import Callable, Generator, Sequence
+from collections.abc import Generator, Sequence
 from email.utils import formatdate
 from types import FrameType
 from typing import TYPE_CHECKING, TypeAlias
@@ -56,10 +56,9 @@ class ServerState:
 
 
 class Server:
-    def __init__(self, config: Config, on_started: Callable[[], None] | None = None) -> None:
+    def __init__(self, config: Config) -> None:
         self.config = config
         self.server_state = ServerState()
-        self.on_started = on_started
 
         self.started = False
         self.should_exit = False
@@ -196,8 +195,6 @@ class Server:
             pass  # pragma: full coverage
 
         self.started = True
-        if self.on_started is not None:
-            self.on_started()
 
     def _log_started_message(self, listeners: Sequence[socket.SocketType]) -> None:
         config = self.config
