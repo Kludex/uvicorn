@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from uvicorn import Config
+from uvicorn import Config, Server
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.server import STARTUP_FAILURE
 from uvicorn.supervisors import Multiprocess
@@ -61,9 +61,14 @@ def test_process_ping_pong_timeout() -> None:
 
 def test_process_ready() -> None:
     process = Process(Config(app=app), sockets=[])
+    threading.Thread(target=process.always_pong, daemon=True).start()
+
+    assert process.ping()
     assert not process.ready
-    process.notify_started()
-    assert process.ready
+
+    process.server = Server(process.config)
+    process.server.started = True
+    assert process.ping()
     assert process.ready
 
 

@@ -30,22 +30,25 @@ class Process:
         sockets: list[socket],
     ) -> None:
         self.config = config
-        self._ready = False
+        self.server: Server | None = None
+        self.ready = False
 
         self.parent_conn, self.child_conn = Pipe()
-        self.ready_parent_conn, self.ready_child_conn = Pipe(duplex=False)
         self.process = get_subprocess(config, self.target, sockets)
 
     def ping(self, timeout: float = 5) -> bool:
         self.parent_conn.send(b"ping")
         if self.parent_conn.poll(timeout):
-            self.parent_conn.recv()
+            started: bool = self.parent_conn.recv()
+            self.ready = self.ready or started
             return True
         return False
 
     def pong(self) -> None:
+        # The pong carries `Server.started`, so the supervisor can tell a worker that died
+        # before startup completed (fatal) from one that crashed while serving (restart).
         self.child_conn.recv()
-        self.child_conn.send(b"pong")
+        self.child_conn.send(self.server is not None and self.server.started)
 
     def always_pong(self) -> None:
         while True:
@@ -61,20 +64,9 @@ class Process:
                 lambda sig, frame: signal.raise_signal(signal.SIGTERM),
             )
 
+        self.server = Server(config=self.config)
         threading.Thread(target=self.always_pong, daemon=True).start()
-
-        server = Server(config=self.config, on_started=self.notify_started)
-        server.run(sockets)
-
-    def notify_started(self) -> None:
-        self.ready_child_conn.send(b"ready")
-
-    @property
-    def ready(self) -> bool:
-        if not self._ready and self.ready_parent_conn.poll(0):
-            self.ready_parent_conn.recv()
-            self._ready = True
-        return self._ready
+        self.server.run(sockets)
 
     def is_alive(self, timeout: float = 5) -> bool:
         if not self.process.is_alive():
@@ -98,8 +90,6 @@ class Process:
 
             self.parent_conn.close()
             self.child_conn.close()
-            self.ready_parent_conn.close()
-            self.ready_child_conn.close()
 
     def kill(self) -> None:
         # In Windows, the method will call `TerminateProcess` to kill the process.
