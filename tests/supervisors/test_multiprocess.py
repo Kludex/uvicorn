@@ -6,6 +6,7 @@ import signal
 import threading
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -14,6 +15,7 @@ from uvicorn import Config, Server
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.server import STARTUP_FAILURE
 from uvicorn.supervisors import Multiprocess
+from uvicorn.supervisors.basereload import BaseReload
 from uvicorn.supervisors.multiprocess import Process
 
 
@@ -127,6 +129,65 @@ def test_multiprocess_stops_on_lifespan_startup_failure() -> None:
     with pytest.raises(SystemExit) as exc_info:
         supervisor.run()
     assert exc_info.value.code == STARTUP_FAILURE
+
+
+class FakeWatcher(BaseReload):
+    reloader_name = "FakeWatcher"
+
+    def __init__(self, config: Config) -> None:
+        super().__init__(config)
+        self.changes: list[Path] = []
+
+    def should_restart(self) -> list[Path] | None:
+        if self.changes:
+            changes, self.changes = self.changes, []
+            return changes
+        return None
+
+
+def test_multiprocess_restarts_workers_on_watcher_changes() -> None:
+    config = Config(app=app, workers=2)
+    watcher = FakeWatcher(config)
+    supervisor = Multiprocess(config, sockets=[], watcher=watcher)
+    threading.Thread(target=supervisor.run, daemon=True).start()
+
+    deadline = time.monotonic() + 10
+    while len(supervisor.processes) < 2 or not all(p.ready for p in supervisor.processes):  # pragma: no cover
+        assert time.monotonic() < deadline, "Timed out waiting for processes to become ready"
+        time.sleep(0.1)
+    pids = [p.pid for p in supervisor.processes]
+
+    watcher.changes.append(Path("main.py"))
+    deadline = time.monotonic() + 10
+    while [p.pid for p in supervisor.processes] == pids:  # pragma: no cover
+        assert time.monotonic() < deadline, "Timed out waiting for workers to restart"
+        time.sleep(0.1)
+
+    supervisor.signal_queue.append(signal.SIGINT)
+    supervisor.join_all()
+
+
+def test_multiprocess_waits_for_changes_on_startup_failure() -> None:
+    """With a watcher, a worker that dies before startup waits for the next change instead
+    of shutting the supervisor down - a broken save is the normal development loop."""
+    config = Config(app="tests.supervisors.test_multiprocess:app_does_not_exist", workers=1)
+    watcher = FakeWatcher(config)
+    supervisor = Multiprocess(config, sockets=[], watcher=watcher)
+    thread = threading.Thread(target=supervisor.run, daemon=True)
+    thread.start()
+
+    deadline = time.monotonic() + 10
+    while not supervisor.processes or not all(p.failed for p in supervisor.processes):  # pragma: no cover
+        assert time.monotonic() < deadline, "Timed out waiting for the worker to fail"
+        time.sleep(0.1)
+
+    time.sleep(1.5)  # a couple of supervisor ticks: the failed worker must not bring it down
+    assert thread.is_alive()
+    assert not supervisor.startup_failed
+
+    supervisor.signal_queue.append(signal.SIGINT)
+    thread.join(timeout=10)
+    assert not thread.is_alive()
 
 
 @new_console_in_windows

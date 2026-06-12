@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from pathlib import Path
-from socket import socket
 
 from uvicorn.config import Config
 from uvicorn.supervisors.basereload import BaseReload
@@ -12,22 +11,16 @@ logger = logging.getLogger("uvicorn.error")
 
 
 class StatReload(BaseReload):
-    def __init__(
-        self,
-        config: Config,
-        target: Callable[[list[socket] | None], None],
-        sockets: list[socket],
-    ) -> None:
-        super().__init__(config, target, sockets)
-        self.reloader_name = "StatReload"
+    reloader_name = "StatReload"
+
+    def __init__(self, config: Config) -> None:
+        super().__init__(config)
         self.mtimes: dict[Path, float] = {}
 
         if config.reload_excludes or config.reload_includes:
             logger.warning("--reload-include and --reload-exclude have no effect unless watchfiles is installed.")
 
     def should_restart(self) -> list[Path] | None:
-        self.pause()
-
         for file in self.iter_py_files():
             try:
                 mtime = file.stat().st_mtime
@@ -39,12 +32,11 @@ class StatReload(BaseReload):
                 self.mtimes[file] = mtime
                 continue
             elif mtime > old_time:
+                # Reset so the baseline is rebuilt after the restart, instead of
+                # reporting the same change again on the next scan.
+                self.mtimes = {}
                 return [file]
         return None
-
-    def restart(self) -> None:
-        self.mtimes = {}
-        return super().restart()
 
     def iter_py_files(self) -> Iterator[Path]:
         for reload_dir in self.config.reload_dirs:

@@ -15,7 +15,7 @@ from uvicorn import Server
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.config import Config
 from uvicorn.main import run
-from uvicorn.supervisors import ChangeReload, Multiprocess
+from uvicorn.supervisors import Multiprocess
 
 pytestmark = pytest.mark.anyio
 
@@ -90,21 +90,21 @@ def test_run_invalid_app_config_combination(caplog: pytest.LogCaptureFixture) ->
 
 
 @pytest.mark.parametrize(
-    ("kwargs", "supervisor_cls"),
+    "kwargs",
     [
-        pytest.param({"workers": 2}, Multiprocess, id="multiprocess"),
-        pytest.param({"reload": True}, ChangeReload, id="reload"),
+        pytest.param({"workers": 2}, id="multiprocess"),
+        pytest.param({"reload": True}, id="reload"),
     ],
 )
 def test_run_does_not_import_app_in_parent_with_subprocesses(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kwargs: dict[str, Any], supervisor_cls: type
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kwargs: dict[str, Any]
 ) -> None:
     """Subprocess workers import the app themselves; the parent holding its own copy is pure
     memory overhead (https://github.com/Kludex/uvicorn/discussions/2980)."""
     module = tmp_path / "lazy_parent_app.py"
     module.write_text("app = object()\n")
     monkeypatch.syspath_prepend(str(tmp_path))
-    monkeypatch.setattr(supervisor_cls, "run", lambda self: None)
+    monkeypatch.setattr(Multiprocess, "run", lambda self: None)
 
     with socket.socket() as sock:
         monkeypatch.setattr(Config, "bind_socket", lambda self: sock)

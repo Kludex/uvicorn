@@ -15,7 +15,7 @@ import uvicorn
 from uvicorn.config import Config
 from uvicorn.main import main as cli
 from uvicorn.server import Server
-from uvicorn.supervisors import ChangeReload, Multiprocess
+from uvicorn.supervisors import Multiprocess
 
 HEADERS = "Content-Security-Policy:default-src 'self'; script-src https://example.com"
 main = importlib.import_module("uvicorn.main")
@@ -81,7 +81,7 @@ def test_cli_call_change_reload_run() -> None:
     runner = CliRunner()
 
     with mock.patch.object(Config, "bind_socket") as mock_bind_socket:
-        with mock.patch.object(ChangeReload, "run") as mock_run:
+        with mock.patch.object(Multiprocess, "run") as mock_run:
             result = runner.invoke(cli, ["tests.test_cli:App", "--reload"])
 
     assert result.exit_code == 0

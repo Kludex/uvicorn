@@ -111,8 +111,7 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     "--workers",
     default=None,
     type=int,
-    help="Number of worker processes. Defaults to the $WEB_CONCURRENCY environment"
-    " variable if available, or 1. Not valid with --reload.",
+    help="Number of worker processes. Defaults to the $WEB_CONCURRENCY environment variable if available, or 1.",
 )
 @click.option(
     "--loop",
@@ -604,19 +603,17 @@ def run(
         logger.warning("You must pass the application as an import string to enable 'reload' or 'workers'.")
         sys.exit(1)
 
-    # Subprocess workers import the app themselves; loading it in the parent only wastes memory (#2980).
-    if not config.use_subprocess:
-        config.load_app()
-    server = Server(config=config)
+    server: Server | None = None
 
     try:
-        if config.should_reload:
+        if config.use_subprocess:
+            # Subprocess workers import the app themselves; loading it in the parent only wastes memory (#2980).
             sock = config.bind_socket()
-            ChangeReload(config, target=server.run, sockets=[sock]).run()
-        elif config.workers > 1:
-            sock = config.bind_socket()
-            Multiprocess(config, sockets=[sock]).run()
+            watcher = ChangeReload(config) if config.should_reload else None
+            Multiprocess(config, sockets=[sock], watcher=watcher).run()
         else:
+            config.load_app()
+            server = Server(config=config)
             server.run()
     except KeyboardInterrupt:  # pragma: full coverage
         pass
@@ -624,7 +621,7 @@ def run(
         if config.uds and os.path.exists(config.uds):
             os.remove(config.uds)  # pragma: py-win32
 
-    if not server.started and not config.should_reload and config.workers == 1:
+    if server is not None and not server.started:
         sys.exit(STARTUP_FAILURE)
 
 

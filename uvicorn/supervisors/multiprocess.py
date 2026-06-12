@@ -13,6 +13,7 @@ import click
 from uvicorn._subprocess import get_subprocess
 from uvicorn.config import Config
 from uvicorn.server import STARTUP_FAILURE, Server
+from uvicorn.supervisors.basereload import BaseReload, _display_path
 
 SIGNALS = {
     getattr(signal, f"SIG{x}"): x
@@ -32,6 +33,7 @@ class Process:
         self.config = config
         self.server: Server | None = None
         self.ready = False
+        self.failed = False
 
         self.parent_conn, self.child_conn = Pipe()
         self.process = get_subprocess(config, self.target, sockets)
@@ -110,9 +112,11 @@ class Multiprocess:
         self,
         config: Config,
         sockets: list[socket],
+        watcher: BaseReload | None = None,
     ) -> None:
         self.config = config
         self.sockets = sockets
+        self.watcher = watcher
 
         self.processes_num = config.workers
         self.processes: list[Process] = []
@@ -147,8 +151,9 @@ class Multiprocess:
             self.processes[idx] = new_process
 
     def run(self) -> None:
-        message = f"Started parent process [{os.getpid()}]"
-        color_message = "Started parent process [{}]".format(click.style(str(os.getpid()), fg="cyan", bold=True))
+        role = "parent" if self.watcher is None else "reloader"
+        message = f"Started {role} process [{os.getpid()}]"
+        color_message = "Started {} process [{}]".format(role, click.style(str(os.getpid()), fg="cyan", bold=True))
         logger.info(message, extra={"color_message": color_message})
 
         self.init_processes()
@@ -156,12 +161,13 @@ class Multiprocess:
         while not self.should_exit.wait(0.5):
             self.handle_signals()
             self.keep_subprocess_alive()
+            self.check_for_changes()
 
         self.terminate_all()
         self.join_all()
 
-        message = f"Stopping parent process [{os.getpid()}]"
-        color_message = "Stopping parent process [{}]".format(click.style(str(os.getpid()), fg="cyan", bold=True))
+        message = f"Stopping {role} process [{os.getpid()}]"
+        color_message = "Stopping {} process [{}]".format(role, click.style(str(os.getpid()), fg="cyan", bold=True))
         logger.info(message, extra={"color_message": color_message})
 
         if self.startup_failed:
@@ -172,6 +178,9 @@ class Multiprocess:
             return  # parent process is exiting, no need to keep subprocess alive
 
         for idx, process in enumerate(self.processes):
+            if process.failed:
+                continue  # already dead before startup, only a reload can bring it back
+
             if process.is_alive(timeout=self.config.timeout_worker_healthcheck):
                 continue
 
@@ -182,15 +191,32 @@ class Multiprocess:
                 return  # pragma: full coverage
 
             if not process.ready:
-                logger.error(f"Child process [{process.pid}] died before startup completed, shutting down.")
-                self.startup_failed = True
-                self.should_exit.set()
-                return
+                if self.watcher is None:
+                    logger.error(f"Child process [{process.pid}] died before startup completed, shutting down.")
+                    self.startup_failed = True
+                    self.should_exit.set()
+                    return
+                logger.error(f"Child process [{process.pid}] died before startup completed, waiting for changes.")
+                process.failed = True
+                continue
 
             logger.info(f"Child process [{process.pid}] died")
             process = Process(self.config, self.sockets)
             process.start()
             self.processes[idx] = process
+
+    def check_for_changes(self) -> None:
+        if self.watcher is None or self.should_exit.is_set():
+            return
+
+        changes = self.watcher.should_restart()
+        if changes:
+            logger.warning(
+                "%s detected changes in %s. Reloading...",
+                self.watcher.reloader_name,
+                ", ".join(map(_display_path, changes)),
+            )
+            self.restart_all()
 
     def handle_signals(self) -> None:
         for sig in tuple(self.signal_queue):

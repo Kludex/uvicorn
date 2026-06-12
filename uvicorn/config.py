@@ -345,9 +345,6 @@ class Config:
         else:
             self.forwarded_allow_ips = forwarded_allow_ips  # pragma: full coverage
 
-        if self.reload and self.workers > 1:
-            logger.warning('"workers" flag is ignored when reloading is enabled.')
-
     @property
     def asgi_version(self) -> Literal["2.0", "3.0"]:
         mapping: dict[str, Literal["2.0", "3.0"]] = {

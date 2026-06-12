@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
-from socket import socket
 
 from watchfiles import watch
 
@@ -53,14 +51,10 @@ class FileFilter:
 
 
 class WatchFilesReload(BaseReload):
-    def __init__(
-        self,
-        config: Config,
-        target: Callable[[list[socket] | None], None],
-        sockets: list[socket],
-    ) -> None:
-        super().__init__(config, target, sockets)
-        self.reloader_name = "WatchFiles"
+    reloader_name = "WatchFiles"
+
+    def __init__(self, config: Config) -> None:
+        super().__init__(config)
         self.reload_dirs: list[Path] = []
         for directory in config.reload_dirs:
             self.reload_dirs.append(directory)
@@ -69,16 +63,14 @@ class WatchFilesReload(BaseReload):
         self.watcher = watch(
             *self.reload_dirs,
             watch_filter=None,
-            stop_event=self.should_exit,
-            # using yield_on_timeout here mostly to make sure tests don't
-            # hang forever, won't affect the class's behavior
+            # Return control to the supervisor loop on a short timeout, so it stays
+            # responsive to signals and worker deaths while watching for changes.
+            rust_timeout=max(int(config.reload_delay * 1000), 100),
             yield_on_timeout=True,
             ignore_permission_denied=True,
         )
 
     def should_restart(self) -> list[Path] | None:
-        self.pause()
-
         changes = next(self.watcher)
         if changes:
             unique_paths = {Path(c[1]) for c in changes}
