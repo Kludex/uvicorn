@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import signal
+import sys
 import threading
 from collections.abc import Callable
 from multiprocessing import Pipe
@@ -148,9 +149,14 @@ class Multiprocess:
 
         self.init_processes()
 
+        is_init_process = os.getpid() == 1
+
         while not self.should_exit.wait(0.5):
             self.handle_signals()
             self.keep_subprocess_alive()
+
+            if is_init_process:
+                self.reap_orphans()
 
         self.terminate_all()
         self.join_all()
@@ -177,6 +183,20 @@ class Multiprocess:
             process = Process(self.config, self.target, self.sockets)
             process.start()
             self.processes[idx] = process
+
+    def reap_orphans(self) -> None:  # pragma: py-not-linux
+        if sys.platform != "linux":
+            return  # pragma: py-linux
+
+        while True:
+            try:
+                pid, _ = os.waitpid(-1, os.WNOHANG)
+            except ChildProcessError:
+                return
+            if pid == 0:
+                return
+
+            logger.debug(f"Reaped orphaned child process [{pid}]")
 
     def handle_signals(self) -> None:
         for sig in tuple(self.signal_queue):
