@@ -21,6 +21,8 @@ HANDLED_SIGNALS = (
 
 logger = logging.getLogger("uvicorn.error")
 
+_DEFAULT_GRACEFUL_TIMEOUT = 5
+
 
 class BaseReload:
     def __init__(
@@ -83,6 +85,25 @@ class BaseReload:
         self.process = get_subprocess(config=self.config, target=self.target, sockets=self.sockets)
         self.process.start()
 
+    def _join_with_timeout(self) -> None:
+        """Join the worker process with a grace-period timeout.
+
+        If the worker has not exited after ``timeout_graceful_shutdown`` seconds
+        (defaulting to 5 s), it is force-killed with SIGKILL so the supervisor
+        is never blocked indefinitely by long-lived connections (SSE, WebSocket,
+        chunked streaming, etc.).
+        """
+        timeout = self.config.timeout_graceful_shutdown or _DEFAULT_GRACEFUL_TIMEOUT
+        self.process.join(timeout=timeout)
+        if self.process.is_alive():
+            logger.warning(
+                "Worker process [%s] did not exit after %ss; sending SIGKILL.",
+                self.process.pid,
+                timeout,
+            )
+            self.process.kill()
+            self.process.join()
+
     def restart(self) -> None:
         if sys.platform == "win32":  # pragma: py-not-win32
             self.is_restarting = True
@@ -94,7 +115,7 @@ class BaseReload:
             sys.stdout.flush()
         else:  # pragma: py-win32
             self.process.terminate()
-        self.process.join()
+        self._join_with_timeout()
 
         self.process = get_subprocess(config=self.config, target=self.target, sockets=self.sockets)
         self.process.start()
@@ -104,7 +125,7 @@ class BaseReload:
             self.should_exit.set()  # pragma: py-not-win32
         else:
             self.process.terminate()  # pragma: py-win32
-        self.process.join()
+        self._join_with_timeout()
 
         for sock in self.sockets:
             sock.close()
