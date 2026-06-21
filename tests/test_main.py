@@ -118,28 +118,12 @@ def test_run_skips_eager_app_import_with_workers(monkeypatch: pytest.MonkeyPatch
     def fail(self: Config) -> object:  # pragma: no cover
         pytest.fail("parent loaded the app; spawn workers re-import it themselves")
 
-    monkeypatch.setattr(Config, "load_app", fail)
-    monkeypatch.setattr(Multiprocess, "run", lambda self: None)
-    monkeypatch.setattr(Config, "bind_socket", lambda self: socket.socket())
+    with socket.socket() as sock:
+        monkeypatch.setattr(Config, "load_app", fail)
+        monkeypatch.setattr(Multiprocess, "run", lambda self: None)
+        monkeypatch.setattr(Config, "bind_socket", lambda self: sock)
 
-    run("tests.test_main:app", workers=2)
-
-
-def test_run_exits_when_workers_fail_to_start(monkeypatch: pytest.MonkeyPatch) -> None:
-    """`run()` exits with a failure code when the supervisor reports a startup failure.
-
-    Regression for https://github.com/encode/uvicorn/discussions/2440.
-    """
-
-    def fail_startup(self: Multiprocess) -> None:
-        self.startup_failed = True
-
-    monkeypatch.setattr(Multiprocess, "run", fail_startup)
-    monkeypatch.setattr(Config, "bind_socket", lambda self: socket.socket())
-
-    with pytest.raises(SystemExit) as exit_exception:
         run("tests.test_main:app", workers=2)
-    assert exit_exception.value.code == 3
 
 
 def test_run_imports_app_before_starting_event_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

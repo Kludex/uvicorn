@@ -66,7 +66,8 @@ class Process:
             )
 
         # Import the app before answering health checks, so a worker that fails
-        # to load is never seen as ready. See #2440.
+        # to load is never seen as ready.
+        # See https://github.com/encode/uvicorn/discussions/2440.
         self.config.load()
 
         threading.Thread(target=self.always_pong, daemon=True).start()
@@ -128,7 +129,6 @@ class Multiprocess:
         self.processes: list[Process] = []
 
         self.should_exit = threading.Event()
-        self.startup_failed = False
 
         self.signal_queue: list[int] = []
         for sig in SIGNALS:
@@ -185,7 +185,6 @@ class Multiprocess:
             if not process.ready and process.exitcode == 1:
                 logger.error(f"Child process [{process.pid}] failed to start, stopping the parent process.")
                 self.should_exit.set()
-                self.startup_failed = True
                 return
 
             process.kill()  # process is hung, kill it

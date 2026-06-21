@@ -111,7 +111,6 @@ def test_multiprocess_worker_dies_on_startup() -> None:
         assert time.monotonic() < deadline, "Timed out waiting for the supervisor to stop"
         time.sleep(0.1)
     thread.join()
-    assert supervisor.startup_failed
 
 
 @new_console_in_windows

@@ -611,15 +611,13 @@ def run(
 
     server = Server(config=config)
 
-    supervisor: Multiprocess | None = None
     try:
         if config.should_reload:
             sock = config.bind_socket()
             ChangeReload(config, target=server.run, sockets=[sock]).run()
         elif config.workers > 1:
             sock = config.bind_socket()
-            supervisor = Multiprocess(config, target=server.run, sockets=[sock])
-            supervisor.run()
+            Multiprocess(config, target=server.run, sockets=[sock]).run()
         else:
             server.run()
     except KeyboardInterrupt:  # pragma: full coverage
@@ -627,9 +625,6 @@ def run(
     finally:
         if config.uds and os.path.exists(config.uds):
             os.remove(config.uds)  # pragma: py-win32
-
-    if supervisor is not None and supervisor.startup_failed:
-        sys.exit(STARTUP_FAILURE)
 
     if not server.started and not config.should_reload and config.workers == 1:
         sys.exit(STARTUP_FAILURE)
