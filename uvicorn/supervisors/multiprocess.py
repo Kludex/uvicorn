@@ -32,18 +32,15 @@ class Process:
         target: Callable[[list[socket] | None], None],
         sockets: list[socket],
     ) -> None:
-        self.config = config
         self.real_target = target
 
         self.parent_conn, self.child_conn = Pipe()
         self.process = get_subprocess(config, self.target, sockets)
-        self.ready = False
 
     def ping(self, timeout: float = 5) -> bool:
         self.parent_conn.send(PING)
         if self.parent_conn.poll(timeout):
             self.parent_conn.recv()
-            self.ready = True
             return True
         return False
 
@@ -64,11 +61,6 @@ class Process:
                 signal.SIGBREAK,  # type: ignore[attr-defined]
                 lambda sig, frame: signal.raise_signal(signal.SIGTERM),
             )
-
-        # Import the app before answering health checks, so a worker that fails
-        # to load is never seen as ready.
-        # See https://github.com/encode/uvicorn/discussions/2440.
-        self.config.load()
 
         threading.Thread(target=self.always_pong, daemon=True).start()
         return self.real_target(sockets)
@@ -182,8 +174,11 @@ class Multiprocess:
             if process.is_alive(timeout=self.config.timeout_worker_healthcheck):
                 continue
 
-            if not process.ready and process.exitcode == 1:
-                logger.error(f"Child process [{process.pid}] failed to start, stopping the parent process.")
+            if process.exitcode == 1:
+                # The worker exited with a fatal error - a bad app, invalid TLS, or a
+                # failed bind - which would recur on every restart.
+                # See https://github.com/encode/uvicorn/discussions/2440.
+                logger.error(f"Child process [{process.pid}] died with a fatal error, stopping the parent process.")
                 self.should_exit.set()
                 return
 
