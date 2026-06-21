@@ -95,9 +95,7 @@ def test_multiprocess_health_check() -> None:
 
 @new_console_in_windows
 def test_multiprocess_worker_dies_on_startup() -> None:
-    """
-    A worker that fails to load the app stops the parent instead of restarting
-    forever.
+    """A worker that fails to load the app stops the parent instead of restarting forever.
 
     Regression for https://github.com/encode/uvicorn/discussions/2440.
     """
