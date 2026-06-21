@@ -175,9 +175,8 @@ class Multiprocess:
                 continue
 
             if process.exitcode == 1:
-                # The worker exited with a fatal error - a bad app, invalid TLS, or a
-                # failed bind - which would recur on every restart.
-                # See https://github.com/encode/uvicorn/discussions/2440.
+                # A bad app, invalid TLS or a failed bind exits the worker with this code, and that would
+                # recur on every restart. See https://github.com/encode/uvicorn/discussions/2440.
                 logger.error(f"Child process [{process.pid}] died with a fatal error, stopping the parent process.")
                 self.should_exit.set()
                 return
