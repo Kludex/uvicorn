@@ -98,6 +98,10 @@ class Process:
     def pid(self) -> int | None:
         return self.process.pid
 
+    @property
+    def exitcode(self) -> int | None:
+        return self.process.exitcode
+
 
 class Multiprocess:
     def __init__(
@@ -166,6 +170,11 @@ class Multiprocess:
         for idx, process in enumerate(self.processes):
             if process.is_alive(timeout=self.config.timeout_worker_healthcheck):
                 continue
+
+            if process.exitcode == 1:
+                logger.error(f"Child process [{process.pid}] died with a fatal error, stopping the parent process.")
+                self.should_exit.set()
+                return
 
             process.kill()  # process is hung, kill it
             process.join()

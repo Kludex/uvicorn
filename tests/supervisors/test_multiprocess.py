@@ -46,6 +46,12 @@ def run(sockets: list[socket.socket] | None) -> None:
         time.sleep(1)
 
 
+def exit_with_error(sockets: list[socket.socket] | None) -> None:
+    import sys
+
+    sys.exit(1)
+
+
 def test_process_ping_pong() -> None:
     process = Process(Config(app=app), target=lambda x: None, sockets=[])
     threading.Thread(target=process.always_pong, daemon=True).start()
@@ -90,6 +96,25 @@ def test_multiprocess_health_check() -> None:
         time.sleep(0.1)
     supervisor.signal_queue.append(signal.SIGINT)
     supervisor.join_all()
+
+
+@new_console_in_windows
+def test_multiprocess_worker_dies_on_startup() -> None:
+    """
+    A worker that exits with a fatal error stops the parent instead of
+    restarting forever.
+
+    Regression for https://github.com/encode/uvicorn/discussions/2440.
+    """
+    config = Config(app=app, workers=2)
+    supervisor = Multiprocess(config, target=exit_with_error, sockets=[])
+    thread = threading.Thread(target=supervisor.run, daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 10
+    while not supervisor.should_exit.is_set():  # pragma: no cover
+        assert time.monotonic() < deadline, "Timed out waiting for the supervisor to stop"
+        time.sleep(0.1)
+    thread.join()
 
 
 @new_console_in_windows
