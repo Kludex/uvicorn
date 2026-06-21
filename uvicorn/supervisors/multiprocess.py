@@ -19,9 +19,6 @@ SIGNALS = {
     if hasattr(signal, f"SIG{x}")
 }
 
-PING = b"\x00"
-PONG = b"\x01"
-
 logger = logging.getLogger("uvicorn.error")
 
 
@@ -38,7 +35,7 @@ class Process:
         self.process = get_subprocess(config, self.target, sockets)
 
     def ping(self, timeout: float = 5) -> bool:
-        self.parent_conn.send(PING)
+        self.parent_conn.send(b"ping")
         if self.parent_conn.poll(timeout):
             self.parent_conn.recv()
             return True
@@ -46,7 +43,7 @@ class Process:
 
     def pong(self) -> None:
         self.child_conn.recv()
-        self.child_conn.send(PONG)
+        self.child_conn.send(b"pong")
 
     def always_pong(self) -> None:
         while True:
