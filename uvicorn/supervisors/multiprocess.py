@@ -19,6 +19,9 @@ SIGNALS = {
     if hasattr(signal, f"SIG{x}")
 }
 
+PING = b"\x00"
+PONG = b"\x01"
+
 logger = logging.getLogger("uvicorn.error")
 
 
@@ -29,6 +32,7 @@ class Process:
         target: Callable[[list[socket] | None], None],
         sockets: list[socket],
     ) -> None:
+        self.config = config
         self.real_target = target
 
         self.parent_conn, self.child_conn = Pipe()
@@ -36,7 +40,7 @@ class Process:
         self.ready = False
 
     def ping(self, timeout: float = 5) -> bool:
-        self.parent_conn.send(b"ping")
+        self.parent_conn.send(PING)
         if self.parent_conn.poll(timeout):
             self.parent_conn.recv()
             self.ready = True
@@ -45,7 +49,7 @@ class Process:
 
     def pong(self) -> None:
         self.child_conn.recv()
-        self.child_conn.send(b"pong")
+        self.child_conn.send(PONG)
 
     def always_pong(self) -> None:
         while True:
@@ -60,6 +64,10 @@ class Process:
                 signal.SIGBREAK,  # type: ignore[attr-defined]
                 lambda sig, frame: signal.raise_signal(signal.SIGTERM),
             )
+
+        # Import the app before answering health checks, so a worker that fails
+        # to load is never seen as ready. See #2440.
+        self.config.load()
 
         threading.Thread(target=self.always_pong, daemon=True).start()
         return self.real_target(sockets)

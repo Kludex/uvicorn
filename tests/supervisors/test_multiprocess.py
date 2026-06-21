@@ -4,7 +4,6 @@ import functools
 import os
 import signal
 import socket
-import sys
 import threading
 import time
 from collections.abc import Callable
@@ -14,6 +13,7 @@ import pytest
 
 from uvicorn import Config
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
+from uvicorn.server import Server
 from uvicorn.supervisors import Multiprocess
 from uvicorn.supervisors.multiprocess import Process
 
@@ -45,10 +45,6 @@ async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
 def run(sockets: list[socket.socket] | None) -> None:
     while True:  # pragma: no cover
         time.sleep(1)
-
-
-def exit_with_error(sockets: list[socket.socket] | None) -> None:
-    sys.exit(1)
 
 
 def test_process_ping_pong() -> None:
@@ -100,12 +96,14 @@ def test_multiprocess_health_check() -> None:
 @new_console_in_windows
 def test_multiprocess_worker_dies_on_startup() -> None:
     """
-    A worker that fails to start stops the parent instead of restarting forever.
+    A worker that fails to load the app stops the parent instead of restarting
+    forever.
 
     Regression for https://github.com/encode/uvicorn/discussions/2440.
     """
-    config = Config(app=app, workers=2)
-    supervisor = Multiprocess(config, target=exit_with_error, sockets=[])
+    config = Config(app="tests.supervisors.test_multiprocess:does_not_exist", workers=2)
+    server = Server(config)
+    supervisor = Multiprocess(config, target=server.run, sockets=[])
     thread = threading.Thread(target=supervisor.run, daemon=True)
     thread.start()
     deadline = time.monotonic() + 10
