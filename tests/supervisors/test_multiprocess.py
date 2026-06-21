@@ -4,6 +4,7 @@ import functools
 import os
 import signal
 import socket
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -47,8 +48,6 @@ def run(sockets: list[socket.socket] | None) -> None:
 
 
 def exit_with_error(sockets: list[socket.socket] | None) -> None:
-    import sys
-
     sys.exit(1)
 
 
@@ -101,8 +100,7 @@ def test_multiprocess_health_check() -> None:
 @new_console_in_windows
 def test_multiprocess_worker_dies_on_startup() -> None:
     """
-    A worker that exits with a fatal error stops the parent instead of
-    restarting forever.
+    A worker that fails to start stops the parent instead of restarting forever.
 
     Regression for https://github.com/encode/uvicorn/discussions/2440.
     """
@@ -115,6 +113,7 @@ def test_multiprocess_worker_dies_on_startup() -> None:
         assert time.monotonic() < deadline, "Timed out waiting for the supervisor to stop"
         time.sleep(0.1)
     thread.join()
+    assert supervisor.startup_failed
 
 
 @new_console_in_windows

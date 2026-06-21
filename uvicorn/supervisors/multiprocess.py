@@ -33,11 +33,13 @@ class Process:
 
         self.parent_conn, self.child_conn = Pipe()
         self.process = get_subprocess(config, self.target, sockets)
+        self.ready = False
 
     def ping(self, timeout: float = 5) -> bool:
         self.parent_conn.send(b"ping")
         if self.parent_conn.poll(timeout):
             self.parent_conn.recv()
+            self.ready = True
             return True
         return False
 
@@ -118,6 +120,7 @@ class Multiprocess:
         self.processes: list[Process] = []
 
         self.should_exit = threading.Event()
+        self.startup_failed = False
 
         self.signal_queue: list[int] = []
         for sig in SIGNALS:
@@ -171,9 +174,10 @@ class Multiprocess:
             if process.is_alive(timeout=self.config.timeout_worker_healthcheck):
                 continue
 
-            if process.exitcode == 1:
-                logger.error(f"Child process [{process.pid}] died with a fatal error, stopping the parent process.")
+            if not process.ready and process.exitcode == 1:
+                logger.error(f"Child process [{process.pid}] failed to start, stopping the parent process.")
                 self.should_exit.set()
+                self.startup_failed = True
                 return
 
             process.kill()  # process is hung, kill it
