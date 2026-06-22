@@ -14,6 +14,7 @@ import threading
 import time
 from collections.abc import Generator, Sequence
 from email.utils import formatdate
+from multiprocessing.synchronize import Event as EventType
 from types import FrameType
 from typing import TYPE_CHECKING, TypeAlias
 
@@ -58,6 +59,7 @@ class Server:
         self.server_state = ServerState()
 
         self.started = False
+        self.started_event: EventType | None = None
         self.should_exit = False
         self.force_exit = False
         self.last_notified = 0.0
@@ -70,7 +72,8 @@ class Server:
             return None
         return self.config.limit_max_requests + random.randint(0, self.config.limit_max_requests_jitter)
 
-    def run(self, sockets: list[socket.socket] | None = None) -> None:
+    def run(self, sockets: list[socket.socket] | None = None, started_event: EventType | None = None) -> None:
+        self.started_event = started_event
         return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
 
     async def serve(self, sockets: list[socket.socket] | None = None) -> None:
@@ -192,6 +195,8 @@ class Server:
             pass  # pragma: full coverage
 
         self.started = True
+        if self.started_event is not None:
+            self.started_event.set()
 
     def _log_started_message(self, listeners: Sequence[socket.SocketType]) -> None:
         config = self.config

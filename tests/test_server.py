@@ -5,6 +5,7 @@ import contextlib
 import contextvars
 import json
 import logging
+import multiprocessing
 import signal
 import sys
 from collections.abc import Callable, Generator
@@ -120,6 +121,21 @@ async def test_shutdown_on_early_exit_during_startup(unused_tcp_port: int):
 
     assert startup_complete
     assert shutdown_complete, "lifespan.shutdown was not called despite startup completing"
+
+
+async def test_serve_sets_started_event(unused_tcp_port: int):
+    """The server sets `started_event` once it has started serving."""
+    config = Config(app=app, port=unused_tcp_port)
+    server = Server(config=config)
+    server.started_event = multiprocessing.get_context("spawn").Event()
+
+    task = asyncio.create_task(server.serve())
+    while not server.started:
+        await asyncio.sleep(0.01)
+
+    assert server.started_event.is_set()
+    server.should_exit = True
+    await task
 
 
 async def test_request_than_limit_max_requests_warn_log(

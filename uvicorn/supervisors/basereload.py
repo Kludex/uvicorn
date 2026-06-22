@@ -26,7 +26,7 @@ class BaseReload:
     def __init__(
         self,
         config: Config,
-        target: Callable[[list[socket] | None], None],
+        target: Callable[..., None],
         sockets: list[socket],
     ) -> None:
         self.config = config
