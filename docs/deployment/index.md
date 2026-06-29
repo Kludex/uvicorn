@@ -191,7 +191,7 @@ http {
 
 Uvicorn's `--proxy-headers` behavior may not be sufficient for more complex proxy configurations that use different combinations of headers, or where the application is running behind more than one intermediary proxying service.
 
-In those cases, you might want to use an ASGI middleware to set the `client` and `scheme` dependant on the request headers.
+In those cases, you might want to use an ASGI middleware to set the `client` and `scheme` dependent on the request headers.
 
 ## Running behind a CDN
 
