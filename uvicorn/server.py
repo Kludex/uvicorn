@@ -136,9 +136,9 @@ class Server:
                 return fromshare(sock_data)
 
             self.servers: list[asyncio.base_events.Server] = []
+            is_windows = platform.system() == "Windows"
             for sock in sockets:
-                is_windows = platform.system() == "Windows"
-                if config.workers > 1 and is_windows:  # pragma: py-not-win32
+                if config.workers is not None and is_windows:  # pragma: py-not-win32
                     sock = _share_socket(sock)  # type: ignore[assignment]
                 server = await loop.create_server(create_protocol, sock=sock, ssl=config.ssl, backlog=config.backlog)
                 self.servers.append(server)

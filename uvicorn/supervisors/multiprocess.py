@@ -110,7 +110,7 @@ class Multiprocess:
         self.target = target
         self.sockets = sockets
 
-        self.processes_num = config.workers
+        self.processes_num = config.workers or 1
         self.processes: list[Process] = []
 
         self.should_exit = threading.Event()
