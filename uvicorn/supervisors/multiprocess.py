@@ -3,10 +3,9 @@ from __future__ import annotations
 import logging
 import os
 import signal
+import socket
 import threading
 from collections.abc import Callable
-from multiprocessing import Pipe
-from socket import socket
 from typing import Any
 
 from uvicorn._ansi import style
@@ -26,30 +25,43 @@ class Process:
     def __init__(
         self,
         config: Config,
-        target: Callable[[list[socket] | None], None],
-        sockets: list[socket],
+        target: Callable[[list[socket.socket] | None], None],
+        sockets: list[socket.socket],
     ) -> None:
         self.real_target = target
 
-        self.parent_conn, self.child_conn = Pipe()
+        self.parent_sock, self.child_sock = socket.socketpair()
         self.process = get_subprocess(config, self.target, sockets)
 
+    def __del__(self) -> None:  # pragma: no cover
+        # Close the sockets if the process was constructed but never started/joined.
+        self.parent_sock.close()
+        self.child_sock.close()
+
     def ping(self, timeout: float = 5) -> bool:
-        self.parent_conn.send(b"ping")
-        if self.parent_conn.poll(timeout):
-            self.parent_conn.recv()
-            return True
-        return False
+        # A single byte can't be a partial read: `recv(1)` returns one byte or b"" on EOF.
+        try:
+            self.parent_sock.settimeout(timeout)
+            self.parent_sock.sendall(b"\x00")
+            return self.parent_sock.recv(1) == b"\x00"
+        except OSError:
+            return False
 
     def pong(self) -> None:
-        self.child_conn.recv()
-        self.child_conn.send(b"pong")
+        if not self.child_sock.recv(1):
+            raise OSError("socket closed")
+        self.child_sock.sendall(b"\x00")
 
     def always_pong(self) -> None:
-        while True:
-            self.pong()
+        try:
+            while True:
+                self.pong()
+        except OSError:
+            pass  # Socket closed, exit gracefully
 
-    def target(self, sockets: list[socket] | None = None) -> Any:  # pragma: no cover
+    def target(self, sockets: list[socket.socket] | None = None) -> Any:  # pragma: no cover
+        # Child doesn't need parent's end of the socket pair
+        self.parent_sock.close()
         if os.name == "nt":  # pragma: py-not-win32
             # Windows doesn't support SIGTERM, so we use SIGBREAK instead.
             # And then we raise SIGTERM when SIGBREAK is received.
@@ -70,6 +82,8 @@ class Process:
 
     def start(self) -> None:
         self.process.start()
+        # Parent doesn't need child's end of the socket pair
+        self.child_sock.close()
 
     def terminate(self) -> None:
         if self.process.exitcode is None:  # Process is still running
@@ -82,9 +96,6 @@ class Process:
                 os.kill(self.process.pid, signal.SIGTERM)
             logger.info(f"Terminated child process [{self.process.pid}]")
 
-            self.parent_conn.close()
-            self.child_conn.close()
-
     def kill(self) -> None:
         # In Windows, the method will call `TerminateProcess` to kill the process.
         # In Unix, the method will send SIGKILL to the process.
@@ -93,6 +104,7 @@ class Process:
     def join(self) -> None:
         logger.info(f"Waiting for child process [{self.process.pid}]")
         self.process.join()
+        self.parent_sock.close()
 
     @property
     def pid(self) -> int | None:
@@ -103,8 +115,8 @@ class Multiprocess:
     def __init__(
         self,
         config: Config,
-        target: Callable[[list[socket] | None], None],
-        sockets: list[socket],
+        target: Callable[[list[socket.socket] | None], None],
+        sockets: list[socket.socket],
     ) -> None:
         self.config = config
         self.target = target
