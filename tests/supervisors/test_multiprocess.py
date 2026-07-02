@@ -142,6 +142,73 @@ def test_multiprocess_sighup() -> None:
     supervisor.join_all()
 
 
+@pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="platform unsupports SIGHUP")
+def test_multiprocess_sighup_keeps_worker_count_during_restart() -> None:
+    """
+    Ensure that a SIGHUP-triggered restart never drops below the configured
+    number of live workers, i.e. each replacement process is started (and
+    confirmed healthy) before its predecessor is terminated.
+    """
+    config = Config(app=app, workers=2)
+    supervisor = Multiprocess(config, target=run, sockets=[])
+    threading.Thread(target=supervisor.run, daemon=True).start()
+    time.sleep(1)
+
+    pids = [p.pid for p in supervisor.processes]
+    counts: list[int] = []
+    stop = threading.Event()
+
+    def poll_alive_count() -> None:
+        while not stop.is_set():
+            counts.append(sum(1 for p in supervisor.processes if p.process.is_alive()))
+            time.sleep(0.01)
+
+    poller = threading.Thread(target=poll_alive_count, daemon=True)
+    poller.start()
+
+    supervisor.signal_queue.append(signal.SIGHUP)
+
+    # Poll instead of a fixed sleep, the supervisor loop runs on a 0.5s interval and `restart_all()`
+    # confirms each replacement worker's health before terminating the one it replaces, so the total
+    # time is non-deterministic.
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if [p.pid for p in supervisor.processes] != pids:
+            break
+        time.sleep(0.1)
+    assert pids != [p.pid for p in supervisor.processes]
+
+    stop.set()
+    poller.join()
+
+    assert counts, "poller did not sample any process counts"
+    assert min(counts) >= config.workers
+
+    supervisor.signal_queue.append(signal.SIGINT)
+    supervisor.join_all()
+
+
+def test_multiprocess_restart_keeps_old_process_if_new_one_unhealthy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    If a replacement worker fails its health check during a restart, the
+    original worker should be left running instead of being terminated.
+    """
+    config = Config(app=app, workers=1)
+    supervisor = Multiprocess(config, target=run, sockets=[])
+    supervisor.init_processes()
+    old_process = supervisor.processes[0]
+
+    monkeypatch.setattr(Process, "is_alive", lambda self, timeout=5: False)
+
+    supervisor.restart_all()
+
+    assert supervisor.processes[0] is old_process
+    assert old_process.process.is_alive()
+
+    old_process.terminate()
+    old_process.join()
+
+
 @pytest.mark.skipif(not hasattr(signal, "SIGTTIN"), reason="platform unsupports SIGTTIN")
 def test_multiprocess_sigttin() -> None:
     """
