@@ -188,25 +188,29 @@ def test_multiprocess_sighup_keeps_worker_count_during_restart() -> None:
     supervisor.join_all()
 
 
-def test_multiprocess_restart_keeps_old_process_if_new_one_unhealthy(monkeypatch: pytest.MonkeyPatch) -> None:
+@new_console_in_windows
+def test_multiprocess_restart_keeps_old_process_if_new_one_unhealthy() -> None:
     """
     If a replacement worker fails its health check during a restart, the
     original worker should be left running instead of being terminated.
     """
-    config = Config(app=app, workers=1)
-    supervisor = Multiprocess(config, target=run, sockets=[])
-    supervisor.init_processes()
-    old_process = supervisor.processes[0]
+    original_is_alive = Process.is_alive
+    Process.is_alive = lambda self, timeout=5: False  # type: ignore[method-assign]
+    try:
+        config = Config(app=app, workers=1)
+        supervisor = Multiprocess(config, target=run, sockets=[])
+        supervisor.init_processes()
+        old_process = supervisor.processes[0]
 
-    monkeypatch.setattr(Process, "is_alive", lambda self, timeout=5: False)
+        supervisor.restart_all()
 
-    supervisor.restart_all()
+        assert supervisor.processes[0] is old_process
+        assert old_process.process.is_alive()
 
-    assert supervisor.processes[0] is old_process
-    assert old_process.process.is_alive()
-
-    old_process.terminate()
-    old_process.join()
+        old_process.terminate()
+        old_process.join()
+    finally:
+        Process.is_alive = original_is_alive  # type: ignore[method-assign]
 
 
 @pytest.mark.skipif(not hasattr(signal, "SIGTTIN"), reason="platform unsupports SIGTTIN")
