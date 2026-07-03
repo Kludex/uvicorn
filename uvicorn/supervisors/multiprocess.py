@@ -1,20 +1,18 @@
 from __future__ import annotations
 
-import inspect
 import logging
 import os
 import signal
 import threading
 from collections.abc import Callable
 from multiprocessing import Pipe
-from multiprocessing.synchronize import Event as EventType
 from socket import socket
 from typing import Any
 
 from uvicorn._ansi import style
-from uvicorn._subprocess import get_subprocess, spawn
+from uvicorn._subprocess import get_subprocess
 from uvicorn.config import Config
-from uvicorn.server import Server
+from uvicorn.server import STARTUP_FAILURE
 
 SIGNALS = {
     getattr(signal, f"SIG{x}"): x
@@ -29,21 +27,13 @@ class Process:
     def __init__(
         self,
         config: Config,
-        target: Callable[..., None],
+        target: Callable[[list[socket] | None], None],
         sockets: list[socket],
     ) -> None:
         self.real_target = target
 
-        self.started_event: EventType = spawn.Event()
-        if not (inspect.ismethod(target) and isinstance(target.__self__, Server)):
-            self.started_event.set()
-
         self.parent_conn, self.child_conn = Pipe()
-        self.process = get_subprocess(config, self.target, sockets, self.started_event)
-
-    @property
-    def ready(self) -> bool:
-        return self.started_event.is_set()
+        self.process = get_subprocess(config, self.target, sockets)
 
     def ping(self, timeout: float = 5) -> bool:
         self.parent_conn.send(b"ping")
@@ -60,9 +50,7 @@ class Process:
         while True:
             self.pong()
 
-    def target(
-        self, sockets: list[socket] | None = None, started_event: EventType | None = None
-    ) -> Any:  # pragma: no cover
+    def target(self, sockets: list[socket] | None = None) -> Any:  # pragma: no cover
         if os.name == "nt":  # pragma: py-not-win32
             # Windows doesn't support SIGTERM, so we use SIGBREAK instead.
             # And then we raise SIGTERM when SIGBREAK is received.
@@ -73,7 +61,7 @@ class Process:
             )
 
         threading.Thread(target=self.always_pong, daemon=True).start()
-        return self.real_target(sockets, started_event=started_event)
+        return self.real_target(sockets)
 
     def is_alive(self, timeout: float = 5) -> bool:
         if not self.process.is_alive():
@@ -111,12 +99,16 @@ class Process:
     def pid(self) -> int | None:
         return self.process.pid
 
+    @property
+    def exitcode(self) -> int | None:
+        return self.process.exitcode
+
 
 class Multiprocess:
     def __init__(
         self,
         config: Config,
-        target: Callable[..., None],
+        target: Callable[[list[socket] | None], None],
         sockets: list[socket],
     ) -> None:
         self.config = config
@@ -180,16 +172,16 @@ class Multiprocess:
             if process.is_alive(timeout=self.config.timeout_worker_healthcheck):
                 continue
 
-            if not process.ready:
-                # The worker died before it finished starting, so the app, TLS or socket bind is broken
-                # and would fail the same way on every restart.
-                # See https://github.com/encode/uvicorn/discussions/2440.
-                logger.error(f"Child process [{process.pid}] died before startup, stopping the parent process.")
-                self.should_exit.set()
-                return
-
             process.kill()  # process is hung, kill it
             process.join()
+
+            if process.exitcode == STARTUP_FAILURE:
+                # The worker failed before it started serving, so the app, TLS or socket
+                # bind is broken and would fail the same way on every restart.
+                # See https://github.com/encode/uvicorn/discussions/2440.
+                logger.error(f"Child process [{process.pid}] failed to start, stopping the parent process.")
+                self.should_exit.set()
+                return
 
             if self.should_exit.is_set():
                 return  # pragma: full coverage

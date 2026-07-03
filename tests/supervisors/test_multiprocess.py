@@ -7,7 +7,6 @@ import socket
 import threading
 import time
 from collections.abc import Callable
-from multiprocessing.synchronize import Event as EventType
 from typing import Any
 
 import pytest
@@ -43,19 +42,19 @@ async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
     pass  # pragma: no cover
 
 
-def run(sockets: list[socket.socket] | None, started_event: EventType | None = None) -> None:
+def run(sockets: list[socket.socket] | None) -> None:
     while True:  # pragma: no cover
         time.sleep(1)
 
 
 def test_process_ping_pong() -> None:
-    process = Process(Config(app=app), target=lambda sockets, started_event=None: None, sockets=[])
+    process = Process(Config(app=app), target=lambda x: None, sockets=[])
     threading.Thread(target=process.always_pong, daemon=True).start()
     assert process.ping()
 
 
 def test_process_ping_pong_timeout() -> None:
-    process = Process(Config(app=app), target=lambda sockets, started_event=None: None, sockets=[])
+    process = Process(Config(app=app), target=lambda x: None, sockets=[])
     assert not process.ping(0.1)
 
 

@@ -10,7 +10,6 @@ import os
 import sys
 from collections.abc import Callable
 from multiprocessing.context import SpawnProcess
-from multiprocessing.synchronize import Event as EventType
 from socket import socket
 
 from uvicorn.config import Config
@@ -23,7 +22,6 @@ def get_subprocess(
     config: Config,
     target: Callable[..., None],
     sockets: list[socket],
-    started_event: EventType | None = None,
 ) -> SpawnProcess:
     """
     Called in the parent process, to instantiate a new child process instance.
@@ -34,8 +32,6 @@ def get_subprocess(
                be the `Server.run()` method.
     * sockets - A list of sockets to pass to the server. Sockets are bound once
                 by the parent process, and then passed to the child processes.
-    * started_event - Set in the child once the server has started serving, so the
-                      parent can tell a successful start from a startup failure.
     """
     # We pass across the stdin fileno, and reopen it in the child process.
     # This is required for some debugging environments.
@@ -50,7 +46,6 @@ def get_subprocess(
         "target": target,
         "sockets": sockets,
         "stdin_fileno": stdin_fileno,
-        "started_event": started_event,
     }
 
     return spawn.Process(target=subprocess_started, kwargs=kwargs)
@@ -61,7 +56,6 @@ def subprocess_started(
     target: Callable[..., None],
     sockets: list[socket],
     stdin_fileno: int | None,
-    started_event: EventType | None = None,
 ) -> None:
     """
     Called when the child process starts.
@@ -73,7 +67,6 @@ def subprocess_started(
                 by the parent process, and then passed to the child processes.
     * stdin_fileno - The file number of sys.stdin, so that it can be reattached
                      to the child process.
-    * started_event - Set once the server has started serving.
     """
     # Re-open stdin.
     if stdin_fileno is not None:
@@ -84,7 +77,7 @@ def subprocess_started(
 
     try:
         # Now we can call into `Server.run(sockets=sockets)`
-        target(sockets=sockets, started_event=started_event)
+        target(sockets=sockets)
     except KeyboardInterrupt:  # pragma: no cover
         # suppress the exception to avoid a traceback from subprocess.Popen
         # the parent already expects us to end, so no vital information is lost

@@ -28,7 +28,7 @@ from uvicorn.config import (
     LoopFactoryType,
     WSProtocolType,
 )
-from uvicorn.server import Server
+from uvicorn.server import STARTUP_FAILURE as STARTUP_FAILURE, Server
 from uvicorn.supervisors import ChangeReload, Multiprocess
 
 LEVEL_CHOICES = click.Choice(list(LOG_LEVELS.keys()))
@@ -39,8 +39,6 @@ INTERFACE_CHOICES = click.Choice(INTERFACES)
 def _metavar_from_type(_type: Any) -> str:
     return f"[{'|'.join(key for key in get_args(_type) if key != 'none')}]"
 
-
-STARTUP_FAILURE = 3
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -625,9 +623,6 @@ def run(
     finally:
         if config.uds and os.path.exists(config.uds):
             os.remove(config.uds)  # pragma: py-win32
-
-    if not server.started and not config.should_reload and config.workers == 1:
-        sys.exit(STARTUP_FAILURE)
 
 
 def __getattr__(name: str) -> Any:

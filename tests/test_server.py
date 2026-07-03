@@ -5,7 +5,6 @@ import contextlib
 import contextvars
 import json
 import logging
-import multiprocessing
 import signal
 import sys
 from collections.abc import Callable, Generator
@@ -21,7 +20,7 @@ from uvicorn.config import Config
 from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT
 from uvicorn.protocols.http.h11_impl import H11Protocol
 from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
-from uvicorn.server import Server
+from uvicorn.server import STARTUP_FAILURE, Server
 
 pytestmark = pytest.mark.anyio
 
@@ -123,19 +122,20 @@ async def test_shutdown_on_early_exit_during_startup(unused_tcp_port: int):
     assert shutdown_complete, "lifespan.shutdown was not called despite startup completing"
 
 
-async def test_serve_sets_started_event(unused_tcp_port: int):
-    """The server sets `started_event` once it has started serving."""
-    config = Config(app=app, port=unused_tcp_port)
+def test_run_exits_with_startup_failure_on_unloadable_app() -> None:
+    """`Server.run` exits with the dedicated startup-failure code when the app can't load.
+
+    `config.load()` exits with code 1, which a worker recycling on `limit_max_requests`
+    or crashing at runtime can also produce, so `run` remaps a pre-startup exit to
+    `STARTUP_FAILURE` for the supervisor to detect.
+    Regression for https://github.com/encode/uvicorn/discussions/2440.
+    """
+    config = Config(app="tests.test_server:does_not_exist")
     server = Server(config=config)
-    server.started_event = multiprocessing.get_context("spawn").Event()
 
-    task = asyncio.create_task(server.serve())
-    while not server.started:
-        await asyncio.sleep(0.01)
-
-    assert server.started_event.is_set()
-    server.should_exit = True
-    await task
+    with pytest.raises(SystemExit) as exc_info:
+        server.run()
+    assert exc_info.value.code == STARTUP_FAILURE
 
 
 async def test_request_than_limit_max_requests_warn_log(

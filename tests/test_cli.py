@@ -73,7 +73,7 @@ def test_cli_call_server_run() -> None:
     with mock.patch.object(Server, "run") as mock_run:
         result = runner.invoke(cli, ["tests.test_cli:App"])
 
-    assert result.exit_code == 3
+    assert result.exit_code == 0
     mock_run.assert_called_once()
 
 
@@ -187,7 +187,7 @@ def test_app_dir(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     with mock.patch.object(Server, "run") as mock_run:
         result = runner.invoke(cli, ["main:app", "--app-dir", f"{str(app_dir)}"])
 
-    assert result.exit_code == 3
+    assert result.exit_code == 0
     mock_run.assert_called_once()
     assert sys.path[0] == str(app_dir)
 
