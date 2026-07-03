@@ -3,17 +3,17 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import socket
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
-from socket import socket
 
 from uvicorn import Config, Server
 
 
 @asynccontextmanager
-async def run_server(config: Config, sockets: list[socket] | None = None) -> AsyncIterator[Server]:
+async def run_server(config: Config, sockets: list[socket.socket] | None = None) -> AsyncIterator[Server]:
     server = Server(config=config)
     task = asyncio.create_task(server.serve(sockets=sockets))
     while not server.started:
@@ -54,3 +54,14 @@ def get_asyncio_default_loop_per_os() -> type[asyncio.AbstractEventLoop]:
         return asyncio.ProactorEventLoop  # type: ignore  # pragma: nocover
     else:
         return asyncio.SelectorEventLoop  # pragma: nocover
+
+
+def has_ipv6(host: str) -> bool:
+    if not socket.has_ipv6:
+        return False  # pragma: no cover
+    try:
+        with socket.socket(socket.AF_INET6) as sock:
+            sock.bind((host, 0))
+    except OSError:  # pragma: no cover
+        return False
+    return True

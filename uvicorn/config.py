@@ -579,6 +579,8 @@ class Config:
 
             sock = socket.socket(family=family)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if family == socket.AF_INET6:
+                sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
             try:
                 sock.bind((self.host, self.port))
             except OSError as exc:  # pragma: full coverage

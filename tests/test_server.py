@@ -6,6 +6,7 @@ import contextvars
 import json
 import logging
 import signal
+import socket
 import sys
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
@@ -14,7 +15,7 @@ import httpx
 import pytest
 
 from tests.protocols.test_http import SIMPLE_GET_REQUEST
-from tests.utils import run_server
+from tests.utils import has_ipv6, run_server
 from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.config import Config
 from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT
@@ -120,6 +121,28 @@ async def test_shutdown_on_early_exit_during_startup(unused_tcp_port: int):
 
     assert startup_complete
     assert shutdown_complete, "lifespan.shutdown was not called despite startup completing"
+
+
+@pytest.mark.skipif(not has_ipv6("::"), reason="IPV6 not enabled")
+async def test_server_uses_dual_stack_ipv6_socket() -> None:
+    config = Config(app=app, host="::", port=0, loop="asyncio")
+    async with run_server(config) as server:
+        sockets = server.servers[0].sockets
+        assert sockets is not None
+        sock = sockets[0]
+        assert sock.family == socket.AF_INET6
+        assert sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY) == 0
+
+
+async def test_log_started_message_formats_ipv6_host(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
+    config = Config(app=app, host="::1", port=8000)
+    config.load()
+    server = Server(config=config)
+
+    server._log_started_message([])
+
+    assert "Uvicorn running on http://[::1]:8000 (Press CTRL+C to quit)" in caplog.text
 
 
 async def test_request_than_limit_max_requests_warn_log(
