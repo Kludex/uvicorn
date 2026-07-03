@@ -72,20 +72,23 @@ class Server:
             return None
         return self.config.limit_max_requests + random.randint(0, self.config.limit_max_requests_jitter)
 
-    def run(self, sockets: list[socket.socket] | None = None) -> None:
-        return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
-
-    def run_worker(self, sockets: list[socket.socket] | None = None) -> None:
-        # A worker that fails before it starts serving - a broken app, TLS config or
-        # socket bind - exits with a dedicated code, so the multiprocess supervisor can
-        # tell it apart from a worker exiting at runtime and avoid restarting it forever.
+    @property
+    def _worker_startup_failed(self) -> bool:
+        # With `workers > 1` the parent process never runs a server itself, so this
+        # instance is a supervised worker. Exiting before startup means a broken app,
+        # TLS config or socket bind that would fail the same way on every restart.
         # See https://github.com/encode/uvicorn/discussions/2440.
+        return self.config.workers > 1 and not self.started
+
+    def run(self, sockets: list[socket.socket] | None = None) -> None:
         try:
-            self.run(sockets=sockets)
+            asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
         except SystemExit:
-            if self.started:
+            if not self._worker_startup_failed:
                 raise
-        if not self.started:
+        if self._worker_startup_failed:
+            # Exit with a dedicated code, so the multiprocess supervisor can tell a boot
+            # failure apart from a worker exiting at runtime and stop restarting it.
             sys.exit(STARTUP_FAILURE)
 
     async def serve(self, sockets: list[socket.socket] | None = None) -> None:

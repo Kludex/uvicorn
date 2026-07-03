@@ -615,7 +615,7 @@ def run(
             ChangeReload(config, target=server.run, sockets=[sock]).run()
         elif config.workers > 1:
             sock = config.bind_socket()
-            Multiprocess(config, target=server.run_worker, sockets=[sock]).run()
+            Multiprocess(config, target=server.run, sockets=[sock]).run()
         else:
             server.run()
     except KeyboardInterrupt:  # pragma: full coverage
