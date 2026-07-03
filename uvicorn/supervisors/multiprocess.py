@@ -11,8 +11,7 @@ from typing import Any
 
 from uvicorn._ansi import style
 from uvicorn._subprocess import get_subprocess
-from uvicorn.config import Config
-from uvicorn.server import STARTUP_FAILURE
+from uvicorn.config import STARTUP_FAILURE, Config
 
 SIGNALS = {
     getattr(signal, f"SIG{x}"): x

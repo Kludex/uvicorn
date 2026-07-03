@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, TypeAlias
 
 from uvicorn._ansi import style
 from uvicorn._compat import asyncio_run
-from uvicorn.config import Config
+from uvicorn.config import STARTUP_FAILURE, Config
 
 if TYPE_CHECKING:
     from uvicorn.protocols.http.h11_impl import H11Protocol
@@ -38,8 +38,6 @@ if sys.platform == "win32":  # pragma: py-not-win32
     HANDLED_SIGNALS += (signal.SIGBREAK,)  # Windows signal 21. Sent by Ctrl+Break.
 
 logger = logging.getLogger("uvicorn.error")
-
-STARTUP_FAILURE = 3
 
 
 class ServerState:
@@ -60,7 +58,6 @@ class Server:
         self.server_state = ServerState()
 
         self.started = False
-        self._startup_failed = False
         self.should_exit = False
         self.force_exit = False
         self.last_notified = 0.0
@@ -73,32 +70,12 @@ class Server:
             return None
         return self.config.limit_max_requests + random.randint(0, self.config.limit_max_requests_jitter)
 
-    @property
-    def startup_failed(self) -> bool:
-        return self._startup_failed
-
     def run(self, sockets: list[socket.socket] | None = None) -> None:
         return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
 
-    def run_worker(self, sockets: list[socket.socket] | None = None) -> None:
-        try:
-            self.run(sockets=sockets)
-        finally:
-            if self.startup_failed:
-                # A worker that can't boot would fail the same way on every restart, so
-                # exit with a dedicated code the multiprocess supervisor stops on.
-                # See https://github.com/encode/uvicorn/discussions/2440.
-                sys.exit(STARTUP_FAILURE)
-
     async def serve(self, sockets: list[socket.socket] | None = None) -> None:
         with self.capture_signals():
-            try:
-                await self._serve(sockets)
-            except SystemExit:
-                # `config.load()` and the socket bind exit directly on failure.
-                if not self.started:
-                    self._startup_failed = True
-                raise
+            await self._serve(sockets)
 
     async def _serve(self, sockets: list[socket.socket] | None = None) -> None:
         process_id = os.getpid()
@@ -126,9 +103,7 @@ class Server:
     async def startup(self, sockets: list[socket.socket] | None = None) -> None:
         await self.lifespan.startup()
         if self.lifespan.should_exit:
-            self._startup_failed = True
-            self.should_exit = True
-            return
+            sys.exit(STARTUP_FAILURE)
 
         config = self.config
 
@@ -202,7 +177,7 @@ class Server:
             except OSError as exc:
                 logger.error(exc)
                 await self.lifespan.shutdown()
-                sys.exit(1)
+                sys.exit(STARTUP_FAILURE)
 
             assert server.sockets is not None
             listeners = server.sockets
