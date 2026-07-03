@@ -101,7 +101,7 @@ def test_multiprocess_worker_dies_on_startup() -> None:
     """
     config = Config(app="tests.supervisors.test_multiprocess:does_not_exist", workers=2)
     server = Server(config)
-    supervisor = Multiprocess(config, target=server.run, sockets=[])
+    supervisor = Multiprocess(config, target=server.run_worker, sockets=[])
     thread = threading.Thread(target=supervisor.run, daemon=True)
     thread.start()
     deadline = time.monotonic() + 10

@@ -73,14 +73,18 @@ class Server:
         return self.config.limit_max_requests + random.randint(0, self.config.limit_max_requests_jitter)
 
     def run(self, sockets: list[socket.socket] | None = None) -> None:
-        # A failure before the server started serving - a broken app, TLS config or socket
-        # bind - exits with a dedicated code, so a supervisor can tell it apart from an app
-        # exiting at runtime and avoid restarting it forever.
+        return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+
+    def run_worker(self, sockets: list[socket.socket] | None = None) -> None:
+        # A worker that fails before it starts serving - a broken app, TLS config or
+        # socket bind - exits with a dedicated code, so the multiprocess supervisor can
+        # tell it apart from a worker exiting at runtime and avoid restarting it forever.
         # See https://github.com/encode/uvicorn/discussions/2440.
         try:
-            asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
-        except SystemExit as exc:
-            raise (exc if self.started else SystemExit(STARTUP_FAILURE)) from None
+            self.run(sockets=sockets)
+        except SystemExit:
+            if self.started:
+                raise
         if not self.started:
             sys.exit(STARTUP_FAILURE)
 

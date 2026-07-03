@@ -6,6 +6,7 @@ import contextvars
 import json
 import logging
 import signal
+import socket
 import sys
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
@@ -122,20 +123,39 @@ async def test_shutdown_on_early_exit_during_startup(unused_tcp_port: int):
     assert shutdown_complete, "lifespan.shutdown was not called despite startup completing"
 
 
-def test_run_exits_with_startup_failure_on_unloadable_app() -> None:
-    """`Server.run` exits with the dedicated startup-failure code when the app can't load.
+def test_run_worker_exits_with_startup_failure_on_unloadable_app() -> None:
+    """`Server.run_worker` exits with the dedicated startup-failure code when the app can't load.
 
     `config.load()` exits with code 1, which a worker recycling on `limit_max_requests`
-    or crashing at runtime can also produce, so `run` remaps a pre-startup exit to
-    `STARTUP_FAILURE` for the supervisor to detect.
+    or crashing at runtime can also produce, so `run_worker` remaps a pre-startup exit
+    to `STARTUP_FAILURE` for the supervisor to detect.
     Regression for https://github.com/encode/uvicorn/discussions/2440.
     """
     config = Config(app="tests.test_server:does_not_exist")
     server = Server(config=config)
 
     with pytest.raises(SystemExit) as exc_info:
-        server.run()
+        server.run_worker()
     assert exc_info.value.code == STARTUP_FAILURE
+
+
+def test_run_worker_reraises_system_exit_after_startup(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A `SystemExit` raised after the worker started keeps its exit code.
+
+    Only a pre-startup exit is remapped to `STARTUP_FAILURE`, so the supervisor
+    restarts a worker that exits at runtime instead of stopping the parent.
+    """
+    server = Server(config=Config(app=app))
+
+    def run_and_exit(sockets: list[socket.socket] | None = None) -> None:
+        server.started = True
+        sys.exit(1)
+
+    monkeypatch.setattr(server, "run", run_and_exit)
+
+    with pytest.raises(SystemExit) as exc_info:
+        server.run_worker()
+    assert exc_info.value.code == 1
 
 
 async def test_request_than_limit_max_requests_warn_log(

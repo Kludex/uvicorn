@@ -28,7 +28,7 @@ from uvicorn.config import (
     LoopFactoryType,
     WSProtocolType,
 )
-from uvicorn.server import STARTUP_FAILURE as STARTUP_FAILURE, Server
+from uvicorn.server import STARTUP_FAILURE, Server
 from uvicorn.supervisors import ChangeReload, Multiprocess
 
 LEVEL_CHOICES = click.Choice(list(LOG_LEVELS.keys()))
@@ -615,7 +615,7 @@ def run(
             ChangeReload(config, target=server.run, sockets=[sock]).run()
         elif config.workers > 1:
             sock = config.bind_socket()
-            Multiprocess(config, target=server.run, sockets=[sock]).run()
+            Multiprocess(config, target=server.run_worker, sockets=[sock]).run()
         else:
             server.run()
     except KeyboardInterrupt:  # pragma: full coverage
@@ -623,6 +623,9 @@ def run(
     finally:
         if config.uds and os.path.exists(config.uds):
             os.remove(config.uds)  # pragma: py-win32
+
+    if not server.started and not config.should_reload and config.workers == 1:
+        sys.exit(STARTUP_FAILURE)
 
 
 def __getattr__(name: str) -> Any:
