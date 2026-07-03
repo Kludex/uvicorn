@@ -60,6 +60,7 @@ class Server:
         self.server_state = ServerState()
 
         self.started = False
+        self._startup_failed = False
         self.should_exit = False
         self.force_exit = False
         self.last_notified = 0.0
@@ -73,27 +74,31 @@ class Server:
         return self.config.limit_max_requests + random.randint(0, self.config.limit_max_requests_jitter)
 
     @property
-    def _worker_startup_failed(self) -> bool:
-        # With `workers > 1` the parent process never runs a server itself, so this
-        # instance is a supervised worker. Exiting before startup means a broken app,
-        # TLS config or socket bind that would fail the same way on every restart.
-        # See https://github.com/encode/uvicorn/discussions/2440.
-        return self.config.workers > 1 and not self.started
+    def startup_failed(self) -> bool:
+        return self._startup_failed
 
     def run(self, sockets: list[socket.socket] | None = None) -> None:
+        return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+
+    def run_worker(self, sockets: list[socket.socket] | None = None) -> None:
         try:
-            asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
-        except SystemExit:
-            if not self._worker_startup_failed:
-                raise
-        if self._worker_startup_failed:
-            # Exit with a dedicated code, so the multiprocess supervisor can tell a boot
-            # failure apart from a worker exiting at runtime and stop restarting it.
-            sys.exit(STARTUP_FAILURE)
+            self.run(sockets=sockets)
+        finally:
+            if self.startup_failed:
+                # A worker that can't boot would fail the same way on every restart, so
+                # exit with a dedicated code the multiprocess supervisor stops on.
+                # See https://github.com/encode/uvicorn/discussions/2440.
+                sys.exit(STARTUP_FAILURE)
 
     async def serve(self, sockets: list[socket.socket] | None = None) -> None:
         with self.capture_signals():
-            await self._serve(sockets)
+            try:
+                await self._serve(sockets)
+            except SystemExit:
+                # `config.load()` and the socket bind exit directly on failure.
+                if not self.started:
+                    self._startup_failed = True
+                raise
 
     async def _serve(self, sockets: list[socket.socket] | None = None) -> None:
         process_id = os.getpid()
@@ -121,6 +126,7 @@ class Server:
     async def startup(self, sockets: list[socket.socket] | None = None) -> None:
         await self.lifespan.startup()
         if self.lifespan.should_exit:
+            self._startup_failed = True
             self.should_exit = True
             return
 
