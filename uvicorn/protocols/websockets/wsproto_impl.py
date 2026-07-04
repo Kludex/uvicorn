@@ -79,7 +79,9 @@ class WSProtocol(asyncio.Protocol):
         self.config = config
         self.app = cast(ASGI3Application, config.loaded_app)
         self.loop = _loop or asyncio.get_event_loop()
-        self.logger = logging.getLogger("uvicorn.error")
+        self.logger = logging.getLogger("uvicorn.server")
+        self.access_logger = logging.getLogger("uvicorn.access")
+        self.access_log = self.access_logger.hasHandlers()
         self.root_path = config.root_path
         self.asgi_version = config.asgi_version
         self.app_state = app_state
@@ -354,11 +356,15 @@ class WSProtocol(asyncio.Protocol):
 
         if not self.handshake_complete:
             if message["type"] == "websocket.accept":
-                self.logger.info(
-                    '%s - "WebSocket %s" [accepted]',
-                    get_client_addr(self.scope),
-                    get_path_with_query_string(self.scope),
-                )
+                if self.access_log:
+                    self.access_logger.info(
+                        '%s - "%s %s HTTP/%s" %d',
+                        get_client_addr(self.scope),
+                        "WebSocket",
+                        get_path_with_query_string(self.scope),
+                        self.scope["http_version"],
+                        101,
+                    )
                 subprotocol = message.get("subprotocol")
                 extra_headers = self.default_headers + list(message.get("headers", []))
                 extensions: list[Extension] = []
@@ -378,11 +384,15 @@ class WSProtocol(asyncio.Protocol):
 
             elif message["type"] == "websocket.close":
                 self.queue.put_nowait({"type": "websocket.disconnect", "code": 1006})
-                self.logger.info(
-                    '%s - "WebSocket %s" 403',
-                    get_client_addr(self.scope),
-                    get_path_with_query_string(self.scope),
-                )
+                if self.access_log:
+                    self.access_logger.info(
+                        '%s - "%s %s HTTP/%s" %d',
+                        get_client_addr(self.scope),
+                        "WebSocket",
+                        get_path_with_query_string(self.scope),
+                        self.scope["http_version"],
+                        403,
+                    )
                 self.handshake_complete = True
                 self.close_sent = True
                 event = events.RejectConnection(status_code=403, headers=[])
@@ -395,12 +405,15 @@ class WSProtocol(asyncio.Protocol):
                 if not (100 <= message["status"] < 600):
                     msg = "Invalid HTTP status code '%d' in response."
                     raise RuntimeError(msg % message["status"])
-                self.logger.info(
-                    '%s - "WebSocket %s" %d',
-                    get_client_addr(self.scope),
-                    get_path_with_query_string(self.scope),
-                    message["status"],
-                )
+                if self.access_log:
+                    self.access_logger.info(
+                        '%s - "%s %s HTTP/%s" %d',
+                        get_client_addr(self.scope),
+                        "WebSocket",
+                        get_path_with_query_string(self.scope),
+                        self.scope["http_version"],
+                        message["status"],
+                    )
                 self.handshake_complete = True
                 event = events.RejectConnection(
                     status_code=message["status"],
