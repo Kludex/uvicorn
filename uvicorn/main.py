@@ -21,6 +21,7 @@ from uvicorn.config import (
     LOG_LEVELS,
     LOGGING_CONFIG,
     SSL_PROTOCOL_VERSION,
+    STARTUP_FAILURE,
     Config,
     HTTPProtocolType,
     InterfaceType,
@@ -39,8 +40,6 @@ INTERFACE_CHOICES = click.Choice(INTERFACES)
 def _metavar_from_type(_type: Any) -> str:
     return f"[{'|'.join(key for key in get_args(_type) if key != 'none')}]"
 
-
-STARTUP_FAILURE = 3
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -605,7 +604,7 @@ def run(
         if not isinstance(app, str):
             logger = logging.getLogger("uvicorn.error")
             logger.warning("You must pass the application as an import string to enable 'reload' or 'workers'.")
-            sys.exit(1)
+            sys.exit(STARTUP_FAILURE)
     else:
         config.load_app()
 

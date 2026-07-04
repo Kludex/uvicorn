@@ -11,7 +11,7 @@ from typing import Any
 
 from uvicorn._ansi import style
 from uvicorn._subprocess import get_subprocess
-from uvicorn.config import Config
+from uvicorn.config import STARTUP_FAILURE, Config
 
 SIGNALS = {
     getattr(signal, f"SIG{x}"): x
@@ -98,6 +98,10 @@ class Process:
     def pid(self) -> int | None:
         return self.process.pid
 
+    @property
+    def exitcode(self) -> int | None:
+        return self.process.exitcode
+
 
 class Multiprocess:
     def __init__(
@@ -169,6 +173,14 @@ class Multiprocess:
 
             process.kill()  # process is hung, kill it
             process.join()
+
+            if process.exitcode == STARTUP_FAILURE:
+                # The worker failed before it started serving, so the app, TLS or socket
+                # bind is broken and would fail the same way on every restart.
+                # See https://github.com/encode/uvicorn/discussions/2440.
+                logger.error(f"Child process [{process.pid}] failed to start, stopping the parent process.")
+                self.should_exit.set()
+                return
 
             if self.should_exit.is_set():
                 return  # pragma: full coverage

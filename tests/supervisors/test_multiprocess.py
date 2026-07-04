@@ -13,6 +13,7 @@ import pytest
 
 from uvicorn import Config
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
+from uvicorn.server import Server
 from uvicorn.supervisors import Multiprocess
 from uvicorn.supervisors.multiprocess import Process
 
@@ -90,6 +91,24 @@ def test_multiprocess_health_check() -> None:
         time.sleep(0.1)
     supervisor.signal_queue.append(signal.SIGINT)
     supervisor.join_all()
+
+
+@new_console_in_windows
+def test_multiprocess_worker_dies_on_startup() -> None:
+    """A worker that fails to load the app stops the parent instead of restarting forever.
+
+    Regression for https://github.com/encode/uvicorn/discussions/2440.
+    """
+    config = Config(app="tests.supervisors.test_multiprocess:does_not_exist", workers=2)
+    server = Server(config)
+    supervisor = Multiprocess(config, target=server.run, sockets=[])
+    thread = threading.Thread(target=supervisor.run, daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 10
+    while not supervisor.should_exit.is_set():  # pragma: no cover
+        assert time.monotonic() < deadline, "Timed out waiting for the supervisor to stop"
+        time.sleep(0.1)
+    thread.join()
 
 
 @new_console_in_windows

@@ -12,7 +12,7 @@ import uvicorn.server
 from tests.utils import run_server
 from uvicorn import Server
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
-from uvicorn.config import Config
+from uvicorn.config import STARTUP_FAILURE, Config
 from uvicorn.main import run
 from uvicorn.supervisors import Multiprocess
 
@@ -80,7 +80,7 @@ async def test_run_reload(unused_tcp_port: int):
 def test_run_invalid_app_config_combination(caplog: pytest.LogCaptureFixture) -> None:
     with pytest.raises(SystemExit) as exit_exception:
         run(app, reload=True)
-    assert exit_exception.value.code == 1
+    assert exit_exception.value.code == STARTUP_FAILURE
     assert caplog.records[-1].name == "uvicorn.error"
     assert caplog.records[-1].levelno == WARNING
     assert caplog.records[-1].message == (
@@ -104,7 +104,7 @@ def test_run_fails_fast_in_parent_on_bad_app_path(
 
     with pytest.raises(SystemExit) as exit_exception:
         run("tests.test_main:nonexistent_attr")
-    assert exit_exception.value.code == 1
+    assert exit_exception.value.code == STARTUP_FAILURE
     assert any("Error loading ASGI app" in record.message for record in caplog.records)
 
 
@@ -189,7 +189,7 @@ async def test_exit_on_create_server_with_invalid_host() -> None:
         config = Config(app=app, host="illegal_host")
         server = Server(config=config)
         await server.serve()
-    assert exc_info.value.code == 1
+    assert exc_info.value.code == STARTUP_FAILURE
 
 
 def test_deprecated_server_state_from_main() -> None:
