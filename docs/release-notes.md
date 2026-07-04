@@ -2,6 +2,24 @@
 toc_depth: 2
 ---
 
+## 0.50.0 (July 4, 2026)
+
+### Changed
+
+* Exit with the dedicated code 3 on any startup failure: app loading, socket bind and lifespan startup errors previously exited with a mix of 0, 1 and 3 (#3001)
+* Stop the multiprocess supervisor when a worker exits with code 3 instead of restarting it forever (#3001)
+* Default `--ws auto` to `websockets-sansio` when websockets is installed (#2985)
+* Skip the eager app import in the parent process with `--reload` or `--workers`, fixing a memory regression introduced in 0.47.0 (#3012)
+* Build a fresh `asgi` scope dict per request (#2977)
+* Cache the `asgi` scope sub-dict per connection (#2976)
+* Avoid copying single-frame WebSocket payloads in `websockets-sansio` (#2983)
+* Memoize trusted host checks in `ProxyHeadersMiddleware` (#2970)
+* Replace `click.style` with an internal ANSI style helper (#2981)
+
+### Deprecated
+
+* Deprecate the legacy `websockets` implementation; use `websockets-sansio` or `wsproto` instead (#2985)
+
 ## 0.49.0 (June 3, 2026)
 
 ### Changed
