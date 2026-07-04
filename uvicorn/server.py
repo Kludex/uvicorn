@@ -287,19 +287,22 @@ class Server:
             # See https://github.com/Kludex/uvicorn/issues/2943.
             timeout_graceful_shutdown = 0
 
+        # On Python <= 3.11 `asyncio.wait_for` with `timeout=0` raises `TimeoutError`
+        # before the coroutine runs, so only wait when there is something to wait for.
         # When 3.10 is not supported anymore, use `async with asyncio.timeout(...):`.
-        try:
-            await asyncio.wait_for(
-                self._wait_tasks_to_complete(),
-                timeout=timeout_graceful_shutdown,
-            )
-        except asyncio.TimeoutError:
-            logger.error(
-                "Cancel %s running task(s), timeout graceful shutdown exceeded",
-                len(self.server_state.tasks),
-            )
-            for t in self.server_state.tasks:
-                t.cancel(msg="Task cancelled, timeout graceful shutdown exceeded")
+        if self.server_state.connections or self.server_state.tasks:
+            try:
+                await asyncio.wait_for(
+                    self._wait_tasks_to_complete(),
+                    timeout=timeout_graceful_shutdown,
+                )
+            except asyncio.TimeoutError:
+                logger.error(
+                    "Cancel %s running task(s), timeout graceful shutdown exceeded",
+                    len(self.server_state.tasks),
+                )
+                for t in self.server_state.tasks:
+                    t.cancel(msg="Task cancelled, timeout graceful shutdown exceeded")
 
         # Send the lifespan shutdown event, and wait for application shutdown.
         if not self.force_exit:
