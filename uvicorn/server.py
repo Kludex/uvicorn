@@ -280,13 +280,6 @@ class Server:
             connection.shutdown()
         await asyncio.sleep(0.1)
 
-        timeout_graceful_shutdown = self.config.timeout_graceful_shutdown
-        if timeout_graceful_shutdown is None and self.config.should_reload:
-            # A reload worker is being replaced, so there is no point holding the
-            # restart hostage to long-lived connections (SSE, WebSockets, streaming).
-            # See https://github.com/Kludex/uvicorn/issues/2943.
-            timeout_graceful_shutdown = 0
-
         # On Python <= 3.11 `asyncio.wait_for` with `timeout=0` raises `TimeoutError`
         # before the coroutine runs, so only wait when there is something to wait for.
         # When 3.10 is not supported anymore, use `async with asyncio.timeout(...):`.
@@ -294,7 +287,7 @@ class Server:
             try:
                 await asyncio.wait_for(
                     self._wait_tasks_to_complete(),
-                    timeout=timeout_graceful_shutdown,
+                    timeout=self.config.timeout_graceful_shutdown,
                 )
             except asyncio.TimeoutError:
                 logger.error(
