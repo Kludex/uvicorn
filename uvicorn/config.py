@@ -76,9 +76,6 @@ INTERFACES: list[InterfaceType] = ["auto", "asgi3", "asgi2", "wsgi"]
 
 SSL_PROTOCOL_VERSION: int = ssl.PROTOCOL_TLS_SERVER
 
-# Exit code for a failure before the server started serving - a broken app, TLS config
-# or socket bind. The multiprocess supervisor stops on it instead of restarting a worker
-# that would fail the same way forever. See https://github.com/encode/uvicorn/discussions/2440.
 STARTUP_FAILURE = 3
 
 LOGGING_CONFIG: dict[str, Any] = {

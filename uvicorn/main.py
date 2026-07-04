@@ -604,7 +604,7 @@ def run(
         if not isinstance(app, str):
             logger = logging.getLogger("uvicorn.error")
             logger.warning("You must pass the application as an import string to enable 'reload' or 'workers'.")
-            sys.exit(1)
+            sys.exit(STARTUP_FAILURE)
     else:
         config.load_app()
 
