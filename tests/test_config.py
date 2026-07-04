@@ -262,6 +262,19 @@ def test_socket_bind() -> None:
     sock.close()
 
 
+@pytest.mark.skipif(not socket.has_dualstack_ipv6(), reason="Platform does not support dual-stack IPv6 sockets")
+def test_dual_stack_socket_bind() -> None:
+    config = Config(app=asgi_app, host="::", port=0, dual_stack=True)
+    config.load()
+    sock = config.bind_socket()
+    try:
+        assert isinstance(sock, socket.socket)
+        assert sock.family == socket.AF_INET6
+        assert sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY) == 0
+    finally:
+        sock.close()
+
+
 def test_ssl_config(
     tls_ca_certificate_pem_path: str,
     tls_ca_certificate_private_key_path: str,

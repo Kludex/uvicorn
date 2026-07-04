@@ -77,6 +77,13 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
 )
 @click.option("--uds", type=str, default=None, help="Bind to a UNIX domain socket.")
 @click.option("--fd", type=int, default=None, help="Bind to socket from this file descriptor.")
+@click.option(
+    "--dual-stack",
+    is_flag=True,
+    default=False,
+    help="Allow IPv6 sockets to also accept IPv4 connections.",
+    show_default=True,
+)
 @click.option("--reload", is_flag=True, default=False, help="Enable auto-reload.")
 @click.option(
     "--reload-dir",
@@ -392,6 +399,7 @@ def main(
     port: int,
     uds: str,
     fd: int,
+    dual_stack: bool,
     loop: LoopFactoryType | str,
     http: HTTPProtocolType | str,
     ws: WSProtocolType | str,
@@ -444,6 +452,7 @@ def main(
         port=port,
         uds=uds,
         fd=fd,
+        dual_stack=dual_stack,
         loop=loop,
         http=http,
         ws=ws,
@@ -499,6 +508,7 @@ def run(
     port: int = 8000,
     uds: str | None = None,
     fd: int | None = None,
+    dual_stack: bool = False,
     loop: LoopFactoryType | str = "auto",
     http: type[asyncio.Protocol] | HTTPProtocolType | str = "auto",
     ws: type[asyncio.Protocol] | WSProtocolType | str = "auto",
@@ -555,6 +565,7 @@ def run(
         port=port,
         uds=uds,
         fd=fd,
+        dual_stack=dual_stack,
         loop=loop,
         http=http,
         ws=ws,

@@ -47,6 +47,7 @@ uvicorn itself.
 * `--port <int>` - Bind to a socket with this port. If set to 0, an available port will be picked. **Default:** *8000*.
 * `--uds <path>` - Bind to a UNIX domain socket, for example `--uds /tmp/uvicorn.sock`. Useful if you want to run Uvicorn behind a reverse proxy.
 * `--fd <int>` - Bind to socket from this file descriptor. Useful if you want to run Uvicorn within a process manager.
+* `--dual-stack` - When binding an IPv6 socket, also accept IPv4 connections using IPv4-mapped IPv6 addresses on platforms that support dual-stack sockets. This changes network exposure for `--host '::'`, so it is opt-in. **Default:** *False*.
 
 ## Development
 
