@@ -169,12 +169,50 @@ def run_hang() -> int:
     return reproduced
 
 
+def run_stuck_reload() -> int:
+    log("--- stuck-reload experiment: SHUTDOWN_DELAY=20 ---")
+    uv = Uvicorn(extra_env={"SHUTDOWN_DELAY": "20"})
+    reproduced = 0
+    try:
+        if not uv.wait_line(STARTUP_LINE, 60):
+            log("!! server never started")
+            return 0
+        touch_watched()
+        if not uv.wait_line(RELOAD_LINE, 20):
+            log("!! reload never triggered")
+            return 0
+        time.sleep(1.0)  # parent is now blocked in restart() -> process.join()
+        send_console_ctrl_c()  # the "user" pressing Ctrl+C
+        if uv.wait_exit(10):
+            log(f"exited within 10s (rc={uv.proc.returncode}) - Ctrl+C responsive during stuck restart")
+        else:
+            reproduced = 1
+            log("REPRODUCED - Ctrl+C dead while restart is blocked on slow child shutdown")
+            if uv.wait_exit(40):
+                log(f"eventually exited once child shutdown completed (rc={uv.proc.returncode})")
+            else:
+                log("never exited even after the child shutdown window - fully wedged")
+                log("probing: one more Ctrl+C")
+                send_console_ctrl_c()
+                if uv.wait_exit(15):
+                    log("final Ctrl+C worked")
+                else:
+                    log("final Ctrl+C ALSO dead")
+    finally:
+        if uv.proc.poll() is None:
+            uv.kill_tree()
+    print(f"RESULT stuck-reload: reproduced {reproduced}/1", flush=True)
+    return reproduced
+
+
 def inner(args: argparse.Namespace) -> None:
     # We broadcast CTRL_C_EVENT to our own console: ignore it ourselves.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     touch_watched()
     if args.test == "swallow":
         run_swallow(args.iterations)
+    elif args.test == "stuck-reload":
+        run_stuck_reload()
     else:
         run_hang()
 
@@ -199,7 +237,7 @@ def outer(args: argparse.Namespace) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--test", choices=["swallow", "hang"], required=True)
+    parser.add_argument("--test", choices=["swallow", "hang", "stuck-reload"], required=True)
     parser.add_argument("--iterations", type=int, default=20)
     parser.add_argument("--inner", action="store_true")
     args = parser.parse_args()

@@ -25,3 +25,6 @@ jobs:
       - name: Parent hangs in join on slow shutdown
         run: python scripts/repro_1972/driver.py --test hang
         continue-on-error: true
+      - name: Ctrl+C dead while reload is stuck on slow child shutdown
+        run: python scripts/repro_1972/driver.py --test stuck-reload
+        continue-on-error: true
