@@ -140,68 +140,70 @@ def run_swallow(iterations: int) -> int:
     return reproduced
 
 
-def run_hang() -> int:
-    log("--- hang experiment: SHUTDOWN_DELAY=120 ---")
-    uv = Uvicorn(extra_env={"SHUTDOWN_DELAY": "120"})
+def run_hang(iterations: int) -> int:
     reproduced = 0
-    try:
-        if not uv.wait_line(STARTUP_LINE, 60):
-            log("!! server never started")
-            return 0
-        send_console_ctrl_c()
-        if not uv.wait_line(SHUTDOWN_LINE, 15):
-            log("signal not received at all (no 'Shutting down')")
-        if uv.wait_exit(20):
-            log(f"exited within 20s (rc={uv.proc.returncode}) - no hang")
-        else:
-            reproduced = 1
-            log("REPRODUCED - parent stuck >20s after Ctrl+C (join without timeout)")
-            log("probing: second Ctrl+C (child force-exit path?)")
+    for i in range(iterations):
+        log(f"--- hang iteration {i + 1}/{iterations}: SHUTDOWN_DELAY=120 ---")
+        uv = Uvicorn(extra_env={"SHUTDOWN_DELAY": "120"})
+        try:
+            if not uv.wait_line(STARTUP_LINE, 60):
+                log("!! server never started")
+                continue
             send_console_ctrl_c()
-            if uv.wait_exit(15):
-                log("second Ctrl+C rescued it (child force_exit)")
+            if not uv.wait_line(SHUTDOWN_LINE, 15):
+                log("signal not received at all (no 'Shutting down')")
+            if uv.wait_exit(20):
+                log(f"exited within 20s (rc={uv.proc.returncode}) - no hang")
             else:
-                log("still stuck after second Ctrl+C")
-    finally:
-        if uv.proc.poll() is None:
-            uv.kill_tree()
-    print(f"RESULT hang: reproduced {reproduced}/1", flush=True)
+                reproduced += 1
+                log("REPRODUCED - parent stuck >20s after Ctrl+C (join without timeout)")
+                log("probing: second Ctrl+C (child force-exit path?)")
+                send_console_ctrl_c()
+                if uv.wait_exit(15):
+                    log("second Ctrl+C rescued it (child force_exit)")
+                else:
+                    log("still stuck after second Ctrl+C")
+        finally:
+            if uv.proc.poll() is None:
+                uv.kill_tree()
+    print(f"RESULT hang: reproduced {reproduced}/{iterations}", flush=True)
     return reproduced
 
 
-def run_stuck_reload() -> int:
-    log("--- stuck-reload experiment: SHUTDOWN_DELAY=20 ---")
-    uv = Uvicorn(extra_env={"SHUTDOWN_DELAY": "20"})
+def run_stuck_reload(iterations: int) -> int:
     reproduced = 0
-    try:
-        if not uv.wait_line(STARTUP_LINE, 60):
-            log("!! server never started")
-            return 0
-        touch_watched()
-        if not uv.wait_line(RELOAD_LINE, 20):
-            log("!! reload never triggered")
-            return 0
-        time.sleep(1.0)  # parent is now blocked in restart() -> process.join()
-        send_console_ctrl_c()  # the "user" pressing Ctrl+C
-        if uv.wait_exit(10):
-            log(f"exited within 10s (rc={uv.proc.returncode}) - Ctrl+C responsive during stuck restart")
-        else:
-            reproduced = 1
-            log("REPRODUCED - Ctrl+C dead while restart is blocked on slow child shutdown")
-            if uv.wait_exit(40):
-                log(f"eventually exited once child shutdown completed (rc={uv.proc.returncode})")
+    for i in range(iterations):
+        log(f"--- stuck-reload iteration {i + 1}/{iterations}: SHUTDOWN_DELAY=20 ---")
+        uv = Uvicorn(extra_env={"SHUTDOWN_DELAY": "20"})
+        try:
+            if not uv.wait_line(STARTUP_LINE, 60):
+                log("!! server never started")
+                continue
+            touch_watched()
+            if not uv.wait_line(RELOAD_LINE, 20):
+                log("!! reload never triggered")
+                continue
+            time.sleep(1.0)  # parent is now blocked in restart() -> process.join()
+            send_console_ctrl_c()  # the "user" pressing Ctrl+C
+            if uv.wait_exit(10):
+                log(f"exited within 10s (rc={uv.proc.returncode}) - Ctrl+C responsive during stuck restart")
             else:
-                log("never exited even after the child shutdown window - fully wedged")
-                log("probing: one more Ctrl+C")
-                send_console_ctrl_c()
-                if uv.wait_exit(15):
-                    log("final Ctrl+C worked")
+                reproduced += 1
+                log("REPRODUCED - Ctrl+C dead while restart is blocked on slow child shutdown")
+                if uv.wait_exit(40):
+                    log(f"eventually exited once child shutdown completed (rc={uv.proc.returncode})")
                 else:
-                    log("final Ctrl+C ALSO dead")
-    finally:
-        if uv.proc.poll() is None:
-            uv.kill_tree()
-    print(f"RESULT stuck-reload: reproduced {reproduced}/1", flush=True)
+                    log("never exited even after the child shutdown window - fully wedged")
+                    log("probing: one more Ctrl+C")
+                    send_console_ctrl_c()
+                    if uv.wait_exit(15):
+                        log("final Ctrl+C worked")
+                    else:
+                        log("final Ctrl+C ALSO dead")
+        finally:
+            if uv.proc.poll() is None:
+                uv.kill_tree()
+    print(f"RESULT stuck-reload: reproduced {reproduced}/{iterations}", flush=True)
     return reproduced
 
 
@@ -212,9 +214,9 @@ def inner(args: argparse.Namespace) -> None:
     if args.test == "swallow":
         run_swallow(args.iterations)
     elif args.test == "stuck-reload":
-        run_stuck_reload()
+        run_stuck_reload(args.iterations)
     else:
-        run_hang()
+        run_hang(args.iterations)
 
 
 def outer(args: argparse.Namespace) -> None:
