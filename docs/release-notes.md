@@ -4,7 +4,7 @@ toc_depth: 2
 
 ## 0.50.0 (July 4, 2026)
 
-If you use WebSockets, note that `--ws auto` now picks the `websockets-sansio` implementation - pin `--ws websockets` if you need the deprecated legacy one.
+If you use WebSockets, note that `--ws auto` now picks the `websockets-sansio` implementation. Pin `--ws websockets` if you need the deprecated legacy one.
 
 ### Changed
 
