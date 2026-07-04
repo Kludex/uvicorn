@@ -91,39 +91,22 @@ def test_run_invalid_app_config_combination(caplog: pytest.LogCaptureFixture) ->
 def test_run_fails_fast_in_parent_on_bad_app_path(
     caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A bad app path exits in the parent for the single-process case.
+    """Bad app path with `--workers > 1` exits in the parent.
 
-    Regression for https://github.com/encode/uvicorn/issues/941: the app is
-    imported eagerly before the event loop starts.
+    Regression for https://github.com/encode/uvicorn/discussions/2440: without
+    parent-side validation the supervisor restarts dying workers forever.
     """
 
-    def fail(self: Server, sockets: object = None) -> None:  # pragma: no cover
-        pytest.fail("parent reached Server.run; should have exited on bad app path")
+    def fail(*args: object, **kwargs: object) -> None:  # pragma: no cover
+        pytest.fail("parent reached supervisor; should have exited on bad app path")
 
-    monkeypatch.setattr(Server, "run", fail)
+    monkeypatch.setattr(Config, "bind_socket", fail)
+    monkeypatch.setattr(Multiprocess, "run", fail)
 
     with pytest.raises(SystemExit) as exit_exception:
-        run("tests.test_main:nonexistent_attr")
+        run("tests.test_main:nonexistent_attr", workers=2)
     assert exit_exception.value.code == STARTUP_FAILURE
     assert any("Error loading ASGI app" in record.message for record in caplog.records)
-
-
-def test_run_skips_eager_app_import_with_workers(monkeypatch: pytest.MonkeyPatch) -> None:
-    """With `--workers > 1` the parent does not import the app.
-
-    Spawn-based workers re-import everything, so loading it in the supervisor
-    only wastes memory. See https://github.com/Kludex/uvicorn/discussions/2980.
-    """
-
-    def fail(self: Config) -> object:  # pragma: no cover
-        pytest.fail("parent loaded the app; spawn workers re-import it themselves")
-
-    with socket.socket() as sock:
-        monkeypatch.setattr(Config, "load_app", fail)
-        monkeypatch.setattr(Multiprocess, "run", lambda self: None)
-        monkeypatch.setattr(Config, "bind_socket", lambda self: sock)
-
-        run("tests.test_main:app", workers=2)
 
 
 def test_run_imports_app_before_starting_event_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
