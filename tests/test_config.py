@@ -20,7 +20,7 @@ from pytest_mock import MockerFixture
 from tests.custom_loop_utils import CustomLoop
 from tests.utils import as_cwd, get_asyncio_default_loop_per_os
 from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallable, Environ, Scope, StartResponse
-from uvicorn.config import Config, LoopFactoryType, UvicornDeprecationWarning
+from uvicorn.config import STARTUP_FAILURE, Config, LoopFactoryType, UvicornDeprecationWarning
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from uvicorn.middleware.wsgi import WSGIMiddleware
 from uvicorn.protocols.http.h11_impl import H11Protocol
@@ -260,6 +260,30 @@ def test_socket_bind() -> None:
     sock = config.bind_socket()
     assert isinstance(sock, socket.socket)
     sock.close()
+
+
+@pytest.mark.skipif(not socket.has_dualstack_ipv6(), reason="Platform does not support dual-stack IPv6 sockets")
+def test_dual_stack_socket_bind() -> None:
+    config = Config(app=asgi_app, host="::", port=0, dual_stack=True)
+    config.load()
+    sock = config.bind_socket()
+    try:
+        assert isinstance(sock, socket.socket)
+        assert sock.family == socket.AF_INET6
+        assert sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY) == 0
+    finally:
+        sock.close()
+
+
+def test_dual_stack_socket_bind_exits_with_startup_failure_when_unsupported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(socket, "has_dualstack_ipv6", lambda: False)
+    config = Config(app=asgi_app, host="::", port=0, dual_stack=True)
+
+    with pytest.raises(SystemExit) as exc_info:
+        config.bind_socket()
+    assert exc_info.value.code == STARTUP_FAILURE
 
 
 def test_ssl_config(

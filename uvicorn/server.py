@@ -118,6 +118,7 @@ class Server:
             )
 
         loop = asyncio.get_running_loop()
+        has_logged_socket = False
 
         listeners: Sequence[socket.SocketType]
         if sockets is not None:  # pragma: full coverage
@@ -167,13 +168,23 @@ class Server:
         else:
             # Standard case. Create a socket from a host/port pair.
             try:
-                server = await loop.create_server(
-                    create_protocol,
-                    host=config.host,
-                    port=config.port,
-                    ssl=config.ssl,
-                    backlog=config.backlog,
-                )
+                if config.dual_stack and config.host and ":" in config.host:
+                    sock = config.bind_socket()
+                    server = await loop.create_server(
+                        create_protocol,
+                        sock=sock,
+                        ssl=config.ssl,
+                        backlog=config.backlog,
+                    )
+                    has_logged_socket = True
+                else:
+                    server = await loop.create_server(
+                        create_protocol,
+                        host=config.host,
+                        port=config.port,
+                        ssl=config.ssl,
+                        backlog=config.backlog,
+                    )
             except OSError as exc:
                 logger.error(exc)
                 await self.lifespan.shutdown()
@@ -183,7 +194,7 @@ class Server:
             listeners = server.sockets
             self.servers = [server]
 
-        if sockets is None:
+        if sockets is None and not has_logged_socket:
             self._log_started_message(listeners)
         else:
             # We're most likely running multiple workers, so a message has already been

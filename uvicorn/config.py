@@ -242,12 +242,14 @@ class Config:
         factory: bool = False,
         h11_max_incomplete_event_size: int | None = None,
         reset_contextvars: bool = False,
+        dual_stack: bool = False,
     ):
         self.app = app
         self.host = host
         self.port = port
         self.uds = uds
         self.fd = fd
+        self.dual_stack = dual_stack
         self.loop = loop
         self.http = http
         self.ws = ws
@@ -579,8 +581,14 @@ class Config:
                 family = socket.AF_INET6
                 addr_format = "%s://[%s]:%d"
 
+            if family == socket.AF_INET6 and self.dual_stack and not socket.has_dualstack_ipv6():
+                logger.error("Dual-stack IPv6 sockets are not supported on this platform.")
+                sys.exit(STARTUP_FAILURE)
+
             sock = socket.socket(family=family)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if family == socket.AF_INET6 and self.dual_stack:
+                sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
             try:
                 sock.bind((self.host, self.port))
             except OSError as exc:  # pragma: full coverage
