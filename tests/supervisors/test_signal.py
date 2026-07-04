@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import signal
 from asyncio import Event
 
@@ -8,6 +9,45 @@ import pytest
 from tests.utils import assert_signal, run_server
 from uvicorn import Server
 from uvicorn.config import Config
+
+
+async def hanging_stream_app(scope, receive, send):
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    await send({"type": "http.response.body", "body": b"start", "more_body": True})
+    # never finish the response, so the connection stays open
+    await Event().wait()
+
+
+@pytest.mark.anyio
+async def test_reload_worker_aborts_connections_on_shutdown(unused_tcp_port: int, caplog):
+    """A reload worker does not wait for long-lived connections on shutdown.
+
+    Without an explicit `timeout_graceful_shutdown`, a worker being replaced by
+    the reloader waited forever for open connections (SSE, WebSockets, streaming),
+    hanging the restart. Regression for https://github.com/Kludex/uvicorn/issues/2943.
+    """
+    config = Config(app="tests.supervisors.test_signal:hanging_stream_app", reload=True, port=unused_tcp_port)
+    server = Server(config=config)
+    with assert_signal(signal.SIGINT):
+        task = asyncio.create_task(server.serve())
+        try:
+            while not server.started:
+                await asyncio.sleep(0.01)
+            async with httpx.AsyncClient() as client:
+                req = asyncio.create_task(client.get(f"http://127.0.0.1:{unused_tcp_port}"))
+                await asyncio.sleep(0.1)  # next tick
+                server.handle_exit(sig=signal.SIGINT, frame=None)
+                with pytest.raises(httpx.RemoteProtocolError):
+                    await asyncio.wait_for(req, timeout=5)
+            # The worker must exit promptly instead of waiting for the connection.
+            await asyncio.wait_for(task, timeout=5)
+        finally:
+            if not task.done():  # pragma: no cover
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+
+    assert "Cancel 1 running task(s), timeout graceful shutdown exceeded" in caplog.messages
 
 
 @pytest.mark.anyio
