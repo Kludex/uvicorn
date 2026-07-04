@@ -1,0 +1,27 @@
+name: repro-1972
+
+on:
+  push:
+    branches: [repro-1972]
+  workflow_dispatch:
+
+jobs:
+  repro:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e . watchfiles
+      - name: Swallowed Ctrl+C during reload window
+        run: python scripts/repro_1972/driver.py --test swallow --iterations 20
+        continue-on-error: true
+      - name: Parent hangs in join on slow shutdown
+        run: python scripts/repro_1972/driver.py --test hang
+        continue-on-error: true
