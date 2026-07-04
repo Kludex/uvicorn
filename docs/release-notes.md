@@ -4,6 +4,8 @@ toc_depth: 2
 
 ## 0.50.0 (July 4, 2026)
 
+The most important change in this release: with websockets installed, `--ws auto` now picks the `websockets-sansio` implementation instead of the deprecated legacy one. If this causes issues, you can temporarily pin `--ws websockets` - and please report what broke.
+
 ### Changed
 
 * Exit with the dedicated code 3 on any startup failure: app loading, socket bind and lifespan startup errors previously exited with a mix of 0, 1 and 3 (#3001)
