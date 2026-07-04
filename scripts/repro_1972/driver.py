@@ -106,6 +106,19 @@ def touch_watched() -> None:
     WATCHED.write_text(f"# {time.time_ns()}\n")
 
 
+def trigger_reload(uv: Uvicorn, attempts: int = 8) -> bool:
+    """Touch the watched file until the reloader reacts.
+
+    The first touches can be lost if they land before watchfiles has
+    registered its OS watcher, so retry with a delay.
+    """
+    for _ in range(attempts):
+        touch_watched()
+        if uv.wait_line(RELOAD_LINE, 3):
+            return True
+    return False
+
+
 def run_swallow(iterations: int) -> int:
     reproduced = 0
     for i in range(iterations):
@@ -116,8 +129,7 @@ def run_swallow(iterations: int) -> int:
             if not uv.wait_line(STARTUP_LINE, 60):
                 log("!! server never started, skipping iteration")
                 continue
-            touch_watched()
-            if not uv.wait_line(RELOAD_LINE, 20):
+            if not trigger_reload(uv):
                 log("!! reload never triggered, skipping iteration")
                 continue
             time.sleep(jitter)
@@ -179,8 +191,7 @@ def run_stuck_reload(iterations: int) -> int:
             if not uv.wait_line(STARTUP_LINE, 60):
                 log("!! server never started")
                 continue
-            touch_watched()
-            if not uv.wait_line(RELOAD_LINE, 20):
+            if not trigger_reload(uv):
                 log("!! reload never triggered")
                 continue
             time.sleep(1.0)  # parent is now blocked in restart() -> process.join()
