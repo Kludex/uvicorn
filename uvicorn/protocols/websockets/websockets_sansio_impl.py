@@ -197,6 +197,9 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             for key, value in event.headers.raw_items()
         ]
         raw_path, _, query_string = event.path.partition("?")
+        subprotocols: list[str] = []
+        for header in event.headers.get_all("Sec-WebSocket-Protocol"):
+            subprotocols.extend([token.strip() for token in header.split(",")])
         self.scope: WebSocketScope = {
             "type": "websocket",
             "asgi": {"version": self.asgi_version, "spec_version": "2.4"},
@@ -209,7 +212,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             "raw_path": self.root_path.encode("ascii") + raw_path.encode("ascii"),
             "query_string": query_string.encode("ascii"),
             "headers": headers,
-            "subprotocols": event.headers.get_all("Sec-WebSocket-Protocol"),
+            "subprotocols": subprotocols,
             "state": self.app_state.copy(),
             "extensions": {"websocket.http.response": {}},
         }

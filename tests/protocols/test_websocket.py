@@ -658,8 +658,13 @@ async def test_subprotocols(
     subprotocol: str,
     unused_tcp_port: int,
 ):
+    advertised_subprotocols: list[str] | None = None
+
     class App(WebSocketResponse):
         async def websocket_connect(self, message: WebSocketConnectEvent):
+            nonlocal advertised_subprotocols
+            assert self.scope["type"] == "websocket"
+            advertised_subprotocols = list(self.scope["subprotocols"])
             await self.send({"type": "websocket.accept", "subprotocol": subprotocol})
 
     async def get_subprotocol(url: str):
@@ -670,6 +675,7 @@ async def test_subprotocols(
     async with run_server(config):
         accepted_subprotocol = await get_subprotocol(f"ws://127.0.0.1:{unused_tcp_port}")
         assert accepted_subprotocol == subprotocol
+        assert advertised_subprotocols == ["proto1", "proto2"]
 
 
 MAX_WS_BYTES = 1024 * 1024 * 16
