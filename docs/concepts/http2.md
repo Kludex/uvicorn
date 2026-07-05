@@ -10,7 +10,7 @@ Uvicorn can serve HTTP/2 using a Rust-backed codec provided by the
 `hyper`). Install it with the `http2` extra:
 
 ```bash
-pip install "uvicorn[http2]"
+pip install "uvicorn[http2-rh2]"
 ```
 
 Enable it with the `--http2` flag (or `Config(http2=True)`):

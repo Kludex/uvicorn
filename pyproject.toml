@@ -47,7 +47,7 @@ standard = [
     "watchfiles>=0.20",
     "websockets>=11.0",
 ]
-http2 = [
+http2-rh2 = [
     "rh2>=0.0.1",
 ]
 
