@@ -168,6 +168,27 @@ def test_multiprocess_sighup() -> None:
     supervisor.join_all()
 
 
+@new_console_in_windows
+def test_multiprocess_restart_aborts_when_replacement_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If a replacement worker never becomes healthy, the existing worker is kept and the restart is aborted."""
+    config = Config(app=app, workers=2)
+    supervisor = Multiprocess(config, target=run, sockets=[])
+    supervisor.init_processes()
+    deadline = time.monotonic() + 10
+    while not all(p.is_alive() for p in supervisor.processes):  # pragma: no cover
+        assert time.monotonic() < deadline, "Timed out waiting for processes to be alive"
+        time.sleep(0.1)
+    original_pids = [p.pid for p in supervisor.processes]
+
+    # Force every freshly spawned replacement to report unhealthy.
+    monkeypatch.setattr(Process, "is_alive", lambda self, timeout=5: False)
+    supervisor.restart_all()
+
+    assert [p.pid for p in supervisor.processes] == original_pids
+    supervisor.terminate_all()
+    supervisor.join_all()
+
+
 @pytest.mark.skipif(not hasattr(signal, "SIGTTIN"), reason="platform unsupports SIGTTIN")
 def test_multiprocess_sigttin() -> None:
     """

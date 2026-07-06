@@ -143,11 +143,36 @@ class Multiprocess:
             process.join()
 
     def restart_all(self) -> None:
-        for idx, process in enumerate(self.processes):
-            process.terminate()
-            process.join()
+        # Rolling restart with worker overlap. All workers share the same listening socket(s), which
+        # are bound once by the parent, so old and new workers can accept connections concurrently.
+        # For each slot we bring a replacement up and confirm it is healthy *before* draining the
+        # worker it replaces, so there is always a live worker serving the shared socket. This is a
+        # large improvement over stop-then-start (which leaves a single-worker service with no worker
+        # at all during the swap); the old worker still shuts down gracefully, draining in-flight
+        # requests up to `timeout_graceful_shutdown`.
+        for idx in range(len(self.processes)):
+            if self.should_exit.is_set():
+                return
+
+            old_process = self.processes[idx]
+
             new_process = Process(self.config, self.target, self.sockets)
             new_process.start()
+
+            if not new_process.is_alive(timeout=self.config.timeout_worker_healthcheck):
+                # The replacement never became healthy (broken app, bad TLS or socket bind). Keep
+                # the existing worker serving rather than tearing down a working service, and abandon
+                # the restart. See https://github.com/encode/uvicorn/discussions/2440.
+                logger.error(
+                    f"New child process [{new_process.pid}] failed to start; "
+                    f"keeping worker [{old_process.pid}] and aborting the restart."
+                )
+                new_process.kill()
+                new_process.join()
+                return
+
+            old_process.terminate()  # graceful SIGTERM: drains in-flight requests
+            old_process.join()
             self.processes[idx] = new_process
 
     def run(self) -> None:
