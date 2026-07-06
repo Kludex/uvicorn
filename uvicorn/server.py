@@ -25,13 +25,20 @@ from uvicorn.config import Config
 if TYPE_CHECKING:
     from uvicorn.protocols.http.h11_impl import H11Protocol
     from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
+    from uvicorn.protocols.http.zttp_h2_impl import ZttpH2Protocol
     from uvicorn.protocols.http.zttp_impl import ZttpProtocol
     from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
     from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol
 
     Protocols: TypeAlias = (
-        H11Protocol | HttpToolsProtocol | ZttpProtocol | WSProtocol | WebSocketProtocol | WebSocketsSansIOProtocol
+        H11Protocol
+        | HttpToolsProtocol
+        | ZttpProtocol
+        | ZttpH2Protocol
+        | WSProtocol
+        | WebSocketProtocol
+        | WebSocketsSansIOProtocol
     )
 
 HANDLED_SIGNALS = (
