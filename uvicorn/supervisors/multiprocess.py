@@ -95,6 +95,11 @@ class Process:
         # In Unix, the method will send SIGKILL to the process.
         self.process.kill()
 
+        # Close the healthcheck pipe, mirroring `terminate()`, so a repeatedly killed worker
+        # (e.g. SIGHUP reloads against a persistently broken app) doesn't leak descriptors.
+        self.parent_conn.close()
+        self.child_conn.close()
+
     def join(self) -> None:
         logger.info(f"Waiting for child process [{self.process.pid}]")
         self.process.join()
