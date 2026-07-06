@@ -2,6 +2,12 @@
 toc_depth: 2
 ---
 
+## 0.50.1 (July 6, 2026)
+
+### Fixed
+
+* Split comma-separated `Sec-WebSocket-Protocol` values in the `websockets-sansio` implementation (#3019)
+
 ## 0.50.0 (July 4, 2026)
 
 If you use WebSockets, note that `--ws auto` now picks the `websockets-sansio` implementation. You shouldn't need it, but you can pin `--ws websockets` to get the deprecated legacy one back.
