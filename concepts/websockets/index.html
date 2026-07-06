@@ -1020,7 +1020,7 @@
 <h2 id="upgrade-process">Upgrade Process<a class="headerlink" href="#upgrade-process" title="Permanent link">&para;</a></h2>
 <p>The WebSocket protocol starts as an HTTP connection that gets "upgraded" to a WebSocket connection
 through a handshake process. Here's how it works:</p>
-<div class="highlight"><pre><span></span><code>sequenceDiagram
+<pre class="mermaid"><code>sequenceDiagram
     participant Client
     participant Server
     participant ASGI App
@@ -1031,10 +1031,10 @@ through a handshake process. Here's how it works:</p>
     Note right of Client: Headers:&lt;br/&gt;Upgrade: websocket&lt;br/&gt;Connection: Upgrade&lt;br/&gt;Sec-WebSocket-Key: [key]&lt;br/&gt;Sec-WebSocket-Version: 13
 
     Server-&gt;&gt;ASGI App: websocket.connect event
-    Note right of Server: Scope type: &quot;websocket&quot;
+    Note right of Server: Scope type: "websocket"
 
     alt Connection Accepted
-        ASGI App-&gt;&gt;Server: {&quot;type&quot;: &quot;websocket.accept&quot;}
+        ASGI App-&gt;&gt;Server: {"type": "websocket.accept"}
         Server-&gt;&gt;Client: HTTP 101 Switching Protocols
         Note right of Server: Headers:&lt;br/&gt;Upgrade: websocket&lt;br/&gt;Connection: Upgrade&lt;br/&gt;Sec-WebSocket-Accept: [hash]
 
@@ -1043,7 +1043,7 @@ through a handshake process. Here's how it works:</p>
         loop Message Exchange
             Client-&gt;&gt;Server: WebSocket Frame
             Server-&gt;&gt;ASGI App: websocket.receive event
-            ASGI App-&gt;&gt;Server: {&quot;type&quot;: &quot;websocket.send&quot;, &quot;text&quot;: &quot;...&quot;}
+            ASGI App-&gt;&gt;Server: {"type": "websocket.send", "text": "..."}
             Server-&gt;&gt;Client: WebSocket Frame
         end
 
@@ -1051,15 +1051,14 @@ through a handshake process. Here's how it works:</p>
             Client-&gt;&gt;Server: Close Frame
             Server-&gt;&gt;ASGI App: websocket.disconnect event
         else Server Closes
-            ASGI App-&gt;&gt;Server: {&quot;type&quot;: &quot;websocket.close&quot;}
+            ASGI App-&gt;&gt;Server: {"type": "websocket.close"}
             Server-&gt;&gt;Client: Close Frame
         end
 
     else Connection Rejected
-        ASGI App-&gt;&gt;Server: {&quot;type&quot;: &quot;websocket.http.response.start&quot;, &quot;status&quot;: 403}
+        ASGI App-&gt;&gt;Server: {"type": "websocket.http.response.start", "status": 403}
         Server-&gt;&gt;Client: HTTP 403 Forbidden
-    end
-</code></pre></div>
+    end</code></pre>
 <ol>
 <li>
 <p><strong>Initial HTTP Request</strong>: The client sends a regular HTTP GET request with special headers indicating it wants to upgrade to WebSocket:</p>
