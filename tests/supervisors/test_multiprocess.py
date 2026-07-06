@@ -12,7 +12,6 @@ import pytest
 
 from uvicorn import Config
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
-from uvicorn.server import Server
 from uvicorn.supervisors import Multiprocess
 from uvicorn.supervisors.multiprocess import Process
 
@@ -43,7 +42,6 @@ async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
 
 def test_process_ping_pong() -> None:
     process = Process(Config(app=app), sockets=[])
-    process._server = Server(process.config)
     threading.Thread(target=process.always_pong, daemon=True).start()
     assert process.ping()
 
@@ -63,7 +61,6 @@ def test_process_ping_broken_pipe() -> None:
 def test_process_ready() -> None:
     """`ping()` latches `ready` once the worker's server reports it has finished startup."""
     process = Process(Config(app=app), sockets=[])
-    process._server = Server(process.config)
     threading.Thread(target=process.always_pong, daemon=True).start()
 
     # The server exists but hasn't finished startup yet, so the worker is alive but not ready.

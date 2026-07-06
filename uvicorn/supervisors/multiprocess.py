@@ -68,7 +68,6 @@ class Process:
                 lambda sig, frame: signal.raise_signal(signal.SIGTERM),
             )
 
-        self._server = Server(config=self.config)
         threading.Thread(target=self.always_pong, daemon=True).start()
         self.server.run(sockets)
 
@@ -106,8 +105,9 @@ class Process:
 
     @property
     def server(self) -> Server:
-        # Only valid once the worker has entered `target()`; never `None` to callers.
-        assert self._server is not None
+        # Created lazily on first access, so the property is never `None` to callers.
+        if self._server is None:
+            self._server = Server(config=self.config)
         return self._server
 
     @property
