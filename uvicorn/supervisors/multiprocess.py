@@ -5,14 +5,13 @@ import os
 import pickle
 import signal
 import threading
-from collections.abc import Callable
 from multiprocessing import Pipe
 from socket import socket
-from typing import Any
 
 from uvicorn._ansi import style
 from uvicorn._subprocess import get_subprocess
 from uvicorn.config import STARTUP_FAILURE, Config
+from uvicorn.server import Server
 
 SIGNALS = {
     getattr(signal, f"SIG{x}"): x
@@ -27,10 +26,11 @@ class Process:
     def __init__(
         self,
         config: Config,
-        target: Callable[[list[socket] | None], None],
         sockets: list[socket],
     ) -> None:
-        self.real_target = target
+        self.config = config
+        self.server: Server | None = None
+        self.ready = False
 
         self.parent_conn, self.child_conn = Pipe()
         self.process = get_subprocess(config, self.target, sockets)
@@ -39,7 +39,8 @@ class Process:
         try:
             self.parent_conn.send(b"ping")
             if self.parent_conn.poll(timeout):
-                self.parent_conn.recv()
+                started: bool = self.parent_conn.recv()
+                self.ready = self.ready or started
                 return True
             return False
         except (OSError, EOFError, pickle.UnpicklingError):
@@ -47,14 +48,16 @@ class Process:
             return False
 
     def pong(self) -> None:
+        # The pong reports whether the worker's server has finished startup, so the supervisor
+        # can tell a worker that has merely booted from one that is actually serving requests.
         self.child_conn.recv()
-        self.child_conn.send(b"pong")
+        self.child_conn.send(self.server is not None and self.server.started)
 
     def always_pong(self) -> None:
         while True:
             self.pong()
 
-    def target(self, sockets: list[socket] | None = None) -> Any:  # pragma: no cover
+    def target(self, sockets: list[socket] | None = None) -> None:  # pragma: no cover
         if os.name == "nt":  # pragma: py-not-win32
             # Windows doesn't support SIGTERM, so we use SIGBREAK instead.
             # And then we raise SIGTERM when SIGBREAK is received.
@@ -64,8 +67,9 @@ class Process:
                 lambda sig, frame: signal.raise_signal(signal.SIGTERM),
             )
 
+        self.server = Server(config=self.config)
         threading.Thread(target=self.always_pong, daemon=True).start()
-        return self.real_target(sockets)
+        self.server.run(sockets)
 
     def is_alive(self, timeout: float = 5) -> bool:
         if not self.process.is_alive():
@@ -112,11 +116,9 @@ class Multiprocess:
     def __init__(
         self,
         config: Config,
-        target: Callable[[list[socket] | None], None],
         sockets: list[socket],
     ) -> None:
         self.config = config
-        self.target = target
         self.sockets = sockets
 
         self.processes_num = config.workers
@@ -130,7 +132,7 @@ class Multiprocess:
 
     def init_processes(self) -> None:
         for _ in range(self.processes_num):
-            process = Process(self.config, self.target, self.sockets)
+            process = Process(self.config, self.sockets)
             process.start()
             self.processes.append(process)
 
@@ -146,7 +148,7 @@ class Multiprocess:
         for idx, process in enumerate(self.processes):
             process.terminate()
             process.join()
-            new_process = Process(self.config, self.target, self.sockets)
+            new_process = Process(self.config, self.sockets)
             new_process.start()
             self.processes[idx] = new_process
 
@@ -191,7 +193,7 @@ class Multiprocess:
                 return  # pragma: full coverage
 
             logger.info(f"Child process [{process.pid}] died")
-            process = Process(self.config, self.target, self.sockets)
+            process = Process(self.config, self.sockets)
             process.start()
             self.processes[idx] = process
 
@@ -224,7 +226,7 @@ class Multiprocess:
     def handle_ttin(self) -> None:  # pragma: py-win32
         logger.info("Received SIGTTIN, increasing the number of processes.")
         self.processes_num += 1
-        process = Process(self.config, self.target, self.sockets)
+        process = Process(self.config, self.sockets)
         process.start()
         self.processes.append(process)
 
