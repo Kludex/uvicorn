@@ -948,7 +948,7 @@ multiple workers, each worker will execute the lifespan independently.</p>
 <h2 id="lifespan-architecture">Lifespan Architecture<a class="headerlink" href="#lifespan-architecture" title="Permanent link">&para;</a></h2>
 <p>The lifespan protocol runs as a sibling task alongside your main application, allowing both to execute concurrently.</p>
 <p>Let's see how Uvicorn handles the lifespan and main application tasks:</p>
-<pre class="mermaid"><code>sequenceDiagram
+<div class="highlight"><pre><span></span><code>sequenceDiagram
     participant Server as Uvicorn Server
     participant LifespanTask as Lifespan Task
     participant AppTask as Application Task
@@ -958,11 +958,11 @@ multiple workers, each worker will execute the lifespan independently.</p>
 
     Server-&gt;&gt;+LifespanTask: spawn_task(lifespan_handler)
 
-    LifespanTask-&gt;&gt;UserApp: {"type": "lifespan.startup"}
+    LifespanTask-&gt;&gt;UserApp: {&quot;type&quot;: &quot;lifespan.startup&quot;}
 
     Note over UserApp: Initialize databases, caches, etc.
 
-    UserApp--&gt;&gt;LifespanTask: {"type": "lifespan.startup.complete"}
+    UserApp--&gt;&gt;LifespanTask: {&quot;type&quot;: &quot;lifespan.startup.complete&quot;}
     LifespanTask-&gt;&gt;Server: ✅ Startup complete
 
     Server-&gt;&gt;+AppTask: spawn_task(application_handler)
@@ -984,16 +984,17 @@ multiple workers, each worker will execute the lifespan independently.</p>
     Server-&gt;&gt;AppTask: Stop accepting new connections
     AppTask-&gt;&gt;AppTask: Complete pending requests
 
-    LifespanTask-&gt;&gt;UserApp: {"type": "lifespan.shutdown"}
+    LifespanTask-&gt;&gt;UserApp: {&quot;type&quot;: &quot;lifespan.shutdown&quot;}
 
     Note over UserApp: Cleanup databases, caches, etc.
 
-    UserApp--&gt;&gt;LifespanTask: {"type": "lifespan.shutdown.complete"}
+    UserApp--&gt;&gt;LifespanTask: {&quot;type&quot;: &quot;lifespan.shutdown.complete&quot;}
 
     LifespanTask-&gt;&gt;-Server: Lifespan task complete
     AppTask-&gt;&gt;-Server: Application task complete
 
-    Note over Server: ✅ Server stopped</code></pre>
+    Note over Server: ✅ Server stopped
+</code></pre></div>
 <p>Having the lifespan task run as a sibling task is a deliberate design choice. It could have been implemented as a parent task that spawns the
 application task. This decision has the implication that if you create a <a class="autorefs autorefs-external" href="https://docs.python.org/3/library/contextvars.html#contextvars.ContextVar"><code>ContextVar</code></a>
 in the lifespan task, it will not be available in the application task.</p>
