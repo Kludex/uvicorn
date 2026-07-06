@@ -29,7 +29,7 @@ class Process:
         sockets: list[socket],
     ) -> None:
         self.config = config
-        self.server: Server | None = None
+        self._server: Server | None = None
         self.ready = False
 
         self.parent_conn, self.child_conn = Pipe()
@@ -50,8 +50,9 @@ class Process:
     def pong(self) -> None:
         # The pong reports whether the worker's server has finished startup, so the supervisor
         # can tell a worker that has merely booted from one that is actually serving requests.
+        # `_server` is still `None` while the worker boots, before `target()` creates it.
         self.child_conn.recv()
-        self.child_conn.send(self.server is not None and self.server.started)
+        self.child_conn.send(self._server is not None and self._server.started)
 
     def always_pong(self) -> None:
         while True:
@@ -67,7 +68,7 @@ class Process:
                 lambda sig, frame: signal.raise_signal(signal.SIGTERM),
             )
 
-        self.server = Server(config=self.config)
+        self._server = Server(config=self.config)
         threading.Thread(target=self.always_pong, daemon=True).start()
         self.server.run(sockets)
 
@@ -102,6 +103,12 @@ class Process:
     def join(self) -> None:
         logger.info(f"Waiting for child process [{self.process.pid}]")
         self.process.join()
+
+    @property
+    def server(self) -> Server:
+        # Only valid once the worker has entered `target()`; never `None` to callers.
+        assert self._server is not None
+        return self._server
 
     @property
     def pid(self) -> int | None:

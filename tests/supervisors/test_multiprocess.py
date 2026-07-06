@@ -68,7 +68,8 @@ def test_process_ready() -> None:
     assert process.ping()
     assert not process.ready
 
-    process.server = Server(process.config)
+    process._server = Server(process.config)
+    assert process.server is process._server
     process.server.started = True
     assert process.ping()
     assert process.ready
