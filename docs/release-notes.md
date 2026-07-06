@@ -2,6 +2,12 @@
 toc_depth: 2
 ---
 
+## 0.50.2 (July 6, 2026)
+
+### Fixed
+
+* Require `websockets>=13.0`, which the default `websockets-sansio` implementation needs (#3021)
+
 ## 0.50.1 (July 6, 2026)
 
 ### Fixed
