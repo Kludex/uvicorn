@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import functools
+import logging
 import os
 import signal
 import socket
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -199,3 +201,62 @@ def test_multiprocess_sigttou() -> None:
     assert len(supervisor.processes) == 1
     supervisor.signal_queue.append(signal.SIGINT)
     supervisor.join_all()
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Orphan reaping is only supported on Linux.")
+def test_multiprocess_reap_orphans(caplog: pytest.LogCaptureFixture) -> None:  # pragma: py-not-linux
+    config = Config(app=app, workers=2)
+    supervisor = Multiprocess(config, target=run, sockets=[])
+
+    read_fd, write_fd = os.pipe()
+    child_pid = os.fork()
+    if child_pid == 0:  # pragma: no cover
+        os.close(write_fd)
+        os.read(read_fd, 1)
+        os._exit(0)
+    os.close(read_fd)
+
+    supervisor.reap_orphans()
+    assert os.waitpid(child_pid, os.WNOHANG) == (0, 0)
+
+    os.close(write_fd)
+
+    with caplog.at_level(logging.DEBUG, logger="uvicorn.error"):
+        deadline = time.monotonic() + 10
+        while f"Reaped orphaned child process [{child_pid}]" not in caplog.text:
+            supervisor.reap_orphans()
+            assert time.monotonic() < deadline, "Timed out waiting for the orphan to be reaped"
+            time.sleep(0.05)
+
+    with pytest.raises(ChildProcessError):
+        os.waitpid(child_pid, os.WNOHANG)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Orphan reaping is only supported on Linux.")
+def test_multiprocess_reap_orphans_no_children(monkeypatch: pytest.MonkeyPatch) -> None:  # pragma: py-not-linux
+    config = Config(app=app, workers=2)
+    supervisor = Multiprocess(config, target=run, sockets=[])
+
+    def no_children(pid: int, options: int) -> tuple[int, int]:
+        raise ChildProcessError
+
+    monkeypatch.setattr(os, "waitpid", no_children)
+    supervisor.reap_orphans()  # must not raise
+
+
+def test_multiprocess_reap_orphans_when_init_process(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = Config(app=app, workers=2)
+    supervisor = Multiprocess(config, target=run, sockets=[])
+
+    reaped = threading.Event()
+    monkeypatch.setattr(supervisor, "init_processes", lambda: None)
+    monkeypatch.setattr(supervisor, "keep_subprocess_alive", lambda: None)
+    monkeypatch.setattr(supervisor, "reap_orphans", reaped.set)
+    monkeypatch.setattr(os, "getpid", lambda: 1)
+
+    thread = threading.Thread(target=supervisor.run, daemon=True)
+    thread.start()
+    assert reaped.wait(10), "reap_orphans was not called while running as the init process"
+    supervisor.should_exit.set()
+    thread.join(10)
+    assert not thread.is_alive()
