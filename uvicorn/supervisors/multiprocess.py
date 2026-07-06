@@ -48,9 +48,7 @@ class Process:
             return False
 
     def pong(self) -> None:
-        # The pong reports whether the worker's server has finished startup, so the supervisor
-        # can tell a worker that has merely booted from one that is actually serving requests.
-        # `target()` creates the server before starting this thread, so `server` is always set here.
+        # Report whether the server finished startup, not merely that the process is alive.
         self.child_conn.recv()
         self.child_conn.send(self.server.started)
 
@@ -105,7 +103,6 @@ class Process:
 
     @property
     def server(self) -> Server:
-        # Created lazily on first access, so the property is never `None` to callers.
         if self._server is None:
             self._server = Server(config=self.config)
         return self._server

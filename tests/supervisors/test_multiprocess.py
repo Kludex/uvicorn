@@ -63,7 +63,6 @@ def test_process_ready() -> None:
     process = Process(Config(app=app), sockets=[])
     threading.Thread(target=process.always_pong, daemon=True).start()
 
-    # The server exists but hasn't finished startup yet, so the worker is alive but not ready.
     assert process.ping()
     assert not process.ready
 
