@@ -50,9 +50,9 @@ class Process:
     def pong(self) -> None:
         # The pong reports whether the worker's server has finished startup, so the supervisor
         # can tell a worker that has merely booted from one that is actually serving requests.
-        # `_server` is still `None` while the worker boots, before `target()` creates it.
+        # `target()` creates the server before starting this thread, so `server` is always set here.
         self.child_conn.recv()
-        self.child_conn.send(self._server is not None and self._server.started)
+        self.child_conn.send(self.server.started)
 
     def always_pong(self) -> None:
         while True:

@@ -43,6 +43,7 @@ async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
 
 def test_process_ping_pong() -> None:
     process = Process(Config(app=app), sockets=[])
+    process._server = Server(process.config)
     threading.Thread(target=process.always_pong, daemon=True).start()
     assert process.ping()
 
@@ -62,14 +63,13 @@ def test_process_ping_broken_pipe() -> None:
 def test_process_ready() -> None:
     """`ping()` latches `ready` once the worker's server reports it has finished startup."""
     process = Process(Config(app=app), sockets=[])
+    process._server = Server(process.config)
     threading.Thread(target=process.always_pong, daemon=True).start()
 
-    # The server hasn't started yet, so the worker is alive but not ready.
+    # The server exists but hasn't finished startup yet, so the worker is alive but not ready.
     assert process.ping()
     assert not process.ready
 
-    process._server = Server(process.config)
-    assert process.server is process._server
     process.server.started = True
     assert process.ping()
     assert process.ready
