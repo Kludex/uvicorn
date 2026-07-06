@@ -143,12 +143,22 @@ class Multiprocess:
             process.join()
 
     def restart_all(self) -> None:
-        for idx, process in enumerate(self.processes):
-            process.terminate()
-            process.join()
+        for idx, old_process in enumerate(self.processes):
             new_process = Process(self.config, self.target, self.sockets)
             new_process.start()
+
+            if not new_process.is_alive(timeout=self.config.timeout_worker_healthcheck):
+                logger.error(
+                    "New worker failed to start during restart. Keeping existing worker [%s] running.",
+                    old_process.pid,
+                )
+                new_process.kill()
+                new_process.join()
+                continue
+
             self.processes[idx] = new_process
+            old_process.terminate()
+            old_process.join()
 
     def run(self) -> None:
         message = f"Started parent process [{os.getpid()}]"
