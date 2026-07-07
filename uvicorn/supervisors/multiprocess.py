@@ -35,7 +35,7 @@ class Process:
         self.process = get_subprocess(config, self.target, sockets)
 
     def _healthcheck(self, timeout: float) -> bool | None:
-        """Ping the worker and return its server-started flag, or None if it never answered."""
+        """Return the worker's reported startup flag, or None if it does not answer within timeout seconds."""
         try:
             self.parent_conn.send(b"ping")
             if self.parent_conn.poll(timeout):
@@ -46,15 +46,15 @@ class Process:
             return None
 
     def ping(self, timeout: float = 5) -> bool:
-        """Return whether the worker answered the healthcheck within the timeout."""
+        """Return True if the worker answers a healthcheck within timeout seconds."""
         return self._healthcheck(timeout) is not None
 
     def is_ready(self, timeout: float = 5) -> bool:
-        """Return whether the worker answered and its server has finished startup."""
+        """Return True if the worker answers and reports that its server has finished startup."""
         return self._healthcheck(timeout) is True
 
     def pong(self) -> None:
-        """Answer a healthcheck ping with whether the server has finished startup."""
+        """Reply to one healthcheck ping with whether the server has finished startup."""
         self.child_conn.recv()
         self.child_conn.send(self.server.started)
 
