@@ -83,14 +83,13 @@ class Process:
         return self.ping(timeout)
 
     def wait_until_ready(self, timeout: float, should_exit: threading.Event | None = None) -> bool:
-        # Poll a freshly started worker until its server reports it finished startup. Returns False
-        # if the worker exits, a shutdown is requested, or it never becomes ready within the window.
+        """Poll until the worker is serving, returning False if it exits or a shutdown is requested first."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if should_exit is not None and should_exit.is_set():
                 return False
             if not self.process.is_alive():
-                return False  # the worker exited, e.g. a startup failure
+                return False
             if self.is_ready(timeout=1):
                 return True
             time.sleep(0.1)
@@ -117,9 +116,6 @@ class Process:
         # In Windows, the method will call `TerminateProcess` to kill the process.
         # In Unix, the method will send SIGKILL to the process.
         self.process.kill()
-
-        # Close the healthcheck pipe, like `terminate()`, so a repeatedly killed worker
-        # (e.g. SIGHUP reloads against a broken app) doesn't leak descriptors.
         self.parent_conn.close()
         self.child_conn.close()
 
@@ -175,21 +171,15 @@ class Multiprocess:
             process.join()
 
     def restart_all(self) -> None:
-        # Rolling restart with worker overlap. All workers share the same listening socket(s), bound
-        # once by the parent, so old and new workers can accept connections concurrently. For each
-        # slot we bring a replacement up and wait until it is serving before draining the worker it
-        # replaces, so a live worker is always serving the shared socket.
+        """Restart workers one at a time, draining each only after its replacement is serving."""
         for idx, old_process in enumerate(self.processes):
             if self.should_exit.is_set():
-                return  # a shutdown arrived mid-restart; stop rolling and let run() exit
+                return
 
             new_process = Process(self.config, self.sockets)
             new_process.start()
 
             if not new_process.wait_until_ready(self.config.timeout_worker_healthcheck, self.should_exit):
-                # The replacement never started serving (broken app, bad TLS or socket bind, or a
-                # startup slower than the healthcheck window), or a shutdown was requested. Keep the
-                # existing worker serving rather than tearing down a working service.
                 new_process.kill()
                 new_process.join()
                 if not self.should_exit.is_set():
@@ -199,7 +189,7 @@ class Multiprocess:
                     )
                 return
 
-            old_process.terminate()  # graceful SIGTERM: drains in-flight requests
+            old_process.terminate()
             old_process.join()
             self.processes[idx] = new_process
 
