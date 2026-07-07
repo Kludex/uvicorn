@@ -159,14 +159,11 @@ class Multiprocess:
         for sig in SIGNALS:
             signal.signal(sig, lambda sig, frame: self.signal_queue.append(sig))
 
-    def _spawn(self) -> Process:
-        process = Process(self.config, self.sockets)
-        process.start()
-        return process
-
     def init_processes(self) -> None:
         for _ in range(self.processes_num):
-            self.processes.append(self._spawn())
+            process = Process(self.config, self.sockets)
+            process.start()
+            self.processes.append(process)
 
     def terminate_all(self) -> None:
         for process in self.processes:
@@ -182,7 +179,8 @@ class Multiprocess:
         # slot we bring a replacement up and wait until it is serving before draining the worker it
         # replaces, so a live worker is always serving the shared socket.
         for idx, old_process in enumerate(self.processes):
-            new_process = self._spawn()
+            new_process = Process(self.config, self.sockets)
+            new_process.start()
 
             if not new_process.wait_until_ready(self.config.timeout_worker_healthcheck):
                 # The replacement never started serving (broken app, bad TLS or socket bind, or a
@@ -241,7 +239,9 @@ class Multiprocess:
                 return  # pragma: full coverage
 
             logger.info(f"Child process [{process.pid}] died")
-            self.processes[idx] = self._spawn()
+            process = Process(self.config, self.sockets)
+            process.start()
+            self.processes[idx] = process
 
     def handle_signals(self) -> None:
         for sig in tuple(self.signal_queue):
@@ -272,7 +272,9 @@ class Multiprocess:
     def handle_ttin(self) -> None:  # pragma: py-win32
         logger.info("Received SIGTTIN, increasing the number of processes.")
         self.processes_num += 1
-        self.processes.append(self._spawn())
+        process = Process(self.config, self.sockets)
+        process.start()
+        self.processes.append(process)
 
     def handle_ttou(self) -> None:  # pragma: py-win32
         logger.info("Received SIGTTOU, decreasing number of processes.")
