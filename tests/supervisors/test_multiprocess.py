@@ -161,8 +161,8 @@ def test_multiprocess_sighup() -> None:
     time.sleep(1)
     pids = [p.pid for p in supervisor.processes]
     supervisor.signal_queue.append(signal.SIGHUP)
-    # Poll instead of a fixed sleep — the supervisor loop runs on a 0.5s interval and `restart_all()` terminates/joins
-    # each worker sequentially, so the total time is non-deterministic.
+    # Poll instead of a fixed sleep — `restart_all()` waits for each replacement to become ready
+    # before draining the worker it replaces, so the total time is non-deterministic.
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
         if [p.pid for p in supervisor.processes] != pids:
@@ -170,6 +170,22 @@ def test_multiprocess_sighup() -> None:
         time.sleep(0.1)
     assert pids != [p.pid for p in supervisor.processes]
     supervisor.signal_queue.append(signal.SIGINT)
+    supervisor.join_all()
+
+
+def test_multiprocess_restart_aborts_when_replacement_not_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If a replacement never becomes ready, the existing worker is kept and the restart is aborted."""
+    config = Config(app=app, workers=2, timeout_worker_healthcheck=1)
+    supervisor = Multiprocess(config, sockets=[])
+    supervisor.init_processes()
+    original_pids = [p.pid for p in supervisor.processes]
+
+    # Force every freshly spawned replacement to look unready, so `wait_until_ready` times out.
+    monkeypatch.setattr(Process, "is_alive", lambda self, timeout=1: False)
+    supervisor.restart_all()
+
+    assert [p.pid for p in supervisor.processes] == original_pids
+    supervisor.terminate_all()
     supervisor.join_all()
 
 

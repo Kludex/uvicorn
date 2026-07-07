@@ -5,6 +5,7 @@ import os
 import pickle
 import signal
 import threading
+import time
 from multiprocessing import Pipe
 from socket import socket
 
@@ -97,6 +98,11 @@ class Process:
         # In Unix, the method will send SIGKILL to the process.
         self.process.kill()
 
+        # Close the healthcheck pipe, like `terminate()`, so a repeatedly killed worker
+        # (e.g. SIGHUP reloads against a broken app) doesn't leak descriptors.
+        self.parent_conn.close()
+        self.child_conn.close()
+
     def join(self) -> None:
         logger.info(f"Waiting for child process [{self.process.pid}]")
         self.process.join()
@@ -148,12 +154,41 @@ class Multiprocess:
         for process in self.processes:
             process.join()
 
+    def wait_until_ready(self, process: Process) -> bool:
+        # Poll a freshly started worker until its server reports it finished startup. Returns False
+        # if the worker never becomes ready within the healthcheck window (broken or slow startup).
+        deadline = time.monotonic() + self.config.timeout_worker_healthcheck
+        while time.monotonic() < deadline:
+            if process.is_alive(timeout=1) and process.ready:
+                return True
+            time.sleep(0.1)
+        return False
+
     def restart_all(self) -> None:
-        for idx, process in enumerate(self.processes):
-            process.terminate()
-            process.join()
+        # Rolling restart with worker overlap. All workers share the same listening socket(s), bound
+        # once by the parent, so old and new workers can accept connections concurrently. For each
+        # slot we bring a replacement up and wait until it is serving before draining the worker it
+        # replaces, so a live worker is always serving the shared socket.
+        for idx in range(len(self.processes)):
+            old_process = self.processes[idx]
+
             new_process = Process(self.config, self.sockets)
             new_process.start()
+
+            if not self.wait_until_ready(new_process):
+                # The replacement never started serving (broken app, bad TLS or socket bind, or a
+                # startup slower than the healthcheck window). Keep the existing worker serving
+                # rather than tearing down a working service, and abandon the restart.
+                logger.error(
+                    f"New child process [{new_process.pid}] was not ready in time; "
+                    f"keeping worker [{old_process.pid}] and aborting the restart."
+                )
+                new_process.kill()
+                new_process.join()
+                return
+
+            old_process.terminate()  # graceful SIGTERM: drains in-flight requests
+            old_process.join()
             self.processes[idx] = new_process
 
     def run(self) -> None:
