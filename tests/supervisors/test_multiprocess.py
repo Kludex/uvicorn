@@ -172,6 +172,7 @@ def test_multiprocess_sighup() -> None:
     supervisor.join_all()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="test spawns real worker processes")
 def test_multiprocess_restart_aborts_when_replacement_not_ready(monkeypatch: pytest.MonkeyPatch) -> None:
     """If a replacement never becomes ready, the existing worker is kept and the restart is aborted."""
     config = Config(app=app, workers=2, timeout_worker_healthcheck=1)
@@ -184,6 +185,7 @@ def test_multiprocess_restart_aborts_when_replacement_not_ready(monkeypatch: pyt
     supervisor.restart_all()
 
     assert [p.pid for p in supervisor.processes] == original_pids
+    assert all(process.is_alive() for process in supervisor.processes)
     supervisor.terminate_all()
     supervisor.join_all()
 

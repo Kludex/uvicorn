@@ -83,11 +83,13 @@ class Process:
 
         return self.ping(timeout)
 
-    def wait_until_ready(self, timeout: float) -> bool:
+    def wait_until_ready(self, timeout: float, should_exit: threading.Event | None = None) -> bool:
         # Poll a freshly started worker until its server reports it finished startup. Returns False
-        # if the worker exits or never becomes ready within the window (broken or slow startup).
+        # if the worker exits, a shutdown is requested, or it never becomes ready within the window.
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
+            if should_exit is not None and should_exit.is_set():
+                return False
             if not self.process.is_alive():
                 return False  # the worker exited, e.g. a startup failure
             if self.is_ready(timeout=1):
@@ -179,19 +181,23 @@ class Multiprocess:
         # slot we bring a replacement up and wait until it is serving before draining the worker it
         # replaces, so a live worker is always serving the shared socket.
         for idx, old_process in enumerate(self.processes):
+            if self.should_exit.is_set():
+                return  # a shutdown arrived mid-restart; stop rolling and let run() exit
+
             new_process = Process(self.config, self.sockets)
             new_process.start()
 
-            if not new_process.wait_until_ready(self.config.timeout_worker_healthcheck):
+            if not new_process.wait_until_ready(self.config.timeout_worker_healthcheck, self.should_exit):
                 # The replacement never started serving (broken app, bad TLS or socket bind, or a
-                # startup slower than the healthcheck window). Keep the existing worker serving
-                # rather than tearing down a working service, and abandon the restart.
-                logger.error(
-                    f"New child process [{new_process.pid}] was not ready in time; "
-                    f"keeping worker [{old_process.pid}] and aborting the restart."
-                )
+                # startup slower than the healthcheck window), or a shutdown was requested. Keep the
+                # existing worker serving rather than tearing down a working service.
                 new_process.kill()
                 new_process.join()
+                if not self.should_exit.is_set():
+                    logger.error(
+                        f"New child process [{new_process.pid}] was not ready in time; "
+                        f"keeping worker [{old_process.pid}] and aborting the restart."
+                    )
                 return
 
             old_process.terminate()  # graceful SIGTERM: drains in-flight requests
