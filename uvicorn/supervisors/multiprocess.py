@@ -76,6 +76,16 @@ class Process:
 
         return self.ping(timeout)
 
+    def wait_until_ready(self, timeout: float) -> bool:
+        # Poll a freshly started worker until its server reports it finished startup. Returns False
+        # if the worker never becomes ready within the window (broken or slow startup).
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self.is_alive(timeout=1) and self.ready:
+                return True
+            time.sleep(0.1)
+        return False
+
     def start(self) -> None:
         self.process.start()
 
@@ -140,11 +150,14 @@ class Multiprocess:
         for sig in SIGNALS:
             signal.signal(sig, lambda sig, frame: self.signal_queue.append(sig))
 
+    def _spawn(self) -> Process:
+        process = Process(self.config, self.sockets)
+        process.start()
+        return process
+
     def init_processes(self) -> None:
         for _ in range(self.processes_num):
-            process = Process(self.config, self.sockets)
-            process.start()
-            self.processes.append(process)
+            self.processes.append(self._spawn())
 
     def terminate_all(self) -> None:
         for process in self.processes:
@@ -154,28 +167,15 @@ class Multiprocess:
         for process in self.processes:
             process.join()
 
-    def wait_until_ready(self, process: Process) -> bool:
-        # Poll a freshly started worker until its server reports it finished startup. Returns False
-        # if the worker never becomes ready within the healthcheck window (broken or slow startup).
-        deadline = time.monotonic() + self.config.timeout_worker_healthcheck
-        while time.monotonic() < deadline:
-            if process.is_alive(timeout=1) and process.ready:
-                return True
-            time.sleep(0.1)
-        return False
-
     def restart_all(self) -> None:
         # Rolling restart with worker overlap. All workers share the same listening socket(s), bound
         # once by the parent, so old and new workers can accept connections concurrently. For each
         # slot we bring a replacement up and wait until it is serving before draining the worker it
         # replaces, so a live worker is always serving the shared socket.
-        for idx in range(len(self.processes)):
-            old_process = self.processes[idx]
+        for idx, old_process in enumerate(self.processes):
+            new_process = self._spawn()
 
-            new_process = Process(self.config, self.sockets)
-            new_process.start()
-
-            if not self.wait_until_ready(new_process):
+            if not new_process.wait_until_ready(self.config.timeout_worker_healthcheck):
                 # The replacement never started serving (broken app, bad TLS or socket bind, or a
                 # startup slower than the healthcheck window). Keep the existing worker serving
                 # rather than tearing down a working service, and abandon the restart.
@@ -232,9 +232,7 @@ class Multiprocess:
                 return  # pragma: full coverage
 
             logger.info(f"Child process [{process.pid}] died")
-            process = Process(self.config, self.sockets)
-            process.start()
-            self.processes[idx] = process
+            self.processes[idx] = self._spawn()
 
     def handle_signals(self) -> None:
         for sig in tuple(self.signal_queue):
@@ -265,9 +263,7 @@ class Multiprocess:
     def handle_ttin(self) -> None:  # pragma: py-win32
         logger.info("Received SIGTTIN, increasing the number of processes.")
         self.processes_num += 1
-        process = Process(self.config, self.sockets)
-        process.start()
-        self.processes.append(process)
+        self.processes.append(self._spawn())
 
     def handle_ttou(self) -> None:  # pragma: py-win32
         logger.info("Received SIGTTOU, decreasing number of processes.")
