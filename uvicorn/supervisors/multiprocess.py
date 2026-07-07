@@ -171,8 +171,8 @@ class Multiprocess:
             process.join()
 
     def restart_all(self) -> None:
-        """Replaces every worker by spawning a fresh one and retiring the oldest, one at a time."""
-        for _ in range(len(self.processes)):
+        """Replaces each worker, bringing its replacement into service before retiring the old worker."""
+        for idx, old_process in enumerate(self.processes):
             if self.should_exit.is_set():
                 return
 
@@ -185,14 +185,13 @@ class Multiprocess:
                 if not self.should_exit.is_set():
                     logger.error(
                         f"New child process [{new_process.pid}] was not ready in time; "
-                        "keeping the existing workers and aborting the restart."
+                        f"keeping worker [{old_process.pid}] and aborting the restart."
                     )
                 return
 
-            self.processes.append(new_process)
-            oldest = self.processes.pop(0)
-            oldest.terminate()
-            oldest.join()
+            old_process.terminate()
+            old_process.join()
+            self.processes[idx] = new_process
 
     def run(self) -> None:
         message = f"Started parent process [{os.getpid()}]"
