@@ -36,7 +36,7 @@ class Process:
         self.process = get_subprocess(config, self.target, sockets)
 
     def _healthcheck(self, timeout: float) -> bool | None:
-        # Ping the worker; return its `Server.started` flag, or None if it never answered.
+        """Ping the worker and return its server-started flag, or None if it never answered."""
         try:
             self.parent_conn.send(b"ping")
             if self.parent_conn.poll(timeout):
@@ -44,19 +44,18 @@ class Process:
                 return started
             return None
         except (OSError, EOFError, pickle.UnpicklingError):
-            # The worker died and closed its side of the pipe.
             return None
 
     def ping(self, timeout: float = 5) -> bool:
-        # Liveness: the worker answered the healthcheck within `timeout`.
+        """Return whether the worker answered the healthcheck within the timeout."""
         return self._healthcheck(timeout) is not None
 
     def is_ready(self, timeout: float = 5) -> bool:
-        # Readiness: the worker answered and its server finished startup.
+        """Return whether the worker answered and its server has finished startup."""
         return self._healthcheck(timeout) is True
 
     def pong(self) -> None:
-        # Report whether the server finished startup, not merely that the process is alive.
+        """Answer a healthcheck ping with whether the server has finished startup."""
         self.child_conn.recv()
         self.child_conn.send(self.server.started)
 
