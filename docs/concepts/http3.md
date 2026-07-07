@@ -19,10 +19,10 @@ connect over UDP.
 
 ## Enabling HTTP/3
 
-HTTP/3 support requires the `zttp` (>= 0.0.14) and `cryptography` packages:
+HTTP/3 support requires the `zttp` (>= 0.0.15) and `cryptography` packages:
 
 ```bash
-pip install "zttp>=0.0.14" cryptography
+pip install "zttp>=0.0.15" cryptography
 ```
 
 To enable it, use the `--http3` flag:
@@ -83,8 +83,9 @@ async def app(scope, receive, send):
 
 The implementation is young, and several pieces are deliberately minimal:
 
-- **Datagrams are demultiplexed by peer address.** QUIC connection migration and NAT rebinding
-  are not supported: a client that changes its address mid-connection is treated as a new one.
+- **No QUIC connection ID rotation.** Datagrams are demultiplexed by connection id, so a client
+  that migrates address mid-connection is followed correctly; but the server does not itself
+  issue new connection ids, so it presents a stable id for the connection's lifetime.
 - **Only P-256 EC certificates** are accepted for the server key.
 - **No `Alt-Svc` advertisement** is injected automatically - if you also serve HTTP/1.1 or HTTP/2,
   add the header yourself so browsers discover the HTTP/3 endpoint.

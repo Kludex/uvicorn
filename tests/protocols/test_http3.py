@@ -19,7 +19,7 @@ try:
 
     _zttp_version = tuple(int(part) for part in version("zttp").split(".")[:3])
     skip_if_no_zttp_h3 = pytest.mark.skipif(
-        _zttp_version < (0, 0, 14), reason="zttp>=0.0.14 with HTTP/3 support is not installed"
+        _zttp_version < (0, 0, 15), reason="zttp>=0.0.15 (with parse_datagram_header) is not installed"
     )
 except ModuleNotFoundError:  # pragma: no cover
     skip_if_no_zttp_h3 = pytest.mark.skipif(True, reason="zttp is not installed")
@@ -125,6 +125,17 @@ async def connected(app: Any, **kwargs: Any) -> tuple[H3Harness, ZttpH3Protocol,
 def teardown(protocol: ZttpH3Protocol) -> None:
     # Cancel any armed loss/idle timers so no callback survives the test.
     protocol.connection_lost(None)
+
+
+def only_state(protocol: ZttpH3Protocol):
+    """The endpoint's single QUIC connection state (the tests drive one client)."""
+    return next(iter(protocol.by_cid.values()))
+
+
+def make_initial(connection_id: bytes) -> bytes:
+    """A real client Initial datagram whose destination connection id is `connection_id`."""
+    client = zttp.Connection(zttp.CLIENT, protocol=zttp.HTTP3, server_name=b"localhost", connection_id=connection_id)
+    return client.data_to_send()[0]
 
 
 # -- applications -------------------------------------------------------------
@@ -301,24 +312,58 @@ async def test_http3_shutdown_refuses_new_connections() -> None:
     protocol, transport, _ = make_protocol(echo_app())
     protocol.shutdown()
     assert protocol.shutdown_requested
-    # A datagram from a brand-new peer during shutdown is dropped, not accepted.
-    protocol.datagram_received(b"\x00" * 64, ("127.0.0.1", 40000))
-    assert not protocol.quic
+    # An Initial from a brand-new peer during shutdown is dropped, not accepted.
+    protocol.datagram_received(make_initial(b"\x01\x02\x03\x04"), ("127.0.0.1", 40000))
+    assert not protocol.by_cid
 
 
 async def test_http3_concurrency_limit_drops_new_connections() -> None:
     protocol, transport, _ = make_protocol(echo_app(), limit_concurrency=1)
     # Pretend one connection already exists so a fresh peer is over the limit.
-    protocol.quic[("127.0.0.1", 1)] = object()  # type: ignore[assignment]
-    protocol.datagram_received(b"\x00" * 64, ("127.0.0.1", 40001))
-    assert ("127.0.0.1", 40001) not in protocol.quic
+    protocol.by_cid[b"existing0"] = object()  # type: ignore[assignment]
+    protocol.datagram_received(make_initial(b"\x01\x02\x03\x04"), ("127.0.0.1", 40001))
+    assert b"\x01\x02\x03\x04" not in protocol.by_cid
 
 
-async def test_http3_malformed_datagram_closes_that_connection() -> None:
+async def test_http3_migration_is_routed_by_connection_id() -> None:
+    # Routing by connection id (not peer address) means a client that changes its
+    # UDP address mid-connection still reaches the same connection.
+    harness, protocol, _ = await connected(echo_app())
+    state = only_state(protocol)
+    new_addr = ("127.0.0.2", 61000)
+    stream = harness.client.send_request(b"GET", b"/moved", b"3", [(b"host", b"localhost")])
+    stream.end_message()
+    for datagram in harness.client.data_to_send():
+        protocol.datagram_received(datagram, new_addr)  # same client, new address
+    for _ in range(6):
+        await asyncio.sleep(0)
+    assert only_state(protocol) is state  # same connection, not a new one
+    assert state.addr == new_addr  # send path now follows the migrated peer
+    teardown(protocol)
+
+
+async def test_http3_stray_datagram_is_dropped_without_allocating() -> None:
     protocol, transport, _ = make_protocol(echo_app())
-    # A garbage first datagram cannot start a QUIC handshake; the state is discarded.
-    protocol.datagram_received(b"not-a-quic-packet", CLIENT_ADDR)
-    assert CLIENT_ADDR not in protocol.quic
+    # A short-header (1-RTT) packet for a connection id we do not know matches no
+    # connection and must be dropped without constructing any state.
+    protocol.datagram_received(b"\x40" + b"unknown-cid-bytes", CLIENT_ADDR)
+    # A non-Initial long-header packet for an unknown id is not a new connection
+    # either. Take a real Initial and flip its packet-type bits to Handshake (10).
+    initial = make_initial(b"\x09\x08\x07\x06")
+    handshake_like = bytes([(initial[0] & 0xCF) | 0x20]) + initial[1:]
+    protocol.datagram_received(handshake_like, CLIENT_ADDR)
+    # And a truly malformed datagram that fails to parse at all.
+    protocol.datagram_received(b"\xc0\x00", CLIENT_ADDR)
+    assert not protocol.by_cid
+
+
+async def test_http3_malformed_initial_tears_down_the_connection() -> None:
+    protocol, transport, _ = make_protocol(echo_app())
+    initial = make_initial(b"\x0f\x0e\x0d\x0c")
+    # A valid Initial header (so it routes and opens a connection) followed by a body
+    # zttp cannot parse: the state is created, then discarded when the datagram is rejected.
+    protocol.datagram_received(initial[:20] + b"\xff" * 40, CLIENT_ADDR)
+    assert not protocol.by_cid
 
 
 async def test_http3_connection_ceiling_drops_new_peers() -> None:
@@ -328,9 +373,9 @@ async def test_http3_connection_ceiling_drops_new_peers() -> None:
     original = impl.MAX_QUIC_CONNECTIONS
     impl.MAX_QUIC_CONNECTIONS = 1
     try:
-        protocol.quic[("127.0.0.1", 1)] = object()  # type: ignore[assignment]
-        protocol.datagram_received(b"\x00" * 64, ("127.0.0.1", 40100))
-        assert ("127.0.0.1", 40100) not in protocol.quic
+        protocol.by_cid[b"existing0"] = object()  # type: ignore[assignment]
+        protocol.datagram_received(make_initial(b"\x01\x02\x03\x04"), ("127.0.0.1", 40100))
+        assert b"\x01\x02\x03\x04" not in protocol.by_cid
     finally:
         impl.MAX_QUIC_CONNECTIONS = original
 
@@ -357,7 +402,7 @@ async def test_http3_oversized_request_body_resets_the_stream() -> None:
         for _ in range(10):
             await asyncio.sleep(0)
         # The stream's cycle was reset and dropped; the app saw a disconnect.
-        assert sid not in protocol.quic[CLIENT_ADDR].cycles
+        assert sid not in only_state(protocol).cycles
         assert received == ["http.disconnect"]
         teardown(protocol)
     finally:
@@ -561,10 +606,11 @@ async def test_http3_uses_configured_credentials(tmp_path) -> None:
     cert_path, key_path = _p256_pem(tmp_path)
     protocol, transport, _ = make_protocol(echo_app(), ssl_certfile=cert_path, ssl_keyfile=key_path)
     assert protocol.credentials is not None
-    # A first datagram builds the per-connection state (with credentials wired in).
-    protocol.datagram_received(b"\x00" * 40, CLIENT_ADDR)
-    # Garbage cannot complete a handshake, so the state is torn down again.
-    assert CLIENT_ADDR not in protocol.quic
+    # A real Initial builds the per-connection state, which wires the configured
+    # credentials into the zttp server connection it constructs.
+    protocol.datagram_received(make_initial(b"\x0a\x0b\x0c\x0d"), CLIENT_ADDR)
+    assert b"\x0a\x0b\x0c\x0d" in protocol.by_cid
+    teardown(protocol)
 
 
 async def test_http3_reset_contextvars_path(tmp_path) -> None:
@@ -595,7 +641,7 @@ async def test_http3_request_over_capacity_gets_503() -> None:
 
 async def test_http3_timeout_handler_reschedules() -> None:
     harness, protocol, _ = await connected(echo_app())
-    state = protocol.quic[CLIENT_ADDR]
+    state = only_state(protocol)
     state._on_timeout()  # fire the loss/idle timer manually
     assert not state.conn.is_closed()
     teardown(protocol)
@@ -606,17 +652,17 @@ async def test_http3_client_close_tears_down_connection() -> None:
     harness.client.close(error_code=0)
     for datagram in harness.client.data_to_send():
         protocol.datagram_received(datagram, CLIENT_ADDR)
-    assert CLIENT_ADDR not in protocol.quic
+    assert not protocol.by_cid
 
 
 async def test_http3_close_cancels_pending_timer() -> None:
     harness, protocol, _ = await connected(echo_app())
-    state = protocol.quic[CLIENT_ADDR]
+    state = only_state(protocol)
     # In-memory exchanges rarely arm a loss timer, so force one to prove close() cancels it.
     state.timer = asyncio.get_event_loop().call_later(30, lambda: None)
     state.close()
     assert state.timer is None
-    assert CLIENT_ADDR not in protocol.quic
+    assert not protocol.by_cid
 
 
 async def test_http3_stray_body_after_response_is_ignored() -> None:
@@ -638,7 +684,7 @@ async def test_http3_stray_body_after_response_is_ignored() -> None:
         protocol.datagram_received(datagram, CLIENT_ADDR)
     for _ in range(5):
         await asyncio.sleep(0)
-    assert CLIENT_ADDR in protocol.quic
+    assert protocol.by_cid
     teardown(protocol)
 
 
@@ -656,10 +702,10 @@ async def test_http3_connection_lost_disconnects_in_flight_request() -> None:
     await harness.pump()
     harness.send_request(b"POST", b"/", body=b"partial")
     await harness.pump(rounds=2)
-    state = protocol.quic[CLIENT_ADDR]
+    state = only_state(protocol)
     assert state.cycles  # a request is in flight
     protocol.connection_lost(None)
-    assert CLIENT_ADDR not in protocol.quic
+    assert not protocol.by_cid
 
 
 def test_http3_config_sets_protocol_class() -> None:

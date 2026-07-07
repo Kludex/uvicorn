@@ -5,6 +5,7 @@ import contextvars
 import logging
 import sys
 import warnings
+from collections import Counter
 from collections.abc import Callable, Generator
 from typing import Any
 
@@ -27,8 +28,7 @@ from uvicorn.protocols.utils import get_client_addr, get_path_with_query_string
 from uvicorn.server import ServerState
 
 warnings.warn(
-    "Uvicorn's HTTP/3 support is experimental. It rides a from-scratch QUIC stack in zttp, "
-    "demultiplexes datagrams by peer address (so connection migration is not yet supported), "
+    "Uvicorn's HTTP/3 support is experimental. It rides a from-scratch QUIC stack in zttp "
     "and only serves P-256 (SECP256R1) TLS keys. Please try it out and report back! "
     "See the docs at https://uvicorn.dev/concepts/http3/.",
     UserWarning,
@@ -47,9 +47,9 @@ MICROSECONDS = 1_000_000
 # Hard ceiling on concurrent QUIC connections, enforced regardless of
 # `limit_concurrency` (which bounds ASGI requests, not connections). One UDP socket
 # fronts every connection and each holds a zttp connection plus a timer, so without
-# a cap a peer spraying Initials from many source addresses could grow `self.quic`
-# without bound. zttp's 3x anti-amplification limit caps reflected bytes but not the
-# number of half-open states we hold.
+# a cap a peer spraying Initials from many source addresses could grow the routing
+# table without bound. zttp's 3x anti-amplification limit caps reflected bytes but
+# not the number of half-open states we hold.
 MAX_QUIC_CONNECTIONS = 16_384
 
 # Hard ceiling on a single request's in-memory body buffer. zttp's QUIC stream
@@ -63,12 +63,21 @@ def _now(loop: asyncio.AbstractEventLoop) -> int:
     return int(loop.time() * MICROSECONDS)
 
 
+def _peer_key(addr: tuple[str, int]) -> bytes:
+    # zttp's opaque path-validation key for a UDP peer. Kept 1:1 with the address so
+    # `data_to_send_with_addresses` can map an outgoing datagram back to a socket addr.
+    return f"{addr[0]}\x00{addr[1]}".encode()
+
+
 class ZttpH3Protocol(asyncio.DatagramProtocol):
     """A single UDP datagram endpoint fronting many QUIC connections.
 
     Unlike the TCP protocols - one asyncio protocol per connection - a UDP socket
     is shared by every HTTP/3 connection, so this one object owns them all and
-    routes each incoming datagram to a `QuicConnectionState` keyed by peer address.
+    routes each incoming datagram to a `QuicConnectionState` by its QUIC destination
+    connection id. Routing by connection id (rather than peer address) survives
+    client migration and lets a stray datagram be dropped before any state is
+    allocated for it.
     """
 
     def __init__(
@@ -103,8 +112,11 @@ class ZttpH3Protocol(asyncio.DatagramProtocol):
         self.server: tuple[str, int | None] | None = None
         self.shutdown_requested = False
 
-        # Live QUIC connections, keyed by peer (host, port).
-        self.quic: dict[tuple[str, int], QuicConnectionState] = {}
+        # Live QUIC connections, keyed by their destination connection id. A short
+        # (1-RTT) header does not carry the id length on the wire, so `cid_lengths`
+        # tracks the distinct lengths currently in use to slice it out.
+        self.by_cid: dict[bytes, QuicConnectionState] = {}
+        self.cid_lengths: Counter[int] = Counter()
 
     # DatagramProtocol interface
     def connection_made(  # type: ignore[override]
@@ -120,24 +132,49 @@ class ZttpH3Protocol(asyncio.DatagramProtocol):
             self.logger.log(TRACE_LOG_LEVEL, "HTTP/3 endpoint listening on %s", self.server)
 
     def connection_lost(self, exc: Exception | None) -> None:
-        for state in list(self.quic.values()):
+        for state in list(self.by_cid.values()):
             state.close()
         self.connections.discard(self)
 
     def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
-        state = self.quic.get(addr)
-        if state is None:
-            # A datagram from an unknown peer starts a new connection - unless we
-            # are draining, at the hard connection ceiling, or over the ASGI
-            # concurrency limit. In each case the Initial is dropped; the client
-            # retransmits and is admitted once there is room.
-            if self.shutdown_requested:
-                return
-            if len(self.quic) >= MAX_QUIC_CONNECTIONS or self._at_capacity():
-                return
-            state = QuicConnectionState(self, addr)
-            self.quic[addr] = state
-        state.receive(data, _now(self.loop))
+        state = self._route(data, addr)
+        if state is not None:
+            state.receive(data, _now(self.loop), addr)
+
+    def _route(self, data: bytes, addr: tuple[str, int]) -> QuicConnectionState | None:
+        """Find the connection a datagram belongs to by its destination connection
+        id, opening a new one only for a fresh Initial. A stray or malformed datagram
+        routes to nothing and is dropped without allocating any state."""
+        try:
+            header = zttp.parse_datagram_header(data)
+        except zttp.RemoteProtocolError:
+            return None
+
+        if not header.is_long_header:
+            # A 1-RTT packet does not encode its dcid length, so try each length in use.
+            for length in self.cid_lengths:
+                state = self.by_cid.get(data[1 : 1 + length])
+                if state is not None:
+                    return state
+            return None
+
+        state = self.by_cid.get(header.destination_connection_id)
+        if state is not None:
+            return state
+        # An unknown connection id on a non-Initial (a stray Handshake/0-RTT packet)
+        # is not a new connection; drop it. Only an Initial opens one.
+        if not header.is_initial:
+            return None
+        if self.shutdown_requested:
+            return None
+        if len(self.by_cid) >= MAX_QUIC_CONNECTIONS or self._at_capacity():
+            # No room: drop the Initial. The client retransmits and is admitted later.
+            return None
+        cid = header.destination_connection_id
+        state = QuicConnectionState(self, cid, addr)
+        self.by_cid[cid] = state
+        self.cid_lengths[len(cid)] += 1
+        return state
 
     def error_received(self, exc: Exception) -> None:
         # An ICMP port-unreachable (or similar) for a prior send. Not fatal for a
@@ -148,26 +185,25 @@ class ZttpH3Protocol(asyncio.DatagramProtocol):
     def _at_capacity(self) -> bool:
         if self.limit_concurrency is None:
             return False
-        return len(self.quic) >= self.limit_concurrency or len(self.tasks) >= self.limit_concurrency
-
-    def sendto(self, datagrams: list[bytes], addr: tuple[str, int]) -> None:
-        for datagram in datagrams:
-            self.transport.sendto(datagram, addr)
+        return len(self.by_cid) >= self.limit_concurrency or len(self.tasks) >= self.limit_concurrency
 
     def discard(self, state: QuicConnectionState) -> None:
-        self.quic.pop(state.addr, None)
+        if self.by_cid.pop(state.cid, None) is not None:
+            self.cid_lengths[len(state.cid)] -= 1
+            if self.cid_lengths[len(state.cid)] <= 0:
+                del self.cid_lengths[len(state.cid)]
         self._finish_if_drained()
 
     # Server lifecycle
     def shutdown(self) -> None:
         """Begin a graceful shutdown: refuse new connections and drain live ones."""
         self.shutdown_requested = True
-        for state in list(self.quic.values()):
+        for state in list(self.by_cid.values()):
             state.shutdown()
         self._finish_if_drained()
 
     def _finish_if_drained(self) -> None:
-        if self.shutdown_requested and not self.quic:
+        if self.shutdown_requested and not self.by_cid:
             self.connections.discard(self)
             if self.transport is not None and not self.transport.is_closing():
                 self.transport.close()
@@ -176,26 +212,34 @@ class ZttpH3Protocol(asyncio.DatagramProtocol):
 class QuicConnectionState:
     """One QUIC/HTTP-3 connection: a zttp `H3Connection` plus its request cycles."""
 
-    def __init__(self, endpoint: ZttpH3Protocol, addr: tuple[str, int]) -> None:
+    def __init__(self, endpoint: ZttpH3Protocol, cid: bytes, addr: tuple[str, int]) -> None:
         self.endpoint = endpoint
+        self.cid = cid  # the destination connection id this connection is routed by
         self.addr = addr
         self.loop = endpoint.loop
         self.logger = endpoint.logger
-        self.peer_key = f"{addr[0]}:{addr[1]}".encode()
+        # Map each path-validation key back to the socket address to send it to, so
+        # `data_to_send_with_addresses` can address a migrated peer correctly.
+        self.addr_by_key: dict[bytes, tuple[str, int]] = {}
 
         kwargs: dict[str, Any] = {"alpn": b"h3"}
         if endpoint.credentials is not None:
             kwargs["credentials"] = endpoint.credentials
         self.conn: zttp.H3Connection = zttp.Connection(zttp.SERVER, protocol=zttp.HTTP3, **kwargs)
 
-        self.client = addr
         self.timer: asyncio.TimerHandle | None = None
         self.shutdown_requested = False
         self.cycles: dict[int, RequestResponseCycle] = {}
 
-    def receive(self, data: bytes, now: int) -> None:
+    def receive(self, data: bytes, now: int, addr: tuple[str, int]) -> None:
+        # Routing is by connection id, so the peer's address may have changed
+        # (migration); tell zttp the datagram's origin for path validation and note
+        # it for the return path.
+        self.addr = addr
+        key = _peer_key(addr)
+        self.addr_by_key[key] = addr
         try:
-            self.conn.receive_datagram(data, now, self.peer_key)
+            self.conn.receive_datagram(data, now, key)
             self.handle_events()
         except zttp.RemoteProtocolError as exc:
             self.logger.warning("Invalid HTTP/3 datagram received: %s", exc)
@@ -205,7 +249,11 @@ class QuicConnectionState:
         self._after_io()
 
     def flush(self) -> None:
-        self.endpoint.sendto(self.conn.data_to_send(), self.addr)
+        # zttp addresses each outgoing datagram to the path it has validated; honour
+        # that so a migrating peer's traffic is not blindly sent to a stale address.
+        for datagram, key in self.conn.data_to_send_with_addresses():
+            addr = self.addr_by_key.get(key, self.addr) if key is not None else self.addr
+            self.endpoint.transport.sendto(datagram, addr)
 
     def _after_io(self) -> None:
         """Settle the connection after driving I/O: close if it is done, else
@@ -276,7 +324,7 @@ class QuicConnectionState:
             "asgi": {"version": self.endpoint.asgi_version, "spec_version": "2.3"},
             "http_version": "3",
             "server": self.endpoint.server,
-            "client": self.client,
+            "client": self.addr,
             "scheme": "https",
             "method": event.method.decode("ascii"),
             "root_path": self.root_path,
