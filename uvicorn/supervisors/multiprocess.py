@@ -83,7 +83,7 @@ class Process:
         return self.ping(timeout)
 
     def wait_until_ready(self, timeout: float, should_exit: threading.Event | None = None) -> bool:
-        """Return True once the worker is serving, or False on worker exit, shutdown, or timeout."""
+        """Receives a timeout and returns True if the worker starts serving, or False on exit, shutdown, or timeout."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if should_exit is not None and should_exit.is_set():
@@ -171,7 +171,7 @@ class Multiprocess:
             process.join()
 
     def restart_all(self) -> None:
-        """Replace each worker, bringing its replacement into service before retiring the old worker."""
+        """Replaces each worker, bringing its replacement into service before retiring the old worker."""
         for idx, old_process in enumerate(self.processes):
             if self.should_exit.is_set():
                 return
