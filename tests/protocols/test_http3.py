@@ -321,6 +321,49 @@ async def test_http3_malformed_datagram_closes_that_connection() -> None:
     assert CLIENT_ADDR not in protocol.quic
 
 
+async def test_http3_connection_ceiling_drops_new_peers() -> None:
+    import uvicorn.protocols.http.zttp_h3_impl as impl
+
+    protocol, _, _ = make_protocol(echo_app())
+    original = impl.MAX_QUIC_CONNECTIONS
+    impl.MAX_QUIC_CONNECTIONS = 1
+    try:
+        protocol.quic[("127.0.0.1", 1)] = object()  # type: ignore[assignment]
+        protocol.datagram_received(b"\x00" * 64, ("127.0.0.1", 40100))
+        assert ("127.0.0.1", 40100) not in protocol.quic
+    finally:
+        impl.MAX_QUIC_CONNECTIONS = original
+
+
+async def test_http3_oversized_request_body_resets_the_stream() -> None:
+    import uvicorn.protocols.http.zttp_h3_impl as impl
+
+    received: list[str] = []
+
+    async def slow_app(scope, receive, send):
+        # Never drains the body, forcing it to accumulate past the cap.
+        message = await receive()
+        received.append(message["type"])
+
+    original = impl.MAX_REQUEST_BODY
+    impl.MAX_REQUEST_BODY = 1024
+    try:
+        harness, protocol, _ = await connected(slow_app)
+        stream = harness.client.send_request(b"POST", b"/upload", b"3", [(b"host", b"localhost")])
+        sid = stream.stream_id
+        stream.send_data(b"x" * 4096)
+        for datagram in harness.client.data_to_send():
+            protocol.datagram_received(datagram, CLIENT_ADDR)
+        for _ in range(10):
+            await asyncio.sleep(0)
+        # The stream's cycle was reset and dropped; the app saw a disconnect.
+        assert sid not in protocol.quic[CLIENT_ADDR].cycles
+        assert received == ["http.disconnect"]
+        teardown(protocol)
+    finally:
+        impl.MAX_REQUEST_BODY = original
+
+
 async def test_http3_endpoint_registers_with_server_state() -> None:
     protocol, transport, server_state = make_protocol(echo_app())
     assert protocol in server_state.connections

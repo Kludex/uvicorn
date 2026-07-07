@@ -22,7 +22,7 @@ from uvicorn._types import (
 )
 from uvicorn.config import Config
 from uvicorn.logging import TRACE_LOG_LEVEL
-from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT, service_unavailable
+from uvicorn.protocols.http.flow_control import service_unavailable
 from uvicorn.protocols.utils import get_client_addr, get_path_with_query_string
 from uvicorn.server import ServerState
 
@@ -43,6 +43,20 @@ FORBIDDEN_HEADERS = frozenset({b"connection", b"keep-alive", b"proxy-connection"
 # zttp's clock is a monotonic microsecond integer (RFC 9002 loss/PTO math is in
 # microseconds); asyncio's loop clock is float seconds, so scale between them.
 MICROSECONDS = 1_000_000
+
+# Hard ceiling on concurrent QUIC connections, enforced regardless of
+# `limit_concurrency` (which bounds ASGI requests, not connections). One UDP socket
+# fronts every connection and each holds a zttp connection plus a timer, so without
+# a cap a peer spraying Initials from many source addresses could grow `self.quic`
+# without bound. zttp's 3x anti-amplification limit caps reflected bytes but not the
+# number of half-open states we hold.
+MAX_QUIC_CONNECTIONS = 16_384
+
+# Hard ceiling on a single request's in-memory body buffer. zttp's QUIC stream
+# flow control bounds one flight, but a client that keeps sending while the ASGI app
+# is slow to `receive()` would otherwise grow this bytearray without limit, so the
+# stream is reset once its buffered body crosses the ceiling.
+MAX_REQUEST_BODY = 4 * 1024 * 1024
 
 
 def _now(loop: asyncio.AbstractEventLoop) -> int:
@@ -114,12 +128,12 @@ class ZttpH3Protocol(asyncio.DatagramProtocol):
         state = self.quic.get(addr)
         if state is None:
             # A datagram from an unknown peer starts a new connection - unless we
-            # are draining, in which case new connections are refused.
+            # are draining, at the hard connection ceiling, or over the ASGI
+            # concurrency limit. In each case the Initial is dropped; the client
+            # retransmits and is admitted once there is room.
             if self.shutdown_requested:
                 return
-            if self._at_capacity():
-                # Over the concurrency limit: drop the Initial. The client will
-                # retransmit and, once we have room, be admitted.
+            if len(self.quic) >= MAX_QUIC_CONNECTIONS or self._at_capacity():
                 return
             state = QuicConnectionState(self, addr)
             self.quic[addr] = state
@@ -233,8 +247,15 @@ class QuicConnectionState:
                 if cycle is None or cycle.response_complete:
                     continue
                 cycle.body += event.data
-                if len(cycle.body) > HIGH_WATER_LIMIT:  # pragma: no cover
-                    cycle.flow_paused = True
+                if len(cycle.body) > MAX_REQUEST_BODY:
+                    # The app is not draining the body fast enough to keep it
+                    # bounded; reset the request stream and disconnect the cycle
+                    # rather than buffer without limit.
+                    self.conn.stream(event.stream_id).reset()
+                    cycle.disconnected = True
+                    cycle.message_event.set()
+                    self.cycles.pop(event.stream_id, None)
+                    continue
                 cycle.message_event.set()
             elif isinstance(event, zttp.EndOfMessage):
                 cycle = self.cycles.get(event.stream_id)
@@ -369,7 +390,6 @@ class RequestResponseCycle:
 
         # Connection state
         self.disconnected = False
-        self.flow_paused = False
 
         # Request state
         self.body = bytearray()

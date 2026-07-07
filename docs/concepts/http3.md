@@ -88,6 +88,7 @@ The implementation is young, and several pieces are deliberately minimal:
 - **Only P-256 EC certificates** are accepted for the server key.
 - **No `Alt-Svc` advertisement** is injected automatically - if you also serve HTTP/1.1 or HTTP/2,
   add the header yourself so browsers discover the HTTP/3 endpoint.
-- Response bodies past the QUIC flow-control window are buffered rather than back-pressured, so
-  very large responses can grow memory.
+- **Bounded, not fully flow-controlled.** A request whose in-memory body exceeds an internal cap
+  (~4 MiB) has its stream reset rather than being back-pressured, and the number of concurrent
+  QUIC connections is capped. Prefer HTTP/1.1 for large uploads for now.
 - HTTP/3 server push and `Expect: 100-continue` are not supported.
