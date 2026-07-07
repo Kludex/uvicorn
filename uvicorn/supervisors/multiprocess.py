@@ -85,10 +85,12 @@ class Process:
 
     def wait_until_ready(self, timeout: float) -> bool:
         # Poll a freshly started worker until its server reports it finished startup. Returns False
-        # if the worker never becomes ready within the window (broken or slow startup).
+        # if the worker exits or never becomes ready within the window (broken or slow startup).
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            if self.is_alive(timeout=1) and self.ready:
+            if not self.process.is_alive():
+                return False  # the worker exited, e.g. a startup failure
+            if self.is_ready(timeout=1):
                 return True
             time.sleep(0.1)
         return False

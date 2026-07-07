@@ -179,8 +179,8 @@ def test_multiprocess_restart_aborts_when_replacement_not_ready(monkeypatch: pyt
     supervisor.init_processes()
     original_pids = [p.pid for p in supervisor.processes]
 
-    # Force every freshly spawned replacement to look unready, so `wait_until_ready` times out.
-    monkeypatch.setattr(Process, "is_alive", lambda self, timeout=1: False)
+    # Force every freshly spawned replacement to never report ready, so `wait_until_ready` times out.
+    monkeypatch.setattr(Process, "is_ready", lambda self, timeout=1: False)
     supervisor.restart_all()
 
     assert [p.pid for p in supervisor.processes] == original_pids
