@@ -189,6 +189,25 @@ def test_multiprocess_restart_aborts_when_replacement_not_ready(monkeypatch: pyt
     supervisor.join_all()
 
 
+def test_wait_until_ready_bails_on_shutdown_or_dead_worker() -> None:
+    process = Process(Config(app=app), sockets=[])
+
+    should_exit = threading.Event()
+    should_exit.set()
+    assert process.wait_until_ready(timeout=1, should_exit=should_exit) is False
+    assert process.wait_until_ready(timeout=0.5) is False
+
+
+def test_multiprocess_restart_stops_when_shutting_down() -> None:
+    supervisor = Multiprocess(Config(app=app, workers=1), sockets=[])
+    supervisor.processes = [Process(supervisor.config, [])]
+    supervisor.should_exit.set()
+
+    supervisor.restart_all()
+
+    assert len(supervisor.processes) == 1
+
+
 @pytest.mark.skipif(not hasattr(signal, "SIGTTIN"), reason="platform unsupports SIGTTIN")
 def test_multiprocess_sigttin() -> None:
     """
