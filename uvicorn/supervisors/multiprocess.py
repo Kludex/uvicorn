@@ -176,6 +176,7 @@ class Multiprocess:
             if process.is_alive(timeout=self.config.timeout_worker_healthcheck):
                 continue
 
+            exitcode = process.exitcode
             process.kill()  # process is hung, kill it
             process.join()
 
@@ -190,7 +191,13 @@ class Multiprocess:
             if self.should_exit.is_set():
                 return  # pragma: full coverage
 
-            logger.info(f"Child process [{process.pid}] died")
+            signal_name = None
+            if exitcode is not None and exitcode < 0:
+                try:
+                    signal_name = signal.Signals(-exitcode).name
+                except ValueError:  # pragma: no cover
+                    pass
+            logger.info(f"Child process [{process.pid}] died", extra={"exitcode": exitcode, "signal_name": signal_name})
             process = Process(self.config, self.target, self.sockets)
             process.start()
             self.processes[idx] = process
