@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from uvicorn.protocols.http.h11_impl import H11Protocol
     from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
     from uvicorn.protocols.http.zttp_h2_impl import ZttpH2Protocol
+    from uvicorn.protocols.http.zttp_h3_impl import ZttpH3Protocol
     from uvicorn.protocols.http.zttp_impl import ZttpProtocol
     from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
     from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
@@ -36,6 +37,7 @@ if TYPE_CHECKING:
         | HttpToolsProtocol
         | ZttpProtocol
         | ZttpH2Protocol
+        | ZttpH3Protocol
         | WSProtocol
         | WebSocketProtocol
         | WebSocketsSansIOProtocol
@@ -72,6 +74,7 @@ class Server:
         self.should_exit = False
         self.force_exit = False
         self.last_notified = 0.0
+        self.h3_transport: asyncio.DatagramTransport | None = None
 
         self._captured_signals: list[int] = []
 
@@ -195,6 +198,9 @@ class Server:
             listeners = server.sockets
             self.servers = [server]
 
+        if config.h3_protocol_class is not None and config.uds is None:
+            await self._serve_http3(loop)
+
         if sockets is None:
             self._log_started_message(listeners)
         else:
@@ -203,6 +209,29 @@ class Server:
             pass  # pragma: full coverage
 
         self.started = True
+
+    async def _serve_http3(self, loop: asyncio.AbstractEventLoop) -> None:
+        config = self.config
+
+        def create_h3_protocol() -> asyncio.DatagramProtocol:
+            assert config.h3_protocol_class is not None
+            return config.h3_protocol_class(  # type: ignore[call-arg]
+                config=config,
+                server_state=self.server_state,
+                app_state=self.lifespan.state,
+            )
+
+        host = "0.0.0.0" if config.host is None else config.host
+        try:
+            transport, _protocol = await loop.create_datagram_endpoint(
+                create_h3_protocol, local_addr=(host, config.port)
+            )
+        except OSError as exc:  # pragma: no cover - mirrors the TCP bind-failure path above
+            logger.error(exc)
+            await self.lifespan.shutdown()
+            sys.exit(1)
+        self.h3_transport = transport
+        logger.info("HTTP/3 (QUIC) available on udp://%s:%d", host, config.port)
 
     def _log_started_message(self, listeners: Sequence[socket.SocketType]) -> None:
         config = self.config

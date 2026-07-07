@@ -139,6 +139,12 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     help="Enable HTTP/2 support. Requires the 'zttp' package.",
 )
 @click.option(
+    "--http3",
+    is_flag=True,
+    default=False,
+    help="Enable HTTP/3 (QUIC) support on the same UDP port. Requires the 'zttp' and 'cryptography' packages.",
+)
+@click.option(
     "--ws",
     type=str,
     metavar=_metavar_from_type(WSProtocolType),
@@ -401,6 +407,7 @@ def main(
     loop: LoopFactoryType | str,
     http: HTTPProtocolType | str,
     http2: bool,
+    http3: bool,
     ws: WSProtocolType | str,
     ws_max_size: int,
     ws_max_queue: int,
@@ -454,6 +461,7 @@ def main(
         loop=loop,
         http=http,
         http2=http2,
+        http3=http3,
         ws=ws,
         ws_max_size=ws_max_size,
         ws_max_queue=ws_max_queue,
@@ -510,6 +518,7 @@ def run(
     loop: LoopFactoryType | str = "auto",
     http: type[asyncio.Protocol] | HTTPProtocolType | str = "auto",
     http2: bool | type[asyncio.Protocol] | str = False,
+    http3: bool | type[asyncio.DatagramProtocol] | str = False,
     ws: type[asyncio.Protocol] | WSProtocolType | str = "auto",
     ws_max_size: int = 16777216,
     ws_max_queue: int = 32,
@@ -567,6 +576,7 @@ def run(
         loop=loop,
         http=http,
         http2=http2,
+        http3=http3,
         ws=ws,
         ws_max_size=ws_max_size,
         ws_max_queue=ws_max_queue,

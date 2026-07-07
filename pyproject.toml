@@ -72,7 +72,7 @@ dev = [
     "a2wsgi==1.10.10",
     "wsproto==1.3.2",
     "websockets==13.1",
-    "zttp==0.0.13; python_version >= '3.12'",
+    "zttp==0.0.14; python_version >= '3.12'",
 ]
 docs = [
     "zensical==0.0.43",
@@ -86,7 +86,7 @@ exclude-newer = "7 days"
 
 [tool.uv.exclude-newer-package]
 httptools = "2026-05-26"
-zttp = "2026-07-06"
+zttp = "2026-07-07"
 
 [project.scripts]
 uvicorn = "uvicorn.main:main"
@@ -136,6 +136,7 @@ filterwarnings = [
     "ignore: The global interpreter lock (GIL)*:RuntimeWarning",
     "ignore:The 'zttp' HTTP/1.1 protocol is experimental.*:UserWarning",
     "ignore:Uvicorn's HTTP/2 support is experimental.*:UserWarning",
+    "ignore:Uvicorn's HTTP/3 support is experimental.*:UserWarning",
 ]
 
 [tool.coverage.run]
@@ -167,9 +168,11 @@ exclude_lines = [
 "sys_platform != 'win32'" = ["uvicorn/loops/asyncio.py"]
 "not is_installed('zttp')" = ["uvicorn/protocols/http/zttp_impl.py"]
 "not is_installed('zttp') or package_version('zttp') < (0, 0, 13)" = ["uvicorn/protocols/http/zttp_h2_impl.py"]
+"not is_installed('zttp') or package_version('zttp') < (0, 0, 14)" = ["uvicorn/protocols/http/zttp_h3_impl.py"]
 
 [tool.coverage.coverage_conditional_plugin.rules]
 no-zttp-h2 = "not is_installed('zttp') or package_version('zttp') < (0, 0, 13)"
+no-zttp-h3 = "not is_installed('zttp') or package_version('zttp') < (0, 0, 14)"
 py-win32 = "sys_platform == 'win32'"
 py-not-win32 = "sys_platform != 'win32'"
 py-linux = "sys_platform == 'linux'"
