@@ -59,16 +59,15 @@ def test_process_ping_broken_pipe() -> None:
 
 
 def test_process_ready() -> None:
-    """`ping()` latches `ready` once the worker's server reports it has finished startup."""
+    """`is_ready()` reflects whether the worker's server has finished startup."""
     process = Process(Config(app=app), sockets=[])
     threading.Thread(target=process.always_pong, daemon=True).start()
 
     assert process.ping()
-    assert not process.ready
+    assert not process.is_ready()
 
     process.server.started = True
-    assert process.ping()
-    assert process.ready
+    assert process.is_ready()
 
 
 @new_console_in_windows
