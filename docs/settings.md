@@ -142,10 +142,10 @@ For advanced TLS scenarios that the flags above don't cover (e.g., mutual TLS, c
 
 ## Resource Limits
 
-* `--limit-concurrency <int>` - Maximum number of concurrent connections or tasks to allow, before issuing HTTP 503 responses. Useful for ensuring known memory usage patterns even under over-resourced loads.
+* `--limit-concurrency <int>` - Maximum number of concurrent connections or tasks to allow, before issuing HTTP 503 responses. Useful for ensuring known memory usage patterns even under over-resourced loads. This is an application-level limit: excess requests receive an immediate 503, they are **not** queued. See [Concurrency and backlog](server-behavior.md#concurrency-and-backlog) for details and how it differs from `--backlog`.
 * `--limit-max-requests <int>` - Maximum number of requests to service before terminating the process. Useful when running together with a process manager, for preventing memory leaks from impacting long-running processes.
 * `--limit-max-requests-jitter <int>` - Maximum jitter to add to `limit-max-requests`. Each worker adds a random number in the range `[0, jitter]`, staggering restarts to avoid all workers restarting simultaneously. **Default:** *0*.
-* `--backlog <int>` - Maximum number of connections to hold in backlog. Relevant for heavy incoming traffic. **Default:** *2048*.
+* `--backlog <int>` - Maximum number of connections to hold in the TCP accept queue, passed to the socket's `listen()` call. This is an OS-level setting, independent of `--limit-concurrency`; see [Concurrency and backlog](server-behavior.md#concurrency-and-backlog). Relevant for heavy incoming traffic. **Default:** *2048*.
 
 ## Timeouts
 
