@@ -78,7 +78,7 @@ The default process manager monitors the status of child processes and automatic
 
 You can also manage child processes by sending specific signals to the main process. (Not supported on Windows.)
 
-- `SIGHUP`: Work processes are graceful restarted one after another. If you update the code, the new worker process will use the new code.
+- `SIGHUP`: Gracefully restart the workers one at a time. Each replacement is brought up and confirmed serving before the worker it replaces is retired, so no requests are dropped during the restart. If a replacement never becomes ready within `--timeout-worker-healthcheck`, the old worker is kept and the restart is aborted. Fresh workers pick up the new code on disk.
 - `SIGTTIN`: Increase the number of worker processes by one.
 - `SIGTTOU`: Decrease the number of worker processes by one.
 
