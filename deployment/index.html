@@ -1290,7 +1290,7 @@ or reloading (<code>reload=True</code>), so we recommend using the import string
 <p>The default process manager monitors the status of child processes and automatically restarts child processes that die unexpectedly. Not only that, it will also monitor the status of the child process through the pipeline. When the child process is accidentally stuck, the corresponding child process will be killed through an unstoppable system signal or interface.</p>
 <p>You can also manage child processes by sending specific signals to the main process. (Not supported on Windows.)</p>
 <ul>
-<li><code>SIGHUP</code>: Work processes are graceful restarted one after another. If you update the code, the new worker process will use the new code.</li>
+<li><code>SIGHUP</code>: Gracefully restart the workers one at a time with no dropped requests. Fresh workers pick up new code on disk.</li>
 <li><code>SIGTTIN</code>: Increase the number of worker processes by one.</li>
 <li><code>SIGTTOU</code>: Decrease the number of worker processes by one.</li>
 </ul>
