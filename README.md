@@ -54,7 +54,6 @@ Moreover, "optional extras" means that:
 
 - the websocket protocol will be handled by `websockets` (should you want to use `wsproto` you'd need to install it manually) if possible.
 - the `--reload` flag in development mode will use `watchfiles`.
-- windows users will have `colorama` installed for the colored logs.
 - `python-dotenv` will be installed should you want to use the `--env-file` option.
 - `PyYAML` will be installed to allow you to provide a `.yaml` file to `--log-config`, if desired.
 
