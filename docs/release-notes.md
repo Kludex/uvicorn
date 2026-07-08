@@ -8,6 +8,10 @@ toc_depth: 2
 
 * Restart workers one at a time on `SIGHUP`, bringing each replacement up before retiring the old worker, so reloads no longer drop requests (#3025)
 
+### Removed
+
+* Remove `colorama` from the `standard` extra (#3027)
+
 ## 0.50.2 (July 6, 2026)
 
 ### Fixed
