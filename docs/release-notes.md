@@ -2,6 +2,12 @@
 toc_depth: 2
 ---
 
+## 0.51.0 (July 8, 2026)
+
+### Added
+
+* Restart workers one at a time on `SIGHUP`, bringing each replacement up before retiring the old worker, so reloads no longer drop requests (#3025)
+
 ## 0.50.2 (July 6, 2026)
 
 ### Fixed
