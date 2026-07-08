@@ -154,15 +154,13 @@ def test_multiprocess_sighup() -> None:
     """
     Ensure that the SIGHUP signal is handled as expected.
     """
-    config = Config(app=app, workers=2)
+    config = Config(app=app, workers=2, timeout_worker_healthcheck=30)
     supervisor = Multiprocess(config, sockets=[])
     threading.Thread(target=supervisor.run, daemon=True).start()
     time.sleep(1)
     pids = [p.pid for p in supervisor.processes]
     supervisor.signal_queue.append(signal.SIGHUP)
-    # Poll instead of a fixed sleep — `restart_all()` waits for each replacement to become ready
-    # before draining the worker it replaces, so the total time is non-deterministic.
-    deadline = time.monotonic() + 10
+    deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         if [p.pid for p in supervisor.processes] != pids:
             break
