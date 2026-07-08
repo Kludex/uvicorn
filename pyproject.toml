@@ -86,7 +86,7 @@ exclude-newer = "7 days"
 
 [tool.uv.exclude-newer-package]
 httptools = "2026-05-26"
-zttp = "2026-07-07"
+zttp = "2026-07-09"
 
 [project.scripts]
 uvicorn = "uvicorn.main:main"
