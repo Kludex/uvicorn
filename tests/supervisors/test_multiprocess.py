@@ -237,3 +237,24 @@ def test_multiprocess_sigttou() -> None:
     assert len(supervisor.processes) == 1
     supervisor.signal_queue.append(signal.SIGINT)
     supervisor.join_all()
+
+
+def _noop_target(sockets: Any = None) -> None:
+    pass  # pragma: no cover
+
+
+@pytest.mark.skipif(os.name == "nt", reason="fork is not available on Windows")
+def test_get_subprocess_forks_when_preloading() -> None:
+    from uvicorn._subprocess import get_subprocess
+
+    config = Config(app=app, workers=2, preload=True)
+    process = get_subprocess(config, target=_noop_target, sockets=[])
+    assert type(process).__name__ == "ForkProcess"
+
+
+def test_get_subprocess_spawns_by_default() -> None:
+    from uvicorn._subprocess import get_subprocess
+
+    config = Config(app=app, workers=2)
+    process = get_subprocess(config, target=_noop_target, sockets=[])
+    assert type(process).__name__ == "SpawnProcess"
