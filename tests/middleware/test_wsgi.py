@@ -136,3 +136,32 @@ def test_build_environ_encoding() -> None:
     assert environ["SCRIPT_NAME"] == "/文".encode().decode("latin-1")
     assert environ["PATH_INFO"] == b"/all".decode("latin-1")
     assert environ["HTTP_KEY"] == "value1,value2"
+    # WSGI requires SERVER_PORT to be a native string (PEP 3333).
+    assert environ["SERVER_PORT"] == "80"
+
+
+def test_build_environ_server_port_is_str() -> None:
+    scope: HTTPScope = {
+        "asgi": {"version": "3.0", "spec_version": "2.0"},
+        "scheme": "http",
+        "raw_path": b"/",
+        "type": "http",
+        "http_version": "1.1",
+        "method": "GET",
+        "path": "/",
+        "root_path": "",
+        "client": None,
+        "server": ("example.org", 8000),
+        "query_string": b"",
+        "headers": [],
+        "extensions": {},
+    }
+    message: HTTPRequestEvent = {
+        "type": "http.request",
+        "body": b"",
+        "more_body": False,
+    }
+    environ = wsgi.build_environ(scope, message, io.BytesIO(b""))
+    assert environ["SERVER_NAME"] == "example.org"
+    assert environ["SERVER_PORT"] == "8000"
+    assert isinstance(environ["SERVER_PORT"], str)
