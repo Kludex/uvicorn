@@ -58,6 +58,20 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     ctx.exit()
 
 
+def _parse_header(header: str) -> tuple[str, str]:
+    """Parse a ``Name:Value`` CLI header string into a ``(name, value)`` pair.
+
+    Raises :class:`click.BadParameter` when the required colon separator is absent.
+    """
+    if ":" not in header:
+        raise click.BadParameter(
+            f"Expected 'Name:Value' format, got '{header}'.",
+            param_hint="'--header'",
+        )
+    name, _, value = header.partition(":")
+    return name, value
+
+
 @click.command(context_settings={"auto_envvar_prefix": "UVICORN"})
 @click.argument("app", envvar="UVICORN_APP")
 @click.option(
@@ -482,7 +496,7 @@ def main(
         ssl_cert_reqs=ssl_cert_reqs,
         ssl_ca_certs=ssl_ca_certs,
         ssl_ciphers=ssl_ciphers,
-        headers=[header.split(":", 1) for header in headers],  # type: ignore[misc]
+        headers=[_parse_header(header) for header in headers],
         use_colors=use_colors,
         factory=factory,
         app_dir=app_dir,
