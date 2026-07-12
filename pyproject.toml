@@ -52,8 +52,8 @@ httpunk = [
 
 [dependency-groups]
 dev = [
-    # We add uvicorn[standard] so `uv sync` considers the extras.
-    "uvicorn[standard]",
+    # We add uvicorn[standard,httpunk] so `uv sync` considers the extras.
+    "uvicorn[standard,httpunk]",
     "ruff>=0.15.15",
     "pytest==9.0.3",
     "pytest-mock==3.15.1",
