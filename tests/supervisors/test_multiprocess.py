@@ -215,7 +215,10 @@ def test_multiprocess_sigttin() -> None:
     supervisor = Multiprocess(config, sockets=[])
     threading.Thread(target=supervisor.run, daemon=True).start()
     supervisor.signal_queue.append(signal.SIGTTIN)
-    time.sleep(1)
+    for _ in range(50):
+        if len(supervisor.processes) == 3:
+            break
+        time.sleep(0.1)
     assert len(supervisor.processes) == 3
     supervisor.signal_queue.append(signal.SIGINT)
     supervisor.join_all()
@@ -230,7 +233,10 @@ def test_multiprocess_sigttou() -> None:
     supervisor = Multiprocess(config, sockets=[])
     threading.Thread(target=supervisor.run, daemon=True).start()
     supervisor.signal_queue.append(signal.SIGTTOU)
-    time.sleep(1)
+    for _ in range(50):
+        if len(supervisor.processes) == 1:
+            break
+        time.sleep(0.1)
     assert len(supervisor.processes) == 1
     supervisor.signal_queue.append(signal.SIGTTOU)
     time.sleep(1)
