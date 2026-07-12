@@ -1829,7 +1829,7 @@ dev = [
     { name = "twine" },
     { name = "types-click" },
     { name = "types-pyyaml" },
-    { name = "uvicorn", extra = ["standard"] },
+    { name = "uvicorn", extra = ["httpunk", "standard"] },
     { name = "wsproto" },
 ]
 docs = [
@@ -1870,7 +1870,7 @@ dev = [
     { name = "twine", specifier = "==6.2.0" },
     { name = "types-click", specifier = "==7.1.8" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20260518" },
-    { name = "uvicorn", extras = ["standard"] },
+    { name = "uvicorn", extras = ["standard", "httpunk"] },
     { name = "wsproto", specifier = "==1.3.2" },
 ]
 docs = [

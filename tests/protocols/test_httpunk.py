@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import logging
-from typing import TYPE_CHECKING, cast
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 import pytest
+from httpunk.asyncio import H2ClientProtocol
 
 from tests.utils import run_server
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
@@ -35,9 +39,30 @@ class _RecordingHandler(logging.Handler):
         self.records.append(record)
 
 
-async def _run(app: object, port: int, *, log_level: str = "warning", **config_kwargs: object):
-    config = Config(app=app, loop="asyncio", port=port, http="httpunk1", log_level=log_level, **config_kwargs)  # type: ignore[arg-type]
+async def _run(app: object, port: int, *, http: str = "httpunk1", log_level: str = "warning", **config_kwargs: object):
+    config = Config(app=app, loop="asyncio", port=port, http=http, log_level=log_level, **config_kwargs)  # type: ignore[arg-type]
     return run_server(config)
+
+
+async def _ok_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+    """A minimal 200 "ok" app, shared by tests where the response body itself doesn't matter."""
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    await send({"type": "http.response.body", "body": b"ok"})
+
+
+@asynccontextmanager
+async def _h2_connection(port: int) -> AsyncIterator[Any]:
+    """Open a plaintext (h2c prior-knowledge) HTTP/2 connection using httpunk's own client;
+    yields the connection facade to send requests on. `httpx`'s http2 needs the `h2` package,
+    which isn't a dependency, so the in-repo httpunk client is used instead."""
+    loop = asyncio.get_event_loop()
+    _transport, proto = await loop.create_connection(
+        lambda: H2ClientProtocol(authority=f"127.0.0.1:{port}", scheme="http"), "127.0.0.1", port
+    )
+    try:
+        yield await proto.ready()
+    finally:
+        await proto.aclose()
 
 
 async def test_get_request(unused_tcp_port: int):
@@ -116,6 +141,8 @@ async def test_app_exception(unused_tcp_port: int):
             response = await client.get(f"http://127.0.0.1:{unused_tcp_port}/")
     assert response.status_code == 500
     assert response.text == "Internal Server Error"
+    # The 500 must still carry the configured default headers (e.g. the Server header).
+    assert response.headers.get("server") == "uvicorn"
 
 
 async def test_no_response_returned(unused_tcp_port: int):
@@ -204,3 +231,74 @@ async def test_init_loads_config():
     protocol = HTTPunkH1Protocol(config=config, server_state=ServerState(), app_state={})
     assert config.loaded
     assert protocol.app is not None
+
+
+async def test_total_requests_counted(unused_tcp_port: int):
+    """Each completed request is counted in `server_state.total_requests` (what drives
+    `--limit-max-requests`)."""
+    async with await _run(_ok_app, unused_tcp_port) as server:
+        async with httpx.AsyncClient() as client:
+            await client.get(f"http://127.0.0.1:{unused_tcp_port}/")
+            await client.get(f"http://127.0.0.1:{unused_tcp_port}/")
+    # Checked after shutdown has drained the connection, so every request has finished counting.
+    assert server.server_state.total_requests == 2
+
+
+async def test_limit_concurrency(unused_tcp_port: int):
+    """Over the concurrency limit, the app is replaced by uvicorn's 503 response."""
+    # limit=1 with the single open connection already at the limit -> 503, matching h11/httptools.
+    async with await _run(_ok_app, unused_tcp_port, limit_concurrency=1):
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"http://127.0.0.1:{unused_tcp_port}/")
+    assert response.status_code == 503
+    assert response.text == "Service Unavailable"
+
+
+async def test_h2_request(unused_tcp_port: int):
+    """A basic HTTP/2 request is served, with the request seen as http_version '2'."""
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        http_scope = cast("HTTPScope", scope)
+        body = f"{http_scope['type']}/{http_scope['http_version']}".encode()
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": body})
+
+    async with await _run(app, unused_tcp_port, http="httpunk2"):
+        async with _h2_connection(unused_tcp_port) as conn:
+            response = await conn.request("GET", "/", headers={"host": f"127.0.0.1:{unused_tcp_port}"})
+            body = await response.read()
+    assert response.status == 200
+    assert body == b"http/2"
+    assert dict(response.headers.items()).get("server") == b"uvicorn"
+
+
+async def test_h2_concurrent_streams(unused_tcp_port: int):
+    """Many requests multiplexed on a single HTTP/2 connection are each handled independently."""
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        http_scope = cast("HTTPScope", scope)
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": http_scope["path"].encode()})
+
+    async with await _run(app, unused_tcp_port, http="httpunk2") as server:
+        async with _h2_connection(unused_tcp_port) as conn:
+
+            async def one(i: int) -> bytes:
+                response = await conn.request("GET", f"/{i}", headers={"host": f"127.0.0.1:{unused_tcp_port}"})
+                return await response.read()
+
+            results = await asyncio.gather(*(one(i) for i in range(6)))
+    assert results == [f"/{i}".encode() for i in range(6)]
+    assert server.server_state.total_requests == 6
+
+
+async def test_h2_limit_concurrency(unused_tcp_port: int):
+    """The 503 path works over HTTP/2: `service_unavailable`'s `connection: close` header —
+    illegal in HTTP/2 — is stripped instead of resetting the stream."""
+
+    async with await _run(_ok_app, unused_tcp_port, http="httpunk2", limit_concurrency=1):
+        async with _h2_connection(unused_tcp_port) as conn:
+            response = await conn.request("GET", "/", headers={"host": f"127.0.0.1:{unused_tcp_port}"})
+            body = await response.read()
+    assert response.status == 503
+    assert body == b"Service Unavailable"

@@ -10,6 +10,7 @@ from httpunk.asyncio import AutoServerProtocol, H1ServerProtocol, H2ServerProtoc
 from httpunk.h2.server import ServerRequest as _H2ServerRequest
 
 from uvicorn.config import Config
+from uvicorn.protocols.http.flow_control import service_unavailable
 from uvicorn.protocols.utils import (
     get_client_addr,
     get_local_addr,
@@ -31,6 +32,12 @@ if TYPE_CHECKING:
     from uvicorn.server import Protocols
 else:
     _BridgeBase = object
+
+
+# Connection-specific header fields are forbidden in HTTP/2 (RFC 9113 §8.2.2); httpunk's h2 codec
+# rejects a response carrying one (RST_STREAM PROTOCOL_ERROR). uvicorn's `service_unavailable`
+# emits `connection: close` and apps may set these too, so they are stripped from h2 responses.
+_H2_ILLEGAL_HEADERS = frozenset((b"connection", b"keep-alive", b"proxy-connection", b"transfer-encoding", b"upgrade"))
 
 
 async def _body_gen(queue: asyncio.Queue[tuple[bytes, bool]]) -> Any:
@@ -88,6 +95,7 @@ class _ASGIBridge(_BridgeBase):
         self.tasks = server_state.tasks
         self.app_state = app_state
         self.ws_protocol_class = config.ws_protocol_class
+        self.limit_concurrency = config.limit_concurrency
 
         self.server: tuple[str, int | None] | None = None
         self.client: tuple[str, int] | None = None
@@ -144,8 +152,20 @@ class _ASGIBridge(_BridgeBase):
             self._upgrade_websocket(request)  # pragma: no cover
             return  # pragma: no cover
         scope = self._build_scope(request)
+        is_h2 = scope["http_version"] == "2"
         # Response headers must NOT include a second Date — httpunk's h1 codec writes one.
         default_headers = [h for h in self.server_state.default_headers if h[0].lower() != b"date"]
+
+        # Enforce the concurrency limit up front, as the h11/httptools protocols do: over the
+        # limit, serve uvicorn's 503 instead of the app. `tasks` (one per in-flight request, see
+        # below) is what makes this meaningful under HTTP/2, where a single connection multiplexes
+        # many concurrent requests and `connections` alone would badly undercount them.
+        app = self.app
+        if self.limit_concurrency is not None and (
+            len(self.connections) >= self.limit_concurrency or len(self.tasks) >= self.limit_concurrency
+        ):
+            app = service_unavailable
+            self.logger.warning("Exceeded concurrency limit.")
 
         st: dict[str, Any] = {"started": False, "complete": False, "status": 500, "headers": default_headers}
         # `stream` stays None for the common single-body response (fast path: one direct
@@ -174,7 +194,10 @@ class _ASGIBridge(_BridgeBase):
                     raise RuntimeError(f"Expected ASGI 'http.response.start' but got '{mtype}'.")  # pragma: no cover
                 st["started"] = True
                 st["status"] = message["status"]
-                st["headers"] = default_headers + list(message.get("headers", []))
+                headers = default_headers + list(message.get("headers", []))
+                if is_h2:
+                    headers = [h for h in headers if h[0].lower() not in _H2_ILLEGAL_HEADERS]
+                st["headers"] = headers
                 return
             if st["complete"]:
                 raise RuntimeError(f"Unexpected ASGI message '{mtype}' after response completed.")  # pragma: no cover
@@ -202,30 +225,41 @@ class _ASGIBridge(_BridgeBase):
                 st["complete"] = True
                 self._access(scope, st["status"])
 
+        # Run the app as a task registered in `server_state.tasks`, so the server can (a) count it
+        # toward the concurrency limit and (b) cancel it if `timeout_graceful_shutdown` is exceeded
+        # — mirroring the h11/httptools protocols, which register their request cycle the same way.
+        # Under HTTP/2 each concurrent stream runs its own `handle()`, so this yields one tracked
+        # task per in-flight request rather than one per connection.
+        app_task = self.loop.create_task(app(scope, receive, send))
+        self.tasks.add(app_task)
+        app_task.add_done_callback(self.tasks.discard)
         try:
-            await self.app(scope, receive, send)
-        except Exception:
-            self.logger.error("Exception in ASGI application\n", exc_info=True)
-            if not st["started"]:
-                await self._send_500(request)
-            else:  # pragma: no cover
-                if stream is not None:
-                    stream[1].cancel()
-                self.close()
-            return
+            try:
+                await app_task
+            except Exception:
+                self.logger.error("Exception in ASGI application\n", exc_info=True)
+                if not st["started"]:
+                    await self._send_500(request, default_headers)
+                else:  # pragma: no cover
+                    if stream is not None:
+                        stream[1].cancel()
+                    self.close()
+                return
 
-        if not st["started"]:
-            self.logger.error("ASGI callable returned without starting a response.")
-            await self._send_500(request)
-        elif stream is not None:
-            if not st["complete"]:  # app returned mid-stream: end the body generator
-                await stream[0].put((b"", False))  # pragma: no cover
-            # Await the send BEFORE returning: httpunk's serial h1 loop won't yield the next
-            # request until handle() returns, so the response must fully flush first.
-            await stream[1]
-        elif not st["complete"]:  # started but sent no body event
-            await request.respond(st["status"], headers=st["headers"], body=b"")
-            self._access(scope, st["status"])
+            if not st["started"]:
+                self.logger.error("ASGI callable returned without starting a response.")
+                await self._send_500(request, default_headers)
+            elif stream is not None:
+                if not st["complete"]:  # app returned mid-stream: end the body generator
+                    await stream[0].put((b"", False))  # pragma: no cover
+                # Await the send BEFORE returning: httpunk's serial h1 loop won't yield the next
+                # request until handle() returns, so the response must fully flush first.
+                await stream[1]
+            elif not st["complete"]:  # started but sent no body event
+                await request.respond(st["status"], headers=st["headers"], body=b"")
+                self._access(scope, st["status"])
+        finally:
+            self.server_state.total_requests += 1
 
     def _access(self, scope: dict[str, Any], status: int) -> None:
         if self.access_log:
@@ -239,11 +273,11 @@ class _ASGIBridge(_BridgeBase):
                 status,
             )
 
-    async def _send_500(self, request: Any) -> None:
+    async def _send_500(self, request: Any, default_headers: list[tuple[bytes, bytes]]) -> None:
         try:
             await request.respond(
                 500,
-                headers=[(b"content-type", b"text/plain; charset=utf-8")],
+                headers=default_headers + [(b"content-type", b"text/plain; charset=utf-8")],
                 body=http.HTTPStatus.INTERNAL_SERVER_ERROR.phrase.encode("ascii"),
             )
         except Exception:  # pragma: no cover
