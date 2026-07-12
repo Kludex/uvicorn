@@ -6,6 +6,7 @@ import contextvars
 import json
 import logging
 import signal
+import socket
 import sys
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
@@ -276,3 +277,38 @@ async def test_reset_contextvars_asyncio(
     ) as extract_json_body:
         assert await extract_json_body(large_request) == {}
         assert await extract_json_body(SIMPLE_GET_REQUEST) == {}
+
+
+@pytest.mark.skipif(not socket.has_dualstack_ipv6(), reason="requires dual-stack IPv6 support")
+@pytest.mark.skipif(sys.platform == "win32", reason="requires unix-like system")
+async def test_ipv6_single_worker_does_not_set_v6only(unused_tcp_port: int) -> None:  # pragma: py-win32
+    import socket as _socket
+    import typing
+
+    created_socks: list[_socket.socket] = []
+
+    class CapturingSocket(_socket.socket):
+        def __init__(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+            super().__init__(*args, **kwargs)
+            created_socks.append(self)
+
+    config = Config(app=app, host="::", port=unused_tcp_port)
+    config.load()
+    server = Server(config=config)
+
+    with pytest.MonkeyPatch().context() as mp:
+        mp.setattr(_socket, "socket", CapturingSocket)
+        serve_task = asyncio.create_task(server.serve())
+        await asyncio.sleep(0.1)
+
+        ipv6_socks = [s for s in created_socks if s.family == _socket.AF_INET6]
+        assert ipv6_socks
+        with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as default_sock:
+            expected_default = default_sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY)
+
+        for sock in ipv6_socks:
+            v6only = sock.getsockopt(_socket.IPPROTO_IPV6, _socket.IPV6_V6ONLY)
+            assert v6only == expected_default
+
+        server.should_exit = True
+        await serve_task

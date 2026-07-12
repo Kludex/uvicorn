@@ -166,16 +166,30 @@ class Server:
 
         else:
             # Standard case. Create a socket from a host/port pair.
+            family = socket.AF_INET
+            if config.host and ":" in config.host:
+                family = socket.AF_INET6
+
+            sock = socket.socket(family=family)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind((config.host or "", config.port))
+            except OSError as exc:
+                logger.error(exc)
+                sock.close()
+                await self.lifespan.shutdown()
+                sys.exit(STARTUP_FAILURE)
+
             try:
                 server = await loop.create_server(
                     create_protocol,
-                    host=config.host,
-                    port=config.port,
+                    sock=sock,
                     ssl=config.ssl,
                     backlog=config.backlog,
                 )
-            except OSError as exc:
+            except OSError as exc:  # pragma: full coverage
                 logger.error(exc)
+                sock.close()
                 await self.lifespan.shutdown()
                 sys.exit(STARTUP_FAILURE)
 
