@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -290,6 +291,25 @@ async def test_h2_concurrent_streams(unused_tcp_port: int):
             results = await asyncio.gather(*(one(i) for i in range(6)))
     assert results == [f"/{i}".encode() for i in range(6)]
     assert server.server_state.total_requests == 6
+
+
+async def test_reset_contextvars(unused_tcp_port: int):
+    """With `reset_contextvars=True`, the app runs in a fresh context, so a ContextVar set on the
+    serve task is not visible inside it."""
+    var: contextvars.ContextVar[str] = contextvars.ContextVar("test_httpunk_ctx", default="default")
+    var.set("outer")
+    seen: dict[str, str] = {}
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        seen["value"] = var.get()
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    async with await _run(app, unused_tcp_port, reset_contextvars=True):
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"http://127.0.0.1:{unused_tcp_port}/")
+    assert response.status_code == 200
+    assert seen["value"] == "default"  # the outer "outer" value did not leak into the fresh context
 
 
 async def test_h2_limit_concurrency(unused_tcp_port: int):

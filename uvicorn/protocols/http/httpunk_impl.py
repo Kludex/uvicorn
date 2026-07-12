@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import http
 import logging
+import sys
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import unquote
 
@@ -225,18 +227,13 @@ class _ASGIBridge(_BridgeBase):
                 st["complete"] = True
                 self._access(scope, st["status"])
 
-        # Run the app as a task registered in `server_state.tasks`, so the server can (a) count it
-        # toward the concurrency limit and (b) cancel it if `timeout_graceful_shutdown` is exceeded
-        # — mirroring the h11/httptools protocols, which register their request cycle the same way.
-        # Under HTTP/2 each concurrent stream runs its own `handle()`, so this yields one tracked
-        # task per in-flight request rather than one per connection.
-        app_task = self.loop.create_task(app(scope, receive, send))
-        self.tasks.add(app_task)
-        app_task.add_done_callback(self.tasks.discard)
-        try:
+        async def run_asgi() -> None:
+            # `except BaseException` (not `Exception`) so that if this task is cancelled — e.g. the
+            # server force-cancels it after `timeout_graceful_shutdown` — the cancellation is still
+            # logged and the connection cleaned up, exactly as h11's `run_asgi` does.
             try:
-                await app_task
-            except Exception:
+                await app(scope, receive, send)
+            except BaseException:
                 self.logger.error("Exception in ASGI application\n", exc_info=True)
                 if not st["started"]:
                     await self._send_500(request, default_headers)
@@ -258,6 +255,25 @@ class _ASGIBridge(_BridgeBase):
             elif not st["complete"]:  # started but sent no body event
                 await request.respond(st["status"], headers=st["headers"], body=b"")
                 self._access(scope, st["status"])
+
+        # Run the request as a task registered in `server_state.tasks`, so the server can (a) count
+        # it toward the concurrency limit and (b) cancel it if `timeout_graceful_shutdown` is
+        # exceeded — mirroring the h11/httptools protocols, which register their request cycle the
+        # same way. Under HTTP/2 each concurrent stream runs its own `handle()`, so this yields one
+        # tracked task per in-flight request rather than one per connection.
+        if self.config.reset_contextvars:
+            # Opt-in: run the app in a fresh context so ContextVars from the serve task don't leak
+            # into it (matches h11/httptools; see https://github.com/encode/uvicorn/issues/2167).
+            if sys.version_info >= (3, 11):  # pragma: py-lt-311
+                task = self.loop.create_task(run_asgi(), context=contextvars.Context())
+            else:  # pragma: py-gte-311
+                task = contextvars.Context().run(self.loop.create_task, run_asgi())
+        else:
+            task = self.loop.create_task(run_asgi())
+        self.tasks.add(task)
+        task.add_done_callback(self.tasks.discard)
+        try:
+            await task
         finally:
             self.server_state.total_requests += 1
 
