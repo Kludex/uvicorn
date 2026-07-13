@@ -42,15 +42,79 @@ else:
 _H2_ILLEGAL_HEADERS = frozenset((b"connection", b"keep-alive", b"proxy-connection", b"transfer-encoding", b"upgrade"))
 
 
-async def _body_gen(queue: asyncio.Queue[tuple[bytes, bool]]) -> Any:
-    """Drain (body, more_body) items from `queue` into the byte stream httpunk's respond()
-    consumes; used only on the streaming fallback path."""
-    while True:
-        chunk, more = await queue.get()
-        if chunk:
-            yield chunk
-        if not more:
+class _StreamAborted(Exception):
+    """Raised into respond()'s body iteration to abort a streaming response mid-body (app
+    crash / teardown): httpunk's send path then closes the transport, so the peer sees a
+    truncated (chunked-incomplete / RST) response rather than a falsely-complete one."""
+
+
+class _BodyHandoff:
+    """Single-slot handoff of response-body chunks from ASGI ``send()`` (the producer) to
+    the body iterable ``respond()`` consumes (streaming responses only). Cheaper than the
+    queue + responder-task it replaces: in the common producer-ahead flow neither side
+    suspends — a non-empty chunk parks the producer only while the previous one is still
+    unconsumed (which is what ties ASGI send() backpressure to httpunk's send rate; h2
+    DATA is flow-control-gated), and the end-of-body marker never parks. ``abort()``
+    mirrors the h11/httptools disconnect behavior: the consumer raises (truncating the
+    wire response), while a parked producer is released and further puts no-op so the app
+    can run to completion."""
+
+    __slots__ = ("_loop", "_chunk", "_ended", "_aborted", "_get_waiter", "_put_waiter")
+
+    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
+        self._loop = loop
+        self._chunk: bytes | None = None  # pending non-empty chunk (the slot)
+        self._ended = False  # no more chunks will arrive (final body event seen)
+        self._aborted = False
+        self._get_waiter: asyncio.Future[None] | None = None  # consumer parked in __anext__
+        self._put_waiter: asyncio.Future[None] | None = None  # producer parked in put
+
+    def __aiter__(self) -> _BodyHandoff:
+        return self
+
+    async def __anext__(self) -> bytes:
+        while True:
+            if self._aborted:
+                raise _StreamAborted
+            chunk = self._chunk
+            if chunk is not None:
+                self._chunk = None
+                if self._put_waiter is not None and not self._put_waiter.done():
+                    self._put_waiter.set_result(None)
+                return chunk
+            if self._ended:
+                raise StopAsyncIteration
+            self._get_waiter = self._loop.create_future()
+            try:
+                await self._get_waiter
+            finally:
+                self._get_waiter = None
+
+    async def put(self, chunk: bytes, more: bool) -> None:
+        if self._aborted:
             return
+        if chunk:
+            if self._chunk is not None:  # slot occupied — backpressure the producer
+                self._put_waiter = self._loop.create_future()
+                try:
+                    await self._put_waiter
+                finally:
+                    self._put_waiter = None
+                if self._aborted:
+                    return
+            self._chunk = chunk
+        elif more:
+            return  # empty non-final chunk: nothing to send, nothing to signal
+        if not more:
+            self._ended = True
+        if self._get_waiter is not None and not self._get_waiter.done():
+            self._get_waiter.set_result(None)
+
+    def abort(self) -> None:
+        self._aborted = True
+        for waiter in (self._get_waiter, self._put_waiter):
+            if waiter is not None and not waiter.done():
+                waiter.set_result(None)
 
 
 def _is_ws_upgrade(request: Any) -> bool:
@@ -103,6 +167,11 @@ class _ASGIBridge(_BridgeBase):
         self.client: tuple[str, int] | None = None
         self.scheme: str | None = None
 
+        # Cache of server_state.default_headers with the Date header stripped, keyed on
+        # the source list's identity (see _response_default_headers).
+        self._default_headers_src: list[tuple[bytes, bytes]] | None = None
+        self._default_headers: list[tuple[bytes, bytes]] = []
+
     # ----- asyncio.Protocol lifecycle (httpunk owns the serve loop) -----
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
@@ -124,6 +193,17 @@ class _ASGIBridge(_BridgeBase):
         self.loop.create_task(self.graceful_shutdown())
 
     # ----- ASGI bridge -----
+
+    def _response_default_headers(self) -> list[tuple[bytes, bytes]]:
+        # Response headers must NOT include a second Date — httpunk's codecs write one.
+        # The server rebuilds `default_headers` as a fresh list once per second (the date
+        # tick), so the date-stripped copy is cached keyed on the source list's identity
+        # rather than recomputed per request.
+        src = self.server_state.default_headers
+        if src is not self._default_headers_src:
+            self._default_headers_src = src
+            self._default_headers = [h for h in src if h[0].lower() != b"date"]
+        return self._default_headers
 
     def _build_scope(self, request: Any) -> dict[str, Any]:
         is_h2 = isinstance(request, _H2ServerRequest)
@@ -155,8 +235,7 @@ class _ASGIBridge(_BridgeBase):
             return  # pragma: no cover
         scope = self._build_scope(request)
         is_h2 = scope["http_version"] == "2"
-        # Response headers must NOT include a second Date — httpunk's h1 codec writes one.
-        default_headers = [h for h in self.server_state.default_headers if h[0].lower() != b"date"]
+        default_headers = self._response_default_headers()
 
         # Enforce the concurrency limit up front, as the h11/httptools protocols do: over the
         # limit, serve uvicorn's 503 instead of the app. `tasks` (one per in-flight request, see
@@ -169,13 +248,43 @@ class _ASGIBridge(_BridgeBase):
             app = service_unavailable
             self.logger.warning("Exceeded concurrency limit.")
 
-        st: dict[str, Any] = {"started": False, "complete": False, "status": 500, "headers": default_headers}
+        st: dict[str, Any] = {
+            "started": False,
+            "complete": False,
+            "aborted": False,
+            "status": 500,
+            "headers": default_headers,
+        }
         # `stream` stays None for the common single-body response (fast path: one direct
-        # respond(), no task/queue). It becomes (queue, responder_task) only if the app sends
-        # a body with more_body=True — genuine streaming, where respond() must run concurrently.
-        stream: tuple[asyncio.Queue[tuple[bytes, bool]], asyncio.Future[Any]] | None = None
+        # respond() inside the app task, nothing extra). It becomes a `_BodyHandoff` only if
+        # the app sends a body with more_body=True — genuine streaming, where respond() must
+        # run concurrently with the app. It then runs HERE, in handle() (which would otherwise
+        # just idle awaiting the app task), fed through the handoff — no responder task, no
+        # queue. `streaming` is how handle() learns which of the two happened: resolved True
+        # at the first streaming chunk, False once the app task finishes without streaming.
+        stream: _BodyHandoff | None = None
+        streaming: asyncio.Future[bool] = self.loop.create_future()
+        # First streaming chunk, buffered for one loop tick before committing to a streamed
+        # response (see `commit` below). Distinct states: pending is None + stream is None =
+        # no streaming body event yet; pending set + stream None = deferred, nothing on the
+        # wire; stream set = committed, respond() is (about to be) running in handle().
+        pending: bytes | None = None
 
         body_iter = request.aiter_bytes()
+
+        def commit() -> None:
+            # Commit to a genuinely streamed response: wake handle() to run respond() over
+            # the handoff, pre-loaded with the deferred first chunk. Runs one loop tick after
+            # that chunk arrived (via call_soon) — i.e. only once the app has suspended — or
+            # directly from send() when a second chunk shows up within the tick.
+            nonlocal stream, pending
+            if stream is not None or st["complete"] or st["aborted"]:
+                return
+            stream = _BodyHandoff(self.loop)
+            if pending:
+                stream._chunk = pending  # slot is empty by construction — no park, no wake
+            pending = None
+            streaming.set_result(True)
 
         async def receive() -> dict[str, Any]:
             if st["complete"]:
@@ -205,24 +314,37 @@ class _ASGIBridge(_BridgeBase):
                 raise RuntimeError(f"Unexpected ASGI message '{mtype}' after response completed.")  # pragma: no cover
             if mtype != "http.response.body":
                 raise RuntimeError(f"Expected ASGI 'http.response.body' but got '{mtype}'.")  # pragma: no cover
+            nonlocal pending
             body = message.get("body", b"")
             more = message.get("more_body", False)
-            if stream is None and not more:
-                # Fast path: the whole body arrived in one event — a single respond() call sends
-                # head + body, no responder task, no queue.
-                st["complete"] = True
-                await request.respond(st["status"], headers=st["headers"], body=body)
-                self._access(scope, st["status"])
-                return
             if stream is None:
-                # Switch to streaming: respond() drains a queue that send() feeds; maxsize=1 ties
-                # ASGI send() backpressure to httpunk's send rate (h2 DATA is flow-control-gated).
-                queue: asyncio.Queue[tuple[bytes, bool]] = asyncio.Queue(maxsize=1)
-                responder = asyncio.ensure_future(
-                    request.respond(st["status"], headers=st["headers"], body=_body_gen(queue))
-                )
-                stream = (queue, responder)
-            await stream[0].put((body, more))
+                if pending is None:
+                    if not more:
+                        # Fast path: the whole body arrived in one event — a single respond()
+                        # call sends head + body.
+                        st["complete"] = True
+                        await request.respond(st["status"], headers=st["headers"], body=body)
+                        self._access(scope, st["status"])
+                        return
+                    # more_body=True: don't commit to a streamed response yet — buffer this one
+                    # chunk and give the app one loop tick. Apps that emit their whole body
+                    # without suspending (a receive() served from the buffer, back-to-back
+                    # sends) collapse into the single-respond fast path above; a real streamer
+                    # suspends, the tick elapses, and `commit` flushes this chunk immediately.
+                    pending = body
+                    self.loop.call_soon(commit)
+                    return
+                if not more:
+                    # The rest of the body arrived within the deferral tick: de-stream into
+                    # one respond() — nothing is on the wire yet.
+                    st["complete"] = True
+                    body = pending + body if pending and body else pending or body
+                    pending = None
+                    await request.respond(st["status"], headers=st["headers"], body=body)
+                    self._access(scope, st["status"])
+                    return
+                commit()  # a second chunk within the tick: stop buffering, stream for real
+            await stream.put(body, more)  # type: ignore[union-attr]
             if not more:
                 st["complete"] = True
                 self._access(scope, st["status"])
@@ -232,29 +354,35 @@ class _ASGIBridge(_BridgeBase):
             # server force-cancels it after `timeout_graceful_shutdown` — the cancellation is still
             # logged and the connection cleaned up, exactly as h11's `run_asgi` does.
             try:
-                await app(scope, receive, send)
-            except BaseException:
-                self.logger.error("Exception in ASGI application\n", exc_info=True)
-                if not st["started"]:
-                    await self._send_500(request, default_headers)
-                else:  # pragma: no cover
-                    if stream is not None:
-                        stream[1].cancel()
-                    self.close()
-                return
+                try:
+                    await app(scope, receive, send)
+                except BaseException:
+                    self.logger.error("Exception in ASGI application\n", exc_info=True)
+                    st["aborted"] = True  # a still-pending deferred commit must not fire now
+                    if not st["started"]:
+                        await self._send_500(request, default_headers)
+                    else:  # pragma: no cover
+                        if stream is not None:
+                            stream.abort()  # respond() in handle() raises -> transport closed
+                        self.close()
+                    return
 
-            if not st["started"]:
-                self.logger.error("ASGI callable returned without starting a response.")
-                await self._send_500(request, default_headers)
-            elif stream is not None:
-                if not st["complete"]:  # app returned mid-stream: end the body generator
-                    await stream[0].put((b"", False))  # pragma: no cover
-                # Await the send BEFORE returning: httpunk's serial h1 loop won't yield the next
-                # request until handle() returns, so the response must fully flush first.
-                await stream[1]
-            elif not st["complete"]:  # started but sent no body event
-                await request.respond(st["status"], headers=st["headers"], body=b"")
-                self._access(scope, st["status"])
+                if not st["started"]:
+                    self.logger.error("ASGI callable returned without starting a response.")
+                    await self._send_500(request, default_headers)
+                elif stream is not None:
+                    if not st["complete"]:  # app returned mid-stream: end the body iterator
+                        await stream.put(b"", False)  # pragma: no cover
+                elif not st["complete"]:
+                    # Started but never finished the body: either no body event at all, or the
+                    # app returned inside the deferral tick — its buffered chunk (if any) is
+                    # the whole body, and nothing is on the wire yet.
+                    st["complete"] = True
+                    await request.respond(st["status"], headers=st["headers"], body=pending or b"")
+                    self._access(scope, st["status"])
+            finally:
+                if not streaming.done():  # tell handle() no streaming response will come
+                    streaming.set_result(False)
 
         # Run the request as a task registered in `server_state.tasks`, so the server can (a) count
         # it toward the concurrency limit and (b) cancel it if `timeout_graceful_shutdown` is
@@ -271,9 +399,37 @@ class _ASGIBridge(_BridgeBase):
         else:
             task = self.loop.create_task(run_asgi())
         self.tasks.add(task)
-        task.add_done_callback(self.tasks.discard)
+
+        def _on_task_done(t: asyncio.Future[None]) -> None:
+            self.tasks.discard(t)
+            if not streaming.done():  # pragma: no cover
+                # run_asgi's finally normally resolves this; a task cancelled before its
+                # first step never entered that try, and would park handle() forever.
+                streaming.set_result(False)
+
+        task.add_done_callback(_on_task_done)
         try:
+            if await streaming:
+                try:
+                    # The streaming respond() runs here, in handle()'s otherwise-idle await,
+                    # consuming chunks straight from ASGI send() via the handoff. It returns
+                    # once the final chunk is flushed — before the next h1 request is read.
+                    await request.respond(st["status"], headers=st["headers"], body=stream)
+                except Exception:  # pragma: no cover
+                    # Mid-stream failure: client gone, or the app crashed and abort()ed the
+                    # body. httpunk already closed the transport; release a parked producer
+                    # (further sends no-op, as h11/httptools do on disconnect) and let the
+                    # app task run to completion below.
+                    stream.abort()  # type: ignore[union-attr]
+                    self.close()
             await task
+        except BaseException:  # pragma: no cover
+            # handle() dying for any other reason (e.g. cancelled on h2 connection failure /
+            # force shutdown) must release a producer parked in put(), or the app task would
+            # never finish.
+            if stream is not None:
+                stream.abort()
+            raise
         finally:
             self.server_state.total_requests += 1
 

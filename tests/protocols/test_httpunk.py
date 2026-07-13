@@ -14,7 +14,7 @@ from httpunk.asyncio import H2ClientProtocol
 from tests.utils import run_server
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.config import Config
-from uvicorn.protocols.http.httpunk_impl import HTTPunkH1Protocol, _is_ws_upgrade
+from uvicorn.protocols.http.httpunk_impl import HTTPunkH1Protocol, _BodyHandoff, _is_ws_upgrade, _StreamAborted
 from uvicorn.server import ServerState
 
 if TYPE_CHECKING:
@@ -116,6 +116,67 @@ async def test_streaming_response(unused_tcp_port: int):
             response = await client.get(f"http://127.0.0.1:{unused_tcp_port}/")
     assert response.status_code == 200
     assert response.text == "chunk-1chunk-2"
+
+
+async def test_destreamed_response(unused_tcp_port: int):
+    """A multi-part body completed within one loop tick never commits to streaming: it
+    collapses into a single Content-Length respond() instead of a chunked response."""
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"part-1;", "more_body": True})
+        await send({"type": "http.response.body", "body": b"part-2", "more_body": False})
+
+    async with await _run(app, unused_tcp_port):
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"http://127.0.0.1:{unused_tcp_port}/")
+    assert response.status_code == 200
+    assert response.text == "part-1;part-2"
+    assert response.headers.get("content-length") == "13"
+    assert "transfer-encoding" not in response.headers
+
+
+async def test_streaming_response_flushes_between_awaits(unused_tcp_port: int):
+    """A streamer that suspends between chunks commits on the next loop tick (via the
+    deferred call_soon) — the response stays chunked, the first chunk isn't held back."""
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"tick;", "more_body": True})
+        await asyncio.sleep(0.05)
+        await send({"type": "http.response.body", "body": b"tock", "more_body": False})
+
+    async with await _run(app, unused_tcp_port):
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"http://127.0.0.1:{unused_tcp_port}/")
+    assert response.status_code == 200
+    assert response.text == "tick;tock"
+    assert response.headers.get("transfer-encoding") == "chunked"
+
+
+async def test_body_handoff_abort_releases_parked_consumer():
+    """abort() wakes a consumer parked in __anext__, which then raises _StreamAborted
+    (truncating the wire response); later puts from the producer are silent no-ops."""
+    handoff = _BodyHandoff(asyncio.get_event_loop())
+    consumer = asyncio.ensure_future(handoff.__anext__())
+    await asyncio.sleep(0)  # let the consumer park in its get-waiter
+    handoff.abort()
+    with pytest.raises(_StreamAborted):
+        await consumer
+    await handoff.put(b"late", True)  # producer outlives the abort: dropped, no park
+
+
+async def test_body_handoff_abort_releases_parked_producer():
+    """A non-empty chunk behind an unconsumed one parks the producer (backpressure);
+    abort() releases it without delivering the chunk. Empty non-final puts are no-ops."""
+    handoff = _BodyHandoff(asyncio.get_event_loop())
+    await handoff.put(b"first", True)  # slot free: returns without parking
+    await handoff.put(b"", True)  # empty non-final chunk: nothing to hand over
+    producer = asyncio.ensure_future(handoff.put(b"second", True))
+    await asyncio.sleep(0)  # let the producer park on the occupied slot
+    assert not producer.done()
+    handoff.abort()
+    await producer  # released by the abort, the parked chunk is dropped
 
 
 async def test_start_only_response(unused_tcp_port: int):
