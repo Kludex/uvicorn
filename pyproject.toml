@@ -47,7 +47,7 @@ standard = [
     "websockets>=13.0",
 ]
 httpunk = [
-    "httpunk~=0.1.1",
+    "httpunk~=0.1.2",
 ]
 
 [dependency-groups]
@@ -86,7 +86,7 @@ exclude-newer = "7 days"
 
 [tool.uv.exclude-newer-package]
 httptools = "2026-05-26"
-httpunk = "2026-07-12"
+httpunk = "2026-07-14"
 
 [project.scripts]
 uvicorn = "uvicorn.main:main"

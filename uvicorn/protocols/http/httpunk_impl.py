@@ -224,8 +224,8 @@ class _ASGIBridge(_BridgeBase):
             "path": path,
             "raw_path": raw_path_bytes,
             "query_string": query_string.encode("latin-1"),
-            # httpunk lower-cases header names to str and keeps values as bytes.
-            "headers": [(name.encode("latin-1"), value) for name, value in request.headers.items()],
+            # One crossing, ASGI-shaped (bytes, bytes) pairs, names already lowercase.
+            "headers": request.headers.raw_items(),
             "state": self.app_state.copy(),
         }
 
