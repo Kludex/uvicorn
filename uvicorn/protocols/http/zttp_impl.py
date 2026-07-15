@@ -10,7 +10,6 @@ from typing import Any, Literal
 from urllib.parse import unquote
 
 import zttp
-from zttp import Event
 
 from uvicorn._types import (
     ASGI3Application,
@@ -149,7 +148,7 @@ class ZttpProtocol(asyncio.Protocol):
         self.conn.receive_data(data)
         self.handle_events()
 
-    def events(self) -> Generator[Event]:
+    def events(self) -> Generator[zttp.Event]:
         """Yield every complete event currently available."""
         while True:
             event = self.conn.next_event()
@@ -336,6 +335,7 @@ class RequestResponseCycle:
         on_response: Callable[..., None],
     ) -> None:
         self.scope = scope
+        assert isinstance(conn, zttp.H1Connection)
         self.conn = conn
         self.transport = transport
         self.flow = flow
