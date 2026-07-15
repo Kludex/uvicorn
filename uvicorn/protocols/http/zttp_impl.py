@@ -229,10 +229,12 @@ class ZttpProtocol(asyncio.Protocol):
                     self.cycle.message_event.set()
 
                 elif isinstance(event, zttp.EndOfMessage):
-                    if self.cycle is None or self.cycle.response_complete:
+                    if self.cycle is None:
                         continue  # pragma: no cover
                     self.cycle.more_body = False
                     self.cycle.message_event.set()
+                    if self.cycle.response_complete:
+                        self.conn.start_next_cycle()
         except zttp.RemoteProtocolError:
             msg = "Invalid HTTP request received."
             self.logger.warning(msg)
@@ -284,10 +286,12 @@ class ZttpProtocol(asyncio.Protocol):
         # Unpause data reads if needed.
         self.flow.resume_reading()
 
-        # Reset the parser for the next request on a keep-alive connection,
-        # then unblock any events that arrived while we were responding.
-        self.conn.start_next_cycle()
-        self.handle_events()
+        # Do not reset the parser until the complete request body has arrived.
+        # An application may respond before consuming it; any remaining body
+        # still belongs to the current request and must be discarded as such.
+        if self.cycle is not None and not self.cycle.more_body:
+            self.conn.start_next_cycle()
+            self.handle_events()
 
     def shutdown(self) -> None:
         """
