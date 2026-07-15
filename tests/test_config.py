@@ -20,7 +20,7 @@ from pytest_mock import MockerFixture
 from tests.custom_loop_utils import CustomLoop
 from tests.utils import as_cwd, get_asyncio_default_loop_per_os
 from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallable, Environ, Scope, StartResponse
-from uvicorn.config import Config, LoopFactoryType
+from uvicorn.config import Config, LoopFactoryType, UvicornDeprecationWarning
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from uvicorn.middleware.wsgi import WSGIMiddleware
 from uvicorn.protocols.http.h11_impl import H11Protocol
@@ -496,6 +496,14 @@ def test_config_log_level_case_insensitive(log_level: str) -> None:
     config = Config(app=asgi_app, log_level=log_level)
     config.load()
     assert logging.getLogger("uvicorn.error").level == logging.INFO
+
+
+@pytest.mark.filterwarnings("ignore: websockets.legacy is deprecated.*:DeprecationWarning")
+def test_ws_websockets_emits_deprecation_warning() -> None:
+    sys.modules.pop("uvicorn.protocols.websockets.websockets_impl", None)
+    config = Config(app=asgi_app, ws="websockets")
+    with pytest.warns(UvicornDeprecationWarning, match="The `websockets` implementation is deprecated"):
+        config.load()
 
 
 def test_ws_max_size() -> None:

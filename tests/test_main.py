@@ -12,7 +12,7 @@ import uvicorn.server
 from tests.utils import run_server
 from uvicorn import Server
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
-from uvicorn.config import Config
+from uvicorn.config import STARTUP_FAILURE, Config
 from uvicorn.main import run
 from uvicorn.supervisors import Multiprocess
 
@@ -80,7 +80,7 @@ async def test_run_reload(unused_tcp_port: int):
 def test_run_invalid_app_config_combination(caplog: pytest.LogCaptureFixture) -> None:
     with pytest.raises(SystemExit) as exit_exception:
         run(app, reload=True)
-    assert exit_exception.value.code == 1
+    assert exit_exception.value.code == STARTUP_FAILURE
     assert caplog.records[-1].name == "uvicorn.error"
     assert caplog.records[-1].levelno == WARNING
     assert caplog.records[-1].message == (
@@ -91,22 +91,39 @@ def test_run_invalid_app_config_combination(caplog: pytest.LogCaptureFixture) ->
 def test_run_fails_fast_in_parent_on_bad_app_path(
     caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Bad app path with `--workers > 1` exits in the parent.
+    """A bad app path exits in the parent for the single-process case.
 
-    Regression for https://github.com/encode/uvicorn/discussions/2440: without
-    parent-side validation the supervisor restarts dying workers forever.
+    Regression for https://github.com/encode/uvicorn/issues/941: the app is
+    imported eagerly before the event loop starts.
     """
 
-    def fail(*args: object, **kwargs: object) -> None:  # pragma: no cover
-        pytest.fail("parent reached supervisor; should have exited on bad app path")
+    def fail(self: Server, sockets: object = None) -> None:  # pragma: no cover
+        pytest.fail("parent reached Server.run; should have exited on bad app path")
 
-    monkeypatch.setattr(Config, "bind_socket", fail)
-    monkeypatch.setattr(Multiprocess, "run", fail)
+    monkeypatch.setattr(Server, "run", fail)
 
     with pytest.raises(SystemExit) as exit_exception:
-        run("tests.test_main:nonexistent_attr", workers=2)
-    assert exit_exception.value.code == 1
+        run("tests.test_main:nonexistent_attr")
+    assert exit_exception.value.code == STARTUP_FAILURE
     assert any("Error loading ASGI app" in record.message for record in caplog.records)
+
+
+def test_run_skips_eager_app_import_with_workers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With `--workers > 1` the parent does not import the app.
+
+    Spawn-based workers re-import everything, so loading it in the supervisor
+    only wastes memory. See https://github.com/Kludex/uvicorn/discussions/2980.
+    """
+
+    def fail(self: Config) -> object:  # pragma: no cover
+        pytest.fail("parent loaded the app; spawn workers re-import it themselves")
+
+    with socket.socket() as sock:
+        monkeypatch.setattr(Config, "load_app", fail)
+        monkeypatch.setattr(Multiprocess, "run", lambda self: None)
+        monkeypatch.setattr(Config, "bind_socket", lambda self: sock)
+
+        run("tests.test_main:app", workers=2)
 
 
 def test_run_imports_app_before_starting_event_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -172,7 +189,7 @@ async def test_exit_on_create_server_with_invalid_host() -> None:
         config = Config(app=app, host="illegal_host")
         server = Server(config=config)
         await server.serve()
-    assert exc_info.value.code == 1
+    assert exc_info.value.code == STARTUP_FAILURE
 
 
 def test_deprecated_server_state_from_main() -> None:

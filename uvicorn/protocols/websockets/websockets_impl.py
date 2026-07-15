@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import http
 import logging
+import warnings
 from collections.abc import Sequence
 from typing import Any, Literal, cast
 from urllib.parse import unquote
@@ -13,8 +14,7 @@ from websockets.datastructures import Headers
 from websockets.exceptions import ConnectionClosed
 from websockets.extensions.base import ServerExtensionFactory
 from websockets.extensions.permessage_deflate import ServerPerMessageDeflateFactory
-from websockets.legacy.server import HTTPResponse
-from websockets.server import WebSocketServerProtocol
+from websockets.legacy.server import HTTPResponse, WebSocketServerProtocol
 from websockets.typing import Subprotocol
 
 from uvicorn._types import (
@@ -25,7 +25,7 @@ from uvicorn._types import (
     WebSocketReceiveEvent,
     WebSocketScope,
 )
-from uvicorn.config import Config
+from uvicorn.config import Config, UvicornDeprecationWarning
 from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.protocols.utils import (
     ClientDisconnected,
@@ -36,6 +36,13 @@ from uvicorn.protocols.utils import (
     is_ssl,
 )
 from uvicorn.server import ServerState
+
+warnings.warn(
+    "The `websockets` implementation is deprecated, and `--ws websockets` will point at the "
+    "`websockets-sansio` implementation in a future release. "
+    "Use `--ws websockets-sansio` or `--ws auto` to switch now.",
+    UvicornDeprecationWarning,
+)
 
 
 class Server:

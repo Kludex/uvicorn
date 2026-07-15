@@ -14,8 +14,7 @@ from configparser import RawConfigParser
 from pathlib import Path
 from typing import IO, Any, Literal
 
-import click
-
+from uvicorn._ansi import style
 from uvicorn._compat import iscoroutinefunction
 from uvicorn._types import ASGIApplication
 from uvicorn.importer import ImportFromStringError, import_from_string
@@ -24,6 +23,17 @@ from uvicorn.middleware.asgi2 import ASGI2Middleware
 from uvicorn.middleware.message_logger import MessageLoggerMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from uvicorn.middleware.wsgi import WSGIMiddleware
+
+
+class UvicornDeprecationWarning(UserWarning):
+    """A custom deprecation warning for Uvicorn.
+
+    Unlike the built-in DeprecationWarning, this inherits from UserWarning to ensure it is visible by default, helping
+    users discover deprecated features without needing to enable warnings explicitly.
+
+    Reference: https://sethmlarson.dev/deprecations-via-warnings-dont-work-for-python-libraries
+    """
+
 
 HTTPProtocolType = Literal["auto", "h11", "httptools", "zttp"]
 WSProtocolType = Literal["auto", "none", "websockets", "websockets-sansio", "wsproto"]
@@ -66,6 +76,8 @@ LOOP_FACTORIES: dict[str, str | None] = {
 INTERFACES: list[InterfaceType] = ["auto", "asgi3", "asgi2", "wsgi"]
 
 SSL_PROTOCOL_VERSION: int = ssl.PROTOCOL_TLS_SERVER
+
+STARTUP_FAILURE = 3
 
 LOGGING_CONFIG: dict[str, Any] = {
     "version": 1,
@@ -416,7 +428,7 @@ class Config:
             return import_from_string(self.app)
         except ImportFromStringError as exc:
             logger.error("Error loading ASGI app. %s" % exc)
-            sys.exit(1)
+            sys.exit(STARTUP_FAILURE)
 
     def load(self) -> None:
         assert not self.loaded
@@ -486,7 +498,7 @@ class Config:
         except TypeError as exc:
             if self.factory:
                 logger.error("Error loading ASGI app factory: %s", exc)
-                sys.exit(1)
+                sys.exit(STARTUP_FAILURE)
         else:
             if not self.factory:
                 logger.warning(
@@ -531,7 +543,7 @@ class Config:
                 return import_from_string(self.loop)
             except ImportFromStringError as exc:
                 logger.error("Error loading custom loop setup function. %s" % exc)
-                sys.exit(1)
+                sys.exit(STARTUP_FAILURE)
         if loop_factory is None:
             return None
         return loop_factory(use_subprocess=self.use_subprocess)
@@ -547,17 +559,17 @@ class Config:
                 os.chmod(self.uds, uds_perms)
             except OSError as exc:  # pragma: full coverage
                 logger.error(exc)
-                sys.exit(1)
+                sys.exit(STARTUP_FAILURE)
 
             message = "Uvicorn running on unix socket %s (Press CTRL+C to quit)"
             sock_name_format = "%s"
-            color_message = "Uvicorn running on " + click.style(sock_name_format, bold=True) + " (Press CTRL+C to quit)"
+            color_message = "Uvicorn running on " + style(sock_name_format, bold=True) + " (Press CTRL+C to quit)"
             logger_args = [self.uds]
         elif self.fd is not None:  # pragma: py-win32
             sock = socket.fromfd(self.fd, socket.AF_UNIX, socket.SOCK_STREAM)
             message = "Uvicorn running on socket %s (Press CTRL+C to quit)"
             fd_name_format = "%s"
-            color_message = "Uvicorn running on " + click.style(fd_name_format, bold=True) + " (Press CTRL+C to quit)"
+            color_message = "Uvicorn running on " + style(fd_name_format, bold=True) + " (Press CTRL+C to quit)"
             logger_args = [sock.getsockname()]
         else:
             family = socket.AF_INET
@@ -574,10 +586,10 @@ class Config:
                 sock.bind((self.host, self.port))
             except OSError as exc:  # pragma: full coverage
                 logger.error(exc)
-                sys.exit(1)
+                sys.exit(STARTUP_FAILURE)
 
             message = f"Uvicorn running on {addr_format} (Press CTRL+C to quit)"
-            color_message = "Uvicorn running on " + click.style(addr_format, bold=True) + " (Press CTRL+C to quit)"
+            color_message = "Uvicorn running on " + style(addr_format, bold=True) + " (Press CTRL+C to quit)"
             protocol_name = "https" if self.is_ssl else "http"
             logger_args = [protocol_name, self.host, sock.getsockname()[1]]
         logger.info(message, *logger_args, extra={"color_message": color_message})

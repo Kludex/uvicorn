@@ -2,6 +2,48 @@
 toc_depth: 2
 ---
 
+## 0.51.0 (July 8, 2026)
+
+### Added
+
+* Restart workers one at a time on `SIGHUP`, bringing each replacement up before retiring the old worker, so reloads no longer drop requests (#3025)
+
+### Removed
+
+* Remove `colorama` from the `standard` extra (#3027)
+
+## 0.50.2 (July 6, 2026)
+
+### Fixed
+
+* Require `websockets>=13.0`, which the default `websockets-sansio` implementation needs (#3021)
+
+## 0.50.1 (July 6, 2026)
+
+### Fixed
+
+* Split comma-separated `Sec-WebSocket-Protocol` values in the `websockets-sansio` implementation (#3019)
+
+## 0.50.0 (July 4, 2026)
+
+If you use WebSockets, note that `--ws auto` now picks the `websockets-sansio` implementation. You shouldn't need it, but you can pin `--ws websockets` to get the deprecated legacy one back.
+
+### Changed
+
+* Exit with the dedicated code 3 on any startup failure: app loading, socket bind and lifespan startup errors previously exited with a mix of 0, 1 and 3 (#3001)
+* Stop the multiprocess supervisor when a worker exits with code 3 instead of restarting it forever (#3001)
+* Default `--ws auto` to `websockets-sansio` when websockets is installed (#2985)
+* Skip the eager app import in the parent process with `--reload` or `--workers`, fixing a memory regression introduced in 0.47.0 (#3012)
+* Build a fresh `asgi` scope dict per request (#2977)
+* Cache the `asgi` scope sub-dict per connection (#2976)
+* Avoid copying single-frame WebSocket payloads in `websockets-sansio` (#2983)
+* Memoize trusted host checks in `ProxyHeadersMiddleware` (#2970)
+* Replace `click.style` with an internal ANSI style helper (#2981)
+
+### Deprecated
+
+* Deprecate the legacy `websockets` implementation; use `websockets-sansio` or `wsproto` instead (#2985)
+
 ## 0.49.0 (June 3, 2026)
 
 ### Changed

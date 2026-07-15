@@ -74,8 +74,12 @@ async def test_sigint_abort_req(unused_tcp_port: int, caplog):
             with pytest.raises(httpx.RemoteProtocolError):
                 await req
 
-        # req.result()
-    assert "Cancel 1 running task(s), timeout graceful shutdown exceeded" in caplog.messages
+    message = "Cancel 1 running task(s), timeout graceful shutdown exceeded"
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 5
+    while message not in caplog.messages and loop.time() < deadline:
+        await asyncio.sleep(0.1)  # pragma: no cover
+    assert message in caplog.messages
 
 
 @pytest.mark.anyio

@@ -158,6 +158,10 @@ class WSProtocol(asyncio.Protocol):
             # TODO: Remove `type: ignore` when wsproto fixes the type annotation.
             self.transport.write(self.conn.send(err.event_hint))  # type: ignore[arg-type]  # noqa: E501
             self.transport.close()
+        except LocalProtocolError:
+            # Data received after the close handshake completed, e.g. a pong the client
+            # sent while the server's close was in flight.
+            self.transport.close()
         else:
             self.handle_events()
 

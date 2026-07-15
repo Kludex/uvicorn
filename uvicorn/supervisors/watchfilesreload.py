@@ -42,7 +42,7 @@ class FileFilter:
 
                 for exclude_dir in self.exclude_dirs:
                     if exclude_dir in path.parents:
-                        return False  # pragma: no cover
+                        return False
 
                 for exclude_pattern in self.excludes:
                     if path.match(exclude_pattern):

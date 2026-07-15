@@ -60,11 +60,6 @@ The `standard` extra installs the following dependencies:
 
     When `watchfiles` is installed, Uvicorn will use it by default for the `--reload` option.
 
-- **[`colorama`](https://github.com/tartley/colorama) — Cross-platform support for ANSI terminal
-    colors.**
-
-    This is installed only on Windows, to provide colored logs.
-
 - **[`python-dotenv`](https://github.com/theskumar/python-dotenv) — Reads key-value pairs from a `.env` file
     and adds them to the environment.**
 

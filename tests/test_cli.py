@@ -12,7 +12,7 @@ import pytest
 from click.testing import CliRunner
 
 import uvicorn
-from uvicorn.config import Config
+from uvicorn.config import STARTUP_FAILURE, Config
 from uvicorn.main import main as cli
 from uvicorn.server import Server
 from uvicorn.supervisors import ChangeReload, Multiprocess
@@ -133,7 +133,7 @@ def test_cli_incomplete_app_parameter() -> None:
     assert (
         'Error loading ASGI app. Import string "tests.test_cli" must be in format "<module>:<attribute>".'
     ) in result.output
-    assert result.exit_code == 1
+    assert result.exit_code == STARTUP_FAILURE
 
 
 def test_cli_event_size() -> None:
