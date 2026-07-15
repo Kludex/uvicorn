@@ -322,7 +322,7 @@ class RequestResponseCycle:
     def __init__(
         self,
         scope: HTTPScope,
-        conn: zttp.Connection,
+        conn: zttp.H1Connection,
         transport: asyncio.Transport,
         flow: FlowControl,
         logger: logging.Logger,
@@ -335,7 +335,6 @@ class RequestResponseCycle:
         on_response: Callable[..., None],
     ) -> None:
         self.scope = scope
-        assert isinstance(conn, zttp.H1Connection)
         self.conn = conn
         self.transport = transport
         self.flow = flow
