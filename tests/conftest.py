@@ -254,6 +254,14 @@ def ws_protocol_cls(request: pytest.FixtureRequest):
             id="httptools",
         ),
         pytest.param("uvicorn.protocols.http.h11_impl:H11Protocol", id="h11"),
+        pytest.param(
+            "uvicorn.protocols.http.zttp_impl:ZttpProtocol",
+            marks=pytest.mark.skipif(
+                not importlib.util.find_spec("zttp"),
+                reason="zttp not installed.",
+            ),
+            id="zttp",
+        ),
     ]
 )
 def http_protocol_cls(request: pytest.FixtureRequest):

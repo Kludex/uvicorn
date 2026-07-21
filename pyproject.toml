@@ -70,6 +70,7 @@ dev = [
     # Explicit optionals,
     "a2wsgi==1.10.10",
     "wsproto==1.3.2",
+    "zttp==0.0.16; python_version >= '3.12'",
 ]
 docs = [
     "zensical==0.0.43",
@@ -83,6 +84,7 @@ exclude-newer = "7 days"
 
 [tool.uv.exclude-newer-package]
 httptools = "2026-05-26"
+zttp = "2026-07-16"
 
 [project.scripts]
 uvicorn = "uvicorn.main:main"
@@ -125,7 +127,7 @@ filterwarnings = [
     "ignore:Uvicorn's native WSGI implementation is deprecated.*:DeprecationWarning",
     "ignore: 'cgi' is deprecated and slated for removal in Python 3.13:DeprecationWarning",
     # httptools in Python 3.14t needs the `PYTHON_GIL=0` environment variable, or raises a RuntimeWarning.
-    "ignore: The global interpreter lock (GIL)*:RuntimeWarning"
+    "ignore: The global interpreter lock (GIL)*:RuntimeWarning",
 ]
 
 [tool.coverage.run]
@@ -162,6 +164,7 @@ exclude_lines = [
     "tests/supervisors/test_multiprocess.py",
 ]
 "sys_platform != 'win32'" = ["uvicorn/loops/asyncio.py"]
+"not is_installed('zttp')" = ["uvicorn/protocols/http/zttp_impl.py"]
 
 [tool.coverage.coverage_conditional_plugin.rules]
 py-win32 = "sys_platform == 'win32'"

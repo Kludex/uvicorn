@@ -670,6 +670,11 @@ async def test_early_response(http_protocol_cls: type[HTTPProtocol]):
     protocol.data_received(FINISH_POST_REQUEST)
     assert not protocol.transport.is_closing()
 
+    protocol.transport.clear_buffer()
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+
 
 async def test_read_after_response(http_protocol_cls: type[HTTPProtocol]):
     message_after_response = None
