@@ -128,7 +128,6 @@ filterwarnings = [
     "ignore: 'cgi' is deprecated and slated for removal in Python 3.13:DeprecationWarning",
     # httptools in Python 3.14t needs the `PYTHON_GIL=0` environment variable, or raises a RuntimeWarning.
     "ignore: The global interpreter lock (GIL)*:RuntimeWarning",
-    "ignore:The 'zttp' HTTP/1.1 protocol is experimental.*:UserWarning",
 ]
 
 [tool.coverage.run]

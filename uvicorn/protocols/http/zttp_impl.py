@@ -4,7 +4,6 @@ import asyncio
 import contextvars
 import logging
 import sys
-import warnings
 from collections.abc import Callable, Generator
 from typing import Any, Literal
 from urllib.parse import unquote
@@ -25,13 +24,6 @@ from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.protocols.http.flow_control import CLOSE_HEADER, HIGH_WATER_LIMIT, FlowControl, service_unavailable
 from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
 from uvicorn.server import ServerState
-
-warnings.warn(
-    "The 'zttp' HTTP/1.1 protocol is experimental. I'd really appreciate if you try it out and report back! "
-    "See the docs at https://uvicorn.dev/concepts/http-protocols/#zttp.",
-    UserWarning,
-    stacklevel=2,
-)
 
 
 class ZttpProtocol(asyncio.Protocol):
