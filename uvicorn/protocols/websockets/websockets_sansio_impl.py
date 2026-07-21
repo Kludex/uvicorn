@@ -11,6 +11,7 @@ from http import HTTPStatus
 from typing import Any, Literal, cast
 from urllib.parse import unquote
 
+from websockets import __version__ as websockets_version
 from websockets.exceptions import InvalidState
 from websockets.extensions.permessage_deflate import ServerPerMessageDeflateFactory
 from websockets.frames import Frame, Opcode
@@ -192,10 +193,17 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             self.transport.close()
             return
 
-        headers = [
-            (key.encode("ascii"), value.encode("ascii", errors="surrogateescape"))
-            for key, value in event.headers.raw_items()
-        ]
+        # websockets 17.0 documents that non-ASCII header values are encoded
+        # with ISO-8859-1. Earlier versions didn't document the behavior but
+        # we can see in the code that it used surrogate escape encoding.
+        # Move the pragma: no cover to the else: branch when 17.0 is released.
+        if websockets_version >= "17.0":  # pragma: no cover
+            headers = [(key.encode("ascii"), value.encode("latin-1")) for key, value in event.headers.raw_items()]
+        else:
+            headers = [
+                (key.encode("ascii"), value.encode("ascii", errors="surrogateescape"))
+                for key, value in event.headers.raw_items()
+            ]
         raw_path, _, query_string = event.path.partition("?")
         subprotocols: list[str] = []
         for header in event.headers.get_all("Sec-WebSocket-Protocol"):
