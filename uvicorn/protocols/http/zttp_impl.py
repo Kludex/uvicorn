@@ -28,7 +28,7 @@ from uvicorn.server import ServerState
 
 warnings.warn(
     "The 'zttp' HTTP/1.1 protocol is experimental. I'd really appreciate if you try it out and report back! "
-    "See the docs at https://zttp.marcelotryle.com/.",
+    "See the docs at https://uvicorn.dev/concepts/http-protocols/#zttp.",
     UserWarning,
     stacklevel=2,
 )
