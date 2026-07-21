@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict
 import httpx
 import pytest
 import websockets.exceptions
+from websockets import __version__ as websockets_version
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.extensions.permessage_deflate import ClientPerMessageDeflateFactory
 from websockets.frames import Opcode
@@ -211,7 +212,14 @@ async def test_headers(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProto
             await self.send({"type": "websocket.accept"})
 
     async def open_connection(url: str):
-        async with connect(url, additional_headers=[("username", "abraão")]):
+        # websockets 17.0 documents that non-ASCII header values must be encoded
+        # with ISO-8859-1. Earlier versions didn't document the behavior but we
+        # can see in the code that it used UTF-8 (accidentally!) This affects
+        # only the websockets.connect() call in the test, not uvicorn itself.
+        username = "abraão"
+        if websockets_version >= "17.0":  # pragma: no cover
+            username = username.encode().decode("latin-1")
+        async with connect(url, additional_headers=[("username", username)]):
             return True
 
     config = Config(app=App, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
