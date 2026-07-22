@@ -116,6 +116,15 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     " variable if available, or 1. Not valid with --reload.",
 )
 @click.option(
+    "--preload",
+    is_flag=True,
+    default=False,
+    help="Load the application in the parent process and fork workers from it (POSIX only)."
+    " Reduces memory use and startup time, but shares import-time resources across workers"
+    " and prevents SIGHUP reloads from picking up new code.",
+    show_default=True,
+)
+@click.option(
     "--loop",
     type=str,
     metavar=_metavar_from_type(LoopFactoryType),
@@ -407,6 +416,7 @@ def main(
     reload_excludes: list[str],
     reload_delay: float,
     workers: int,
+    preload: bool,
     env_file: str,
     log_config: str,
     log_level: str,
@@ -463,6 +473,7 @@ def main(
         reload_excludes=reload_excludes or None,
         reload_delay=reload_delay,
         workers=workers,
+        preload=preload,
         proxy_headers=proxy_headers,
         server_header=server_header,
         date_header=date_header,
@@ -514,6 +525,7 @@ def run(
     reload_excludes: list[str] | str | None = None,
     reload_delay: float = 0.25,
     workers: int | None = None,
+    preload: bool = False,
     env_file: str | os.PathLike[str] | None = None,
     log_config: dict[str, Any] | str | os.PathLike[str] | RawConfigParser | IO[Any] | None = LOGGING_CONFIG,
     log_level: str | int | None = None,
@@ -570,6 +582,7 @@ def run(
         reload_excludes=reload_excludes,
         reload_delay=reload_delay,
         workers=workers,
+        preload=preload,
         env_file=env_file,
         log_config=log_config,
         log_level=log_level,
@@ -615,6 +628,10 @@ def run(
             sock = config.bind_socket()
             ChangeReload(config, target=server.run, sockets=[sock]).run()
         elif config.workers > 1:
+            if config.use_fork:
+                # Preload: load the app once here so forked workers inherit it
+                # copy-on-write instead of importing it in each child.
+                config.load()
             sock = config.bind_socket()
             Multiprocess(config, sockets=[sock]).run()
         else:

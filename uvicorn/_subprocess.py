@@ -9,20 +9,21 @@ import multiprocessing
 import os
 import sys
 from collections.abc import Callable
-from multiprocessing.context import SpawnProcess
+from multiprocessing.process import BaseProcess
 from socket import socket
 
 from uvicorn.config import Config
 
 multiprocessing.allow_connection_pickling()
 spawn = multiprocessing.get_context("spawn")
+fork = multiprocessing.get_context("fork") if os.name != "nt" else None
 
 
 def get_subprocess(
     config: Config,
     target: Callable[..., None],
     sockets: list[socket],
-) -> SpawnProcess:
+) -> BaseProcess:
     """
     Called in the parent process, to instantiate a new child process instance.
     The child is not yet started at this point.
@@ -32,6 +33,9 @@ def get_subprocess(
                be the `Server.run()` method.
     * sockets - A list of sockets to pass to the server. Sockets are bound once
                 by the parent process, and then passed to the child processes.
+
+    When ``config.use_fork`` is set (preload on POSIX), the child is forked so it
+    inherits the app the parent has already loaded, rather than importing it again.
     """
     # We pass across the stdin fileno, and reopen it in the child process.
     # This is required for some debugging environments.
@@ -48,7 +52,8 @@ def get_subprocess(
         "stdin_fileno": stdin_fileno,
     }
 
-    return spawn.Process(target=subprocess_started, kwargs=kwargs)
+    context = fork if config.use_fork and fork is not None else spawn
+    return context.Process(target=subprocess_started, kwargs=kwargs)
 
 
 def subprocess_started(

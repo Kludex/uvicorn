@@ -242,6 +242,7 @@ class Config:
         factory: bool = False,
         h11_max_incomplete_event_size: int | None = None,
         reset_contextvars: bool = False,
+        preload: bool = False,
     ):
         self.app = app
         self.host = host
@@ -291,6 +292,7 @@ class Config:
         self.factory = factory
         self.h11_max_incomplete_event_size = h11_max_incomplete_event_size
         self.reset_contextvars = reset_contextvars
+        self.preload = preload
 
         self.loaded = False
         self.configure_logging()
@@ -359,6 +361,15 @@ class Config:
 
         if self.reload and self.workers > 1:
             logger.warning('"workers" flag is ignored when reloading is enabled.')
+
+        if self.preload and os.name == "nt":  # pragma: py-not-win32
+            logger.warning('"preload" is not supported on Windows and will be ignored.')
+            self.preload = False
+
+    @property
+    def use_fork(self) -> bool:
+        """Whether workers should be forked from a preloaded parent instead of spawned."""
+        return self.preload and os.name != "nt"
 
     @property
     def asgi_version(self) -> Literal["2.0", "3.0"]:
