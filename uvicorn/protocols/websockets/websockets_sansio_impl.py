@@ -55,7 +55,9 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.config = config
         self.app = config.loaded_app
         self.loop = _loop or asyncio.get_event_loop()
-        self.logger = logging.getLogger("uvicorn.error")
+        self.logger = logging.getLogger("uvicorn.server")
+        self.access_logger = logging.getLogger("uvicorn.access")
+        self.access_log = self.access_logger.hasHandlers()
         self.root_path = config.root_path
         self.asgi_version = config.asgi_version
         self.app_state = app_state
@@ -90,7 +92,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.conn = ServerProtocol(
             extensions=extensions,
             max_size=self.config.ws_max_size,
-            logger=logging.getLogger("uvicorn.error"),
+            logger=logging.getLogger("uvicorn.server"),
         )
 
         self.read_paused = False
@@ -382,11 +384,15 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
 
         if not self.handshake_complete and self.initial_response is None:
             if message["type"] == "websocket.accept":
-                self.logger.info(
-                    '%s - "WebSocket %s" [accepted]',
-                    get_client_addr(self.scope),
-                    get_path_with_query_string(self.scope),
-                )
+                if self.access_log:
+                    self.access_logger.info(
+                        '%s - "%s %s HTTP/%s" %d',
+                        get_client_addr(self.scope),
+                        "WebSocket",
+                        get_path_with_query_string(self.scope),
+                        self.scope["http_version"],
+                        101,
+                    )
                 headers = [
                     (name.decode("latin-1").lower(), value.decode("latin-1"))
                     for name, value in (self.default_headers + list(message.get("headers", [])))
@@ -405,11 +411,15 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
 
             elif message["type"] == "websocket.close":
                 self.queue.put_nowait({"type": "websocket.disconnect", "code": 1006})
-                self.logger.info(
-                    '%s - "WebSocket %s" 403',
-                    get_client_addr(self.scope),
-                    get_path_with_query_string(self.scope),
-                )
+                if self.access_log:
+                    self.access_logger.info(
+                        '%s - "%s %s HTTP/%s" %d',
+                        get_client_addr(self.scope),
+                        "WebSocket",
+                        get_path_with_query_string(self.scope),
+                        self.scope["http_version"],
+                        403,
+                    )
                 response = self.conn.reject(HTTPStatus.FORBIDDEN, "")
                 self.conn.send_response(response)
                 output = self.conn.data_to_send()
@@ -420,12 +430,15 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             elif message["type"] == "websocket.http.response.start" and self.initial_response is None:
                 if not (100 <= message["status"] < 600):
                     raise RuntimeError("Invalid HTTP status code '%d' in response." % message["status"])
-                self.logger.info(
-                    '%s - "WebSocket %s" %d',
-                    get_client_addr(self.scope),
-                    get_path_with_query_string(self.scope),
-                    message["status"],
-                )
+                if self.access_log:
+                    self.access_logger.info(
+                        '%s - "%s %s HTTP/%s" %d',
+                        get_client_addr(self.scope),
+                        "WebSocket",
+                        get_path_with_query_string(self.scope),
+                        self.scope["http_version"],
+                        message["status"],
+                    )
                 headers = [
                     (name.decode("latin-1"), value.decode("latin-1"))
                     for name, value in list(message.get("headers", []))

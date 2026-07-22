@@ -75,12 +75,12 @@ async def test_trace_logging_on_http_protocol(http_protocol_cls, caplog, logging
         log_config=logging_config,
         port=unused_tcp_port,
     )
-    with caplog_for_logger(caplog, "uvicorn.error"):
+    with caplog_for_logger(caplog, "uvicorn.server"):
         async with run_server(config):
             async with httpx.AsyncClient() as client:
                 response = await client.get(f"http://127.0.0.1:{unused_tcp_port}")
         assert response.status_code == 204
-        messages = [record.message for record in caplog.records if record.name == "uvicorn.error"]
+        messages = [record.message for record in caplog.records if record.name == "uvicorn.server"]
         assert any(" - HTTP connection made" in message for message in messages)
         assert any(" - HTTP connection lost" in message for message in messages)
 
@@ -111,14 +111,47 @@ async def test_trace_logging_on_ws_protocol(
         ws=ws_protocol_cls,
         port=unused_tcp_port,
     )
-    with caplog_for_logger(caplog, "uvicorn.error"):
+    with caplog_for_logger(caplog, "uvicorn.server"):
         async with run_server(config):
             is_open = await open_connection(f"ws://127.0.0.1:{unused_tcp_port}")
         assert is_open
-        messages = [record.message for record in caplog.records if record.name == "uvicorn.error"]
+        messages = [record.message for record in caplog.records if record.name == "uvicorn.server"]
         assert any(" - Upgrading to WebSocket" in message for message in messages)
         assert any(" - WebSocket connection made" in message for message in messages)
         assert any(" - WebSocket connection lost" in message for message in messages)
+
+
+async def test_access_logging_on_ws_protocol(
+    ws_protocol_cls: WSProtocol,
+    caplog: pytest.LogCaptureFixture,
+    logging_config: dict[str, Any],
+    unused_tcp_port: int,
+):
+    async def websocket_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert scope["type"] == "websocket"
+        while True:
+            message = await receive()
+            if message["type"] == "websocket.connect":
+                await send({"type": "websocket.accept"})
+            elif message["type"] == "websocket.disconnect":
+                break
+
+    async def open_connection(url: str):
+        async with connect(url) as websocket:
+            return websocket.state is State.OPEN
+
+    config = Config(
+        app=websocket_app,
+        log_config=logging_config,
+        ws=ws_protocol_cls,
+        port=unused_tcp_port,
+    )
+    with caplog_for_logger(caplog, "uvicorn.access"):
+        async with run_server(config):
+            is_open = await open_connection(f"ws://127.0.0.1:{unused_tcp_port}")
+        assert is_open
+        messages = [record.message for record in caplog.records if record.name == "uvicorn.access"]
+        assert any('"WebSocket / HTTP/1.1" 101' in message for message in messages)
 
 
 @pytest.mark.parametrize("use_colors", [(True), (False), (None)])

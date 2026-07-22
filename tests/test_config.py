@@ -216,7 +216,7 @@ def test_app_unimportable_other(caplog: pytest.LogCaptureFixture) -> None:
     with pytest.raises(SystemExit):
         config.load()
     error_messages = [
-        record.message for record in caplog.records if record.name == "uvicorn.error" and record.levelname == "ERROR"
+        record.message for record in caplog.records if record.name == "uvicorn.server" and record.levelname == "ERROR"
     ]
     assert (
         'Error loading ASGI app. Attribute "app" not found in module "tests.test_config".'  # noqa: E501
@@ -465,7 +465,7 @@ def test_config_log_level(log_level: int) -> None:
     config = Config(app=asgi_app, log_level=log_level)
     config.load()
 
-    assert logging.getLogger("uvicorn.error").level == log_level
+    assert logging.getLogger("uvicorn.server").level == log_level
     assert logging.getLogger("uvicorn.access").level == log_level
     assert logging.getLogger("uvicorn.asgi").level == log_level
     assert config.log_level == log_level
@@ -486,7 +486,7 @@ def test_config_log_effective_level(log_level: int, uvicorn_logger_level: int) -
     config.load()
 
     effective_level = log_level or uvicorn_logger_level or default_level
-    assert logging.getLogger("uvicorn.error").getEffectiveLevel() == effective_level
+    assert logging.getLogger("uvicorn.server").getEffectiveLevel() == effective_level
     assert logging.getLogger("uvicorn.access").getEffectiveLevel() == effective_level
     assert logging.getLogger("uvicorn.asgi").getEffectiveLevel() == effective_level
 
@@ -495,7 +495,67 @@ def test_config_log_effective_level(log_level: int, uvicorn_logger_level: int) -
 def test_config_log_level_case_insensitive(log_level: str) -> None:
     config = Config(app=asgi_app, log_level=log_level)
     config.load()
-    assert logging.getLogger("uvicorn.error").level == logging.INFO
+    assert logging.getLogger("uvicorn.server").level == logging.INFO
+
+
+@pytest.fixture
+def isolated_server_logger() -> Iterator[logging.Logger]:
+    server_logger = logging.getLogger("uvicorn.server")
+    state = (server_logger.level, server_logger.handlers[:], server_logger.propagate)
+    server_logger.handlers = []
+    server_logger.setLevel(logging.NOTSET)
+    server_logger.propagate = True
+    yield server_logger
+    server_logger.level, server_logger.handlers, server_logger.propagate = state
+
+
+def test_config_log_config_legacy_error_logger_dict(isolated_server_logger: logging.Logger) -> None:
+    log_config: dict[str, Any] = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "loggers": {"uvicorn.error": {"level": "WARNING"}},
+    }
+    with pytest.warns(UvicornDeprecationWarning, match="renamed to `uvicorn.server`"):
+        Config(app=asgi_app, log_config=log_config)
+
+    assert isolated_server_logger.level == logging.WARNING
+
+
+def test_config_log_config_legacy_error_logger_fileconfig(
+    tmp_path: Path, isolated_server_logger: logging.Logger
+) -> None:
+    server_logger = isolated_server_logger
+
+    log_config = tmp_path / "log_config.ini"
+    log_config.write_text(
+        "[loggers]\n"
+        "keys=root,uvicorn.error\n"
+        "[handlers]\n"
+        "keys=console\n"
+        "[formatters]\n"
+        "keys=default\n"
+        "[logger_root]\n"
+        "level=INFO\n"
+        "handlers=console\n"
+        "[logger_uvicorn.error]\n"
+        "level=WARNING\n"
+        "handlers=console\n"
+        "qualname=uvicorn.error\n"
+        "propagate=0\n"
+        "[handler_console]\n"
+        "class=StreamHandler\n"
+        "level=NOTSET\n"
+        "formatter=default\n"
+        "args=(sys.stderr,)\n"
+        "[formatter_default]\n"
+        "format=%(message)s\n"
+    )
+    with pytest.warns(UvicornDeprecationWarning, match="renamed to `uvicorn.server`"):
+        Config(app=asgi_app, log_config=str(log_config))
+
+    assert server_logger.level == logging.WARNING
+    assert server_logger.handlers == logging.getLogger("uvicorn.error").handlers
+    assert not server_logger.propagate
 
 
 @pytest.mark.filterwarnings("ignore: websockets.legacy is deprecated.*:DeprecationWarning")
@@ -654,7 +714,7 @@ def test_custom_loop__not_importable_custom_loop_setup_function(caplog: pytest.L
     with pytest.raises(SystemExit):
         config.get_loop_factory()
     error_messages = [
-        record.message for record in caplog.records if record.name == "uvicorn.error" and record.levelname == "ERROR"
+        record.message for record in caplog.records if record.name == "uvicorn.server" and record.levelname == "ERROR"
     ]
     assert (
         'Error loading custom loop setup function. Attribute "non_existing_setup_function" not found in module "tests.test_config".'  # noqa: E501

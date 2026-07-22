@@ -9,6 +9,7 @@ import os
 import socket
 import ssl
 import sys
+import warnings
 from collections.abc import Awaitable, Callable
 from configparser import RawConfigParser
 from pathlib import Path
@@ -106,12 +107,27 @@ LOGGING_CONFIG: dict[str, Any] = {
     },
     "loggers": {
         "uvicorn": {"handlers": ["default"], "level": "INFO", "propagate": False},
-        "uvicorn.error": {"level": "INFO"},
+        "uvicorn.server": {"level": "INFO"},
         "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": False},
     },
 }
 
-logger = logging.getLogger("uvicorn.error")
+logger = logging.getLogger("uvicorn.server")
+
+
+def _bridge_legacy_error_logger(log_config: dict[str, Any]) -> None:
+    loggers = log_config.get("loggers") or {}
+    if "uvicorn.error" not in loggers:
+        return
+    warnings.warn(
+        "The `uvicorn.error` logger was renamed to `uvicorn.server`. The provided log config was applied to "
+        "`uvicorn.server` as well, but this compatibility behavior will be removed in a future release. "
+        "Update the logger name in your log config.",
+        UvicornDeprecationWarning,
+        stacklevel=2,
+    )
+    loggers.setdefault("uvicorn.server", loggers["uvicorn.error"])
+    log_config["loggers"] = loggers
 
 
 def create_ssl_context(
@@ -388,10 +404,12 @@ class Config:
                 if self.use_colors in (True, False):
                     self.log_config["formatters"]["default"]["use_colors"] = self.use_colors
                     self.log_config["formatters"]["access"]["use_colors"] = self.use_colors
+                _bridge_legacy_error_logger(self.log_config)
                 logging.config.dictConfig(self.log_config)
             elif isinstance(self.log_config, str) and self.log_config.endswith(".json"):
                 with open(self.log_config) as file:
                     loaded_config = json.load(file)
+                    _bridge_legacy_error_logger(loaded_config)
                     logging.config.dictConfig(loaded_config)
             elif isinstance(self.log_config, str) and self.log_config.endswith((".yaml", ".yml")):
                 try:
@@ -403,18 +421,34 @@ class Config:
 
                 with open(self.log_config) as file:
                     loaded_config = yaml.safe_load(file)
+                    _bridge_legacy_error_logger(loaded_config)
                     logging.config.dictConfig(loaded_config)
             else:
                 # See the note about fileConfig() here:
                 # https://docs.python.org/3/library/logging.config.html#configuration-file-format
                 logging.config.fileConfig(self.log_config, disable_existing_loggers=False)
+                legacy_logger = logging.getLogger("uvicorn.error")
+                if legacy_logger.handlers or legacy_logger.level != logging.NOTSET:
+                    warnings.warn(
+                        "The `uvicorn.error` logger was renamed to `uvicorn.server`. Its configuration was applied "
+                        "to `uvicorn.server` as well, but this compatibility behavior will be removed in a future "
+                        "release. Update the logger name in your log config.",
+                        UvicornDeprecationWarning,
+                        stacklevel=1,
+                    )
+                    server_logger = logging.getLogger("uvicorn.server")
+                    if not server_logger.handlers and server_logger.level == logging.NOTSET:
+                        server_logger.setLevel(legacy_logger.level)
+                        server_logger.propagate = legacy_logger.propagate
+                        for handler in legacy_logger.handlers:
+                            server_logger.addHandler(handler)
 
         if self.log_level is not None:
             if isinstance(self.log_level, str):
                 log_level = LOG_LEVELS[self.log_level.lower()]
             else:
                 log_level = self.log_level
-            logging.getLogger("uvicorn.error").setLevel(log_level)
+            logging.getLogger("uvicorn.server").setLevel(log_level)
             logging.getLogger("uvicorn.access").setLevel(log_level)
             logging.getLogger("uvicorn.asgi").setLevel(log_level)
         if self.access_log is False:

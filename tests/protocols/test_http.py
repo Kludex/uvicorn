@@ -919,8 +919,8 @@ async def test_invalid_http_request(
     app = Response("Hello, world", media_type="text/plain")
     request = INVALID_REQUEST_TEMPLATE % request_line
 
-    caplog.set_level(logging.INFO, logger="uvicorn.error")
-    logging.getLogger("uvicorn.error").propagate = True
+    caplog.set_level(logging.INFO, logger="uvicorn.server")
+    logging.getLogger("uvicorn.server").propagate = True
 
     protocol = get_connected_protocol(app, http_protocol_cls)
     protocol.data_received(request)
@@ -1127,7 +1127,7 @@ async def test_lifespan_state(http_protocol_cls: type[HTTPProtocol]):
 async def test_header_upgrade_is_not_websocket_depend_installed(
     caplog: pytest.LogCaptureFixture, http_protocol_cls: type[HTTPProtocol]
 ):
-    caplog.set_level(logging.WARNING, logger="uvicorn.error")
+    caplog.set_level(logging.WARNING, logger="uvicorn.server")
     app = Response("Hello, world", media_type="text/plain")
 
     protocol = get_connected_protocol(app, http_protocol_cls)
@@ -1143,7 +1143,7 @@ async def test_header_upgrade_is_not_websocket_depend_installed(
 async def test_header_upgrade_is_websocket_depend_not_installed(
     caplog: pytest.LogCaptureFixture, http_protocol_cls: type[HTTPProtocol]
 ):
-    caplog.set_level(logging.WARNING, logger="uvicorn.error")
+    caplog.set_level(logging.WARNING, logger="uvicorn.server")
     app = Response("Hello, world", media_type="text/plain")
 
     protocol = get_connected_protocol(app, http_protocol_cls, ws="none")

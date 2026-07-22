@@ -140,7 +140,7 @@ def test_run_exits_with_startup_failure_on_unloadable_app() -> None:
 async def test_request_than_limit_max_requests_warn_log(
     unused_tcp_port: int, http_protocol_cls: type[H11Protocol | HttpToolsProtocol], caplog: pytest.LogCaptureFixture
 ):
-    caplog.set_level(logging.INFO, logger="uvicorn.error")
+    caplog.set_level(logging.INFO, logger="uvicorn.server")
     config = Config(app=app, limit_max_requests=1, port=unused_tcp_port, http=http_protocol_cls)
     async with run_server(config):
         async with httpx.AsyncClient() as client:
@@ -153,7 +153,7 @@ async def test_request_than_limit_max_requests_warn_log(
 async def test_limit_max_requests_jitter(
     unused_tcp_port: int, http_protocol_cls: type[H11Protocol | HttpToolsProtocol], caplog: pytest.LogCaptureFixture
 ):
-    caplog.set_level(logging.INFO, logger="uvicorn.error")
+    caplog.set_level(logging.INFO, logger="uvicorn.server")
     config = Config(
         app=app, limit_max_requests=1, limit_max_requests_jitter=2, port=unused_tcp_port, http=http_protocol_cls
     )
