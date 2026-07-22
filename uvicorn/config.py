@@ -54,6 +54,7 @@ HTTP_PROTOCOLS: dict[str, str] = {
     "h11": "uvicorn.protocols.http.h11_impl:H11Protocol",
     "httptools": "uvicorn.protocols.http.httptools_impl:HttpToolsProtocol",
 }
+HTTP2_PROTOCOL = "uvicorn.protocols.http.rust_h2_impl:RustH2Protocol"
 WS_PROTOCOLS: dict[str, str | None] = {
     "auto": "uvicorn.protocols.websockets.auto:AutoWebSocketsProtocol",
     "none": None,
@@ -122,6 +123,7 @@ def create_ssl_context(
     cert_reqs: int,
     ca_certs: str | os.PathLike[str] | None,
     ciphers: str | None,
+    alpn_protocols: list[str] | None = None,
 ) -> ssl.SSLContext:
     ctx = ssl.SSLContext(ssl_version)
     get_password = (lambda: password) if password else None
@@ -131,6 +133,8 @@ def create_ssl_context(
         ctx.load_verify_locations(ca_certs)
     if ciphers:
         ctx.set_ciphers(ciphers)
+    if alpn_protocols:
+        ctx.set_alpn_protocols(alpn_protocols)
     return ctx
 
 
@@ -197,6 +201,7 @@ class Config:
         fd: int | None = None,
         loop: LoopFactoryType | str = "auto",
         http: type[asyncio.Protocol] | HTTPProtocolType | str = "auto",
+        http2: bool | type[asyncio.Protocol] | str = False,
         ws: type[asyncio.Protocol] | WSProtocolType | str = "auto",
         ws_max_size: int = 16 * 1024 * 1024,
         ws_max_queue: int = 32,
@@ -250,6 +255,7 @@ class Config:
         self.fd = fd
         self.loop = loop
         self.http = http
+        self.http2 = http2
         self.ws = ws
         self.ws_max_size = ws_max_size
         self.ws_max_queue = ws_max_queue
@@ -465,6 +471,7 @@ class Config:
                 cert_reqs=self.ssl_cert_reqs,
                 ca_certs=self.ssl_ca_certs,
                 ciphers=self.ssl_ciphers,
+                alpn_protocols=["h2", "http/1.1"] if self.http2 else None,
             )
         else:
             self.ssl = None
@@ -481,6 +488,16 @@ class Config:
             self.http_protocol_class: type[asyncio.Protocol] = http_protocol_class
         else:
             self.http_protocol_class = self.http
+
+        self.http2_protocol_class: type[asyncio.Protocol] | None
+        if self.http2 is False:
+            self.http2_protocol_class = None
+        elif self.http2 is True:
+            self.http2_protocol_class = import_from_string(HTTP2_PROTOCOL)
+        elif isinstance(self.http2, str):
+            self.http2_protocol_class = import_from_string(self.http2)
+        else:
+            self.http2_protocol_class = self.http2
 
         if isinstance(self.ws, str):
             ws_protocol_class = import_from_string(WS_PROTOCOLS.get(self.ws, self.ws))

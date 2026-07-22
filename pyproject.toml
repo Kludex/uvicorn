@@ -46,6 +46,9 @@ standard = [
     "watchfiles>=0.20",
     "websockets>=13.0",
 ]
+rh2 = [
+    "rh2>=0.0.1",
+]
 
 [dependency-groups]
 dev = [
