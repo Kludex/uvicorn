@@ -46,11 +46,14 @@ standard = [
     "watchfiles>=0.20",
     "websockets>=13.0",
 ]
+httpunk = [
+    "httpunk~=0.1.2",
+]
 
 [dependency-groups]
 dev = [
-    # We add uvicorn[standard] so `uv sync` considers the extras.
-    "uvicorn[standard]",
+    # We add uvicorn[standard,httpunk] so `uv sync` considers the extras.
+    "uvicorn[standard,httpunk]",
     "ruff>=0.15.15",
     "pytest==9.0.3",
     "pytest-mock==3.15.1",
@@ -83,6 +86,7 @@ exclude-newer = "7 days"
 
 [tool.uv.exclude-newer-package]
 httptools = "2026-05-26"
+httpunk = "2026-07-14"
 
 [project.scripts]
 uvicorn = "uvicorn.main:main"
