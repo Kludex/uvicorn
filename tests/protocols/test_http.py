@@ -134,6 +134,32 @@ UPGRADE_HTTP2_REQUEST = b"\r\n".join(
     ]
 )
 
+UPGRADE_HTTP2_CHUNKED_POST_REQUEST = b"".join(
+    [
+        b"POST / HTTP/1.1\r\n",
+        b"Host: example.org\r\n",
+        b"Connection: Upgrade, HTTP2-Settings\r\n",
+        b"Upgrade: h2c\r\n",
+        b"Transfer-Encoding: chunked\r\n",
+        b"Content-Type: application/json\r\n",
+        b"\r\n",
+        b"3\r\nabc\r\n0\r\n\r\n",
+    ]
+)
+
+UPGRADE_HTTP2_CONTENT_LENGTH_POST_REQUEST = b"".join(
+    [
+        b"POST / HTTP/1.1\r\n",
+        b"Host: example.org\r\n",
+        b"Connection: Upgrade, HTTP2-Settings\r\n",
+        b"Upgrade: h2c\r\n",
+        b"Content-Length: 5\r\n",
+        b"Content-Type: application/json\r\n",
+        b"\r\n",
+        b"hello",
+    ]
+)
+
 INVALID_REQUEST_TEMPLATE = b"\r\n".join(
     [
         b"%s",
@@ -874,6 +900,50 @@ async def test_http2_upgrade_request(http_protocol_cls: type[HTTPProtocol], ws_p
     await protocol.loop.run_one()
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
     assert b"Hello, world" in protocol.transport.buffer
+
+
+async def test_http2_upgrade_chunked_body_is_preserved(http_protocol_cls: type[HTTPProtocol]):
+    """Rejected `Upgrade: h2c` requests must still deliver a chunked body
+    to the ASGI app (see #2722)."""
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        body = b""
+        more_body = True
+        while more_body:
+            message = await receive()
+            assert message["type"] == "http.request"
+            body += message.get("body", b"")
+            more_body = message.get("more_body", False)
+        response = Response(b"Body: " + body, media_type="text/plain")
+        await response(scope, receive, send)
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(UPGRADE_HTTP2_CHUNKED_POST_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Body: abc" in protocol.transport.buffer
+
+
+async def test_http2_upgrade_content_length_body_is_preserved(http_protocol_cls: type[HTTPProtocol]):
+    """Rejected `Upgrade: h2c` requests must still deliver a content-length
+    body to the ASGI app (see #2722)."""
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        body = b""
+        more_body = True
+        while more_body:
+            message = await receive()
+            assert message["type"] == "http.request"
+            body += message.get("body", b"")
+            more_body = message.get("more_body", False)
+        response = Response(b"Body: " + body, media_type="text/plain")
+        await response(scope, receive, send)
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(UPGRADE_HTTP2_CONTENT_LENGTH_POST_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Body: hello" in protocol.transport.buffer
 
 
 async def asgi3app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):

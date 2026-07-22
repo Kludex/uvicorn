@@ -42,6 +42,38 @@ def _get_status_line(status_code: int) -> bytes:
 STATUS_LINE = {status_code: _get_status_line(status_code) for status_code in range(100, 600)}
 
 
+class _BodyOnlyParserTarget:
+    """Callback target for a parser that replays a request with the Upgrade
+    headers stripped. Header callbacks are ignored (the scope has already
+    been set up); body and message-complete events are forwarded to the
+    existing ASGI cycle on the owning protocol.
+    """
+
+    def __init__(self, protocol: HttpToolsProtocol) -> None:
+        self._protocol = protocol
+
+    def on_message_begin(self) -> None: ...
+    def on_url(self, url: bytes) -> None: ...
+    def on_header(self, name: bytes, value: bytes) -> None: ...
+    def on_headers_complete(self) -> None: ...
+
+    def on_body(self, body: bytes) -> None:
+        cycle = self._protocol.cycle
+        if cycle is None or cycle.response_complete:
+            return
+        cycle.body += body
+        if len(cycle.body) > HIGH_WATER_LIMIT:
+            self._protocol.flow.pause_reading()
+        cycle.message_event.set()
+
+    def on_message_complete(self) -> None:
+        cycle = self._protocol.cycle
+        if cycle is None or cycle.response_complete:
+            return
+        cycle.more_body = False
+        cycle.message_event.set()
+
+
 class HttpToolsProtocol(asyncio.Protocol):
     def __init__(
         self,
@@ -177,11 +209,18 @@ class HttpToolsProtocol(asyncio.Protocol):
             self.logger.warning(msg)
             self.send_400_response(msg)
             return
-        except httptools.HttpParserUpgrade:
+        except httptools.HttpParserUpgrade as exc:
             if self._should_upgrade():
                 self.handle_websocket_upgrade()
-            else:
-                self._unsupported_upgrade_warning()
+                return
+            self._unsupported_upgrade_warning()
+            # Per RFC 7230 §6.7 a server MAY ignore an unsupported Upgrade
+            # header and continue to process the request. httptools aborts
+            # body parsing as soon as the upgrade is detected, so swap in a
+            # fresh parser that feeds any trailing body bytes back to the
+            # existing ASGI cycle (see #2722).
+            header_end = exc.args[0] if exc.args else len(data)
+            self._recover_after_rejected_upgrade(data[header_end:])
 
     def handle_websocket_upgrade(self) -> None:
         if self.logger.level <= TRACE_LOG_LEVEL:
@@ -311,7 +350,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.tasks.add(task)
 
     def on_body(self, body: bytes) -> None:
-        if (self.parser.should_upgrade() and self._should_upgrade()) or self.cycle.response_complete:
+        if self.parser.should_upgrade() or self.cycle.response_complete:
             return
         self.cycle.body += body
         if len(self.cycle.body) > HIGH_WATER_LIMIT:
@@ -319,10 +358,41 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.cycle.message_event.set()
 
     def on_message_complete(self) -> None:
-        if (self.parser.should_upgrade() and self._should_upgrade()) or self.cycle.response_complete:
+        if self.parser.should_upgrade() or self.cycle.response_complete:
             return
         self.cycle.more_body = False
         self.cycle.message_event.set()
+
+    def _recover_after_rejected_upgrade(self, trailing: bytes) -> None:
+        if self.cycle is None:
+            return
+        # Replay the request against a fresh parser with Upgrade/Connection
+        # tokens stripped, then forward body events to the already-running
+        # ASGI cycle via a minimal callback shim.
+        method = self.scope["method"].encode("ascii")
+        replay = [method, b" ", self.url, b" HTTP/1.1\r\n"]
+        for name, value in self.headers:
+            if name == b"upgrade":
+                continue
+            if name == b"connection":
+                kept = [t.strip() for t in value.split(b",") if t.strip().lower() != b"upgrade"]
+                if not kept:
+                    continue
+                value = b", ".join(kept)
+            replay.extend([name, b": ", value, b"\r\n"])
+        replay.append(b"\r\n")
+        target = _BodyOnlyParserTarget(self)
+        self.parser = httptools.HttpRequestParser(target)
+        try:
+            self.parser.set_dangerous_leniencies(lenient_data_after_close=True)
+        except AttributeError:  # pragma: no cover
+            pass
+        try:
+            self.parser.feed_data(b"".join(replay) + trailing)
+        except httptools.HttpParserError:
+            if self.cycle is not None and not self.cycle.response_complete:
+                self.cycle.more_body = False
+                self.cycle.message_event.set()
 
     def on_response_complete(self) -> None:
         # Callback for pipelined HTTP requests to be started.
