@@ -19,6 +19,29 @@ When running with `--reload` or multiple workers, it uses [`SelectorEventLoop`][
 ??? info "Why can `ProactorEventLoop` fail with multiple processes on Windows?"
     If you want to know more about it, you can read the issue [#cpython/122240](https://github.com/python/cpython/issues/122240).
 
+!!! warning "`ProactorEventLoop` and async database drivers on Windows"
+    [`ProactorEventLoop`][asyncio.ProactorEventLoop] does not support
+    [`add_reader()`][asyncio.loop.add_reader] / [`add_writer()`][asyncio.loop.add_writer],
+    which some async database drivers depend on — notably
+    [psycopg](https://www.psycopg.org/psycopg3/docs/) and
+    [asyncpg](https://github.com/MagicStack/asyncpg).
+
+    If you see errors like `Psycopg cannot use the 'ProactorEventLoop'`, switch to
+    [`SelectorEventLoop`][asyncio.SelectorEventLoop] using the [custom event loop](#custom-event-loop)
+    syntax:
+
+    ```bash
+    uvicorn main:app --loop asyncio:SelectorEventLoop
+    ```
+
+    Or set it once via the environment variable:
+
+    ```bash
+    set UVICORN_LOOP=asyncio:SelectorEventLoop
+    ```
+
+    See [#2749](https://github.com/Kludex/uvicorn/discussions/2749) for more details.
+
 ## Custom Event Loop
 
 You can use custom event loop implementations by specifying a module path and function name using the colon notation:
