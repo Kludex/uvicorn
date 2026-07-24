@@ -3,7 +3,7 @@ Server deployment is a complex area, that will depend on what kind of service yo
 As a general rule, you probably want to:
 
 * Run `uvicorn --reload` from the command line for local development.
-* Run `gunicorn -k uvicorn.workers.UvicornWorker` for production.
+* Run `uvicorn --workers 4` (or another process manager) for production.
 * Additionally run behind Nginx for self-hosted deployments.
 * Finally, run everything behind a CDN for caching support, and serious DDOS protection.
 
@@ -66,21 +66,20 @@ A process manager will handle the socket setup, start-up multiple server process
 
 ### Built-in
 
-Uvicorn includes a `--workers` option that allows you to run multiple worker processes.
+Uvicorn includes a `--workers` option that runs multiple worker processes under a built-in process manager. This is the recommended way to run Uvicorn in production - it covers the process-management needs of most deployments without an extra dependency.
 
 ```bash
 $ uvicorn main:app --workers 4
 ```
 
-Unlike gunicorn, uvicorn does not use pre-fork, but uses [`spawn`](https://docs.python.org/3/library/multiprocessing.html#contexts-and-start-methods), which allows uvicorn's multiprocess manager to still work well on Windows.
+The manager provides:
 
-The default process manager monitors the status of child processes and automatically restarts child processes that die unexpectedly. Not only that, it will also monitor the status of the child process through the pipeline. When the child process is accidentally stuck, the corresponding child process will be killed through an unstoppable system signal or interface.
-
-You can also manage child processes by sending specific signals to the main process. (Not supported on Windows.)
-
-- `SIGHUP`: Gracefully restart the workers one at a time with no dropped requests. Fresh workers pick up new code on disk.
-- `SIGTTIN`: Increase the number of worker processes by one.
-- `SIGTTOU`: Decrease the number of worker processes by one.
+- **Automatic worker restarts.** Child processes that die unexpectedly are restarted. Workers are health-checked over a pipe, so a worker that becomes stuck (not just one that crashes) is detected and killed; tune the interval with `--timeout-worker-healthcheck`.
+- **Graceful, near-zero-downtime reloads.** On `SIGHUP` the workers are restarted one at a time, each replacement brought into service before the old worker is retired, so no requests are dropped. Fresh workers pick up new code on disk.
+- **Scaling on the fly.** Send `SIGTTIN` to add a worker or `SIGTTOU` to remove one, without restarting the server.
+- **Worker recycling.** Use `--limit-max-requests` (optionally with `--limit-max-requests-jitter`) to recycle workers periodically, guarding against memory leaks in long-running processes.
+- **Fail-fast startup.** If a worker cannot boot (broken app import, TLS, or socket bind), the manager stops rather than restarting a process that would fail the same way every time.
+- **Windows support.** Unlike gunicorn, uvicorn does not use pre-fork but [`spawn`](https://docs.python.org/3/library/multiprocessing.html#contexts-and-start-methods), so the manager works on Windows too. (Signal-based management above is not available on Windows.)
 
 ### Gunicorn
 
@@ -93,7 +92,7 @@ You can also manage child processes by sending specific signals to the main proc
     python -m pip install uvicorn-worker
     ```
 
-Gunicorn is probably the simplest way to run and manage Uvicorn in a production setting. Uvicorn includes a gunicorn worker class that means you can get set up with very little configuration.
+The built-in `--workers` manager above now covers what previously required Gunicorn, so a separate process manager is no longer needed for most deployments. Gunicorn remains a fine choice if you already rely on it or need one of its specific features (for example in-place binary upgrades via `SIGUSR2`). Note that the bundled worker class is deprecated in favor of the [`uvicorn-worker`](https://github.com/Kludex/uvicorn-worker) package.
 
 The following will start Gunicorn with four worker processes:
 
