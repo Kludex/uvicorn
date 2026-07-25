@@ -398,7 +398,7 @@ class Config:
                     import yaml
                 except ImportError as e:
                     raise ImportError(
-                        "Install the PyYAML package or uvicorn[standard] to use `--log-config` with YAML files."
+                        "Install the PyYAML package or uvicorn[yaml] to use `--log-config` with YAML files."
                     ) from e
 
                 with open(self.log_config) as file:

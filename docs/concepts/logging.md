@@ -64,7 +64,7 @@ Uvicorn supports three file formats:
 | Extension      | Loader                       | Notes                                       |
 |----------------|------------------------------|---------------------------------------------|
 | `.json`        | `logging.config.dictConfig`  | Standard JSON `dictConfig` schema.          |
-| `.yaml`/`.yml` | `logging.config.dictConfig`  | Requires **PyYAML** (`uvicorn[standard]`).  |
+| `.yaml`/`.yml` | `logging.config.dictConfig`  | Requires **PyYAML** (`uvicorn[yaml]`).  |
 | Any other      | `logging.config.fileConfig`  | Classic INI-style format.                   |
 
 ### YAML Example

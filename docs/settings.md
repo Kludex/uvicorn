@@ -60,7 +60,7 @@ If Uvicorn _cannot_ load [watchfiles](https://pypi.org/project/watchfiles/) at r
 
 ### Reloading with watchfiles
 
-For more nuanced control over which file modifications trigger reloads, install `uvicorn[standard]`, which includes watchfiles as a dependency. Alternatively, install [watchfiles](https://pypi.org/project/watchfiles/) where Uvicorn can see it.
+For more nuanced control over which file modifications trigger reloads, install `uvicorn[development]`, which includes watchfiles as a dependency. Alternatively, install [watchfiles](https://pypi.org/project/watchfiles/) where Uvicorn can see it.
 
 Using Uvicorn with watchfiles will enable the following options (which are otherwise ignored):
 
@@ -84,7 +84,7 @@ Using Uvicorn with watchfiles will enable the following options (which are other
 ## Logging
 
 * `--log-config <path>` - Logging configuration file. **Options:** *`dictConfig()` formats: .json, .yaml*. Any other format will be processed with `fileConfig()`. Set the `formatters.default.use_colors` and `formatters.access.use_colors` values to override the auto-detected behavior.
-    * If you wish to use a YAML file for your logging config, you will need to include PyYAML as a dependency for your project or install uvicorn with the `[standard]` optional extras.
+    * If you wish to use a YAML file for your logging config, you will need to include PyYAML as a dependency for your project or install uvicorn with the `[yaml]` optional extra.
 * `--log-level <str>` - Set the log level. **Options:** *'critical', 'error', 'warning', 'info', 'debug', 'trace'.* **Default:** *'info'*.
 * `--no-access-log` - Disable access log only, without changing log level.
 * `--use-colors / --no-use-colors` - Enable / disable colorized formatting of the log records. If not set, colors will be auto-detected. This option is ignored if the `--log-config` CLI option is used.

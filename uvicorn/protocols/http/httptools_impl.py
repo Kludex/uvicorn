@@ -160,7 +160,7 @@ class HttpToolsProtocol(asyncio.Protocol):
     def _unsupported_upgrade_warning(self) -> None:
         self.logger.warning("Unsupported upgrade request.")
         if not self._should_upgrade_to_ws():
-            msg = "No supported WebSocket library detected. Please use \"pip install 'uvicorn[standard]'\", or install 'websockets' or 'wsproto' manually."  # noqa: E501
+            msg = "No supported WebSocket library detected. Please use \"pip install 'uvicorn[websockets]'\", or install 'websockets' or 'wsproto' manually."  # noqa: E501
             self.logger.warning(msg)
 
     def _should_upgrade(self) -> bool:

@@ -38,13 +38,24 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-standard = [
-    "httptools>=0.8.0",
-    "python-dotenv>=0.13",
-    "PyYAML>=5.1",
-    "uvloop>=0.15.1; sys_platform != 'win32' and (sys_platform != 'cygwin' and platform_python_implementation != 'PyPy')",
+development = [
     "watchfiles>=0.20",
+]
+dotenv = [
+    "python-dotenv>=0.13",
+]
+performance = [
+    "httptools>=0.8.0",
+    "uvloop>=0.15.1; sys_platform != 'win32' and (sys_platform != 'cygwin' and platform_python_implementation != 'PyPy')",
+]
+websockets = [
     "websockets>=13.0",
+]
+yaml = [
+    "PyYAML>=5.1",
+]
+standard = [
+    "uvicorn[development,dotenv,performance,websockets,yaml]",
 ]
 
 [dependency-groups]

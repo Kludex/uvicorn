@@ -862,7 +862,7 @@ async def test_unsupported_ws_upgrade_request_warn_on_auto(
     assert b"Hello, world" in protocol.transport.buffer
     warnings = [record.msg for record in filter(lambda record: record.levelname == "WARNING", caplog.records)]
     assert "Unsupported upgrade request." in warnings
-    msg = "No supported WebSocket library detected. Please use \"pip install 'uvicorn[standard]'\", or install 'websockets' or 'wsproto' manually."  # noqa: E501
+    msg = "No supported WebSocket library detected. Please use \"pip install 'uvicorn[websockets]'\", or install 'websockets' or 'wsproto' manually."  # noqa: E501
     assert msg in warnings
 
 
@@ -1134,7 +1134,7 @@ async def test_header_upgrade_is_not_websocket_depend_installed(
     protocol.data_received(UPGRADE_REQUEST_ERROR_FIELD)
     await protocol.loop.run_one()
     assert "Unsupported upgrade request." in caplog.text
-    msg = "No supported WebSocket library detected. Please use \"pip install 'uvicorn[standard]'\", or install 'websockets' or 'wsproto' manually."  # noqa: E501
+    msg = "No supported WebSocket library detected. Please use \"pip install 'uvicorn[websockets]'\", or install 'websockets' or 'wsproto' manually."  # noqa: E501
     assert msg not in caplog.text
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
     assert b"Hello, world" in protocol.transport.buffer
@@ -1150,7 +1150,7 @@ async def test_header_upgrade_is_websocket_depend_not_installed(
     protocol.data_received(UPGRADE_REQUEST_ERROR_FIELD)
     await protocol.loop.run_one()
     assert "Unsupported upgrade request." in caplog.text
-    msg = "No supported WebSocket library detected. Please use \"pip install 'uvicorn[standard]'\", or install 'websockets' or 'wsproto' manually."  # noqa: E501
+    msg = "No supported WebSocket library detected. Please use \"pip install 'uvicorn[websockets]'\", or install 'websockets' or 'wsproto' manually."  # noqa: E501
     assert msg in caplog.text
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
     assert b"Hello, world" in protocol.transport.buffer

@@ -24,7 +24,29 @@ If you are running on Python 3.10 or early versions,
 
 There are many optional dependencies that can be installed to add support for various features.
 
-If you just want to install all of them at once, you can use the `standard` extra:
+Optional dependencies are grouped by feature, so you can install only what you need:
+
+| Extra | Dependencies | Purpose |
+| --- | --- | --- |
+| `development` | `watchfiles` | Improved `--reload` support. |
+| `dotenv` | `python-dotenv` | Support for `--env-file`. |
+| `performance` | `httptools`, `uvloop` | Faster HTTP parsing and event loop, where supported. |
+| `websockets` | `websockets` | WebSocket protocol support. |
+| `yaml` | `PyYAML` | YAML files for `--log-config`. |
+
+For example, to install reload and YAML configuration support:
+
+=== "pip"
+    ```bash
+    pip install 'uvicorn[development,yaml]'
+    ```
+
+=== "uv"
+    ```bash
+    uv add 'uvicorn[development,yaml]'
+    ```
+
+If you want to install all optional dependencies at once, use the `standard` extra:
 
 === "pip"
     ```bash
@@ -36,7 +58,7 @@ If you just want to install all of them at once, you can use the `standard` extr
     uv add 'uvicorn[standard]'
     ```
 
-The `standard` extra installs the following dependencies:
+The `standard` extra combines all of the feature-specific extras and installs the following dependencies:
 
 - **[`uvloop`](https://github.com/MagicStack/uvloop) — Fast, drop-in replacement of the built-in asyncio event loop.**
 

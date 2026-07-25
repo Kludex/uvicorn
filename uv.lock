@@ -11,7 +11,7 @@ exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for 
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
-httptools = "2026-05-27T00:00:00Z"
+httptools = "2026-05-26T18:30:00Z"
 
 [[package]]
 name = "a2wsgi"
@@ -1700,6 +1700,16 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+development = [
+    { name = "watchfiles" },
+]
+dotenv = [
+    { name = "python-dotenv" },
+]
+performance = [
+    { name = "httptools" },
+    { name = "uvloop", marker = "platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'" },
+]
 standard = [
     { name = "httptools" },
     { name = "python-dotenv" },
@@ -1707,6 +1717,12 @@ standard = [
     { name = "uvloop", marker = "platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'" },
     { name = "watchfiles" },
     { name = "websockets" },
+]
+websockets = [
+    { name = "websockets" },
+]
+yaml = [
+    { name = "pyyaml" },
 ]
 
 [package.dev-dependencies]
@@ -1739,15 +1755,21 @@ docs = [
 requires-dist = [
     { name = "click", specifier = ">=7.0" },
     { name = "h11", specifier = ">=0.8" },
+    { name = "httptools", marker = "extra == 'performance'", specifier = ">=0.8.0" },
     { name = "httptools", marker = "extra == 'standard'", specifier = ">=0.8.0" },
+    { name = "python-dotenv", marker = "extra == 'dotenv'", specifier = ">=0.13" },
     { name = "python-dotenv", marker = "extra == 'standard'", specifier = ">=0.13" },
     { name = "pyyaml", marker = "extra == 'standard'", specifier = ">=5.1" },
+    { name = "pyyaml", marker = "extra == 'yaml'", specifier = ">=5.1" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'", specifier = ">=4.0" },
+    { name = "uvloop", marker = "platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32' and extra == 'performance'", specifier = ">=0.15.1" },
     { name = "uvloop", marker = "platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32' and extra == 'standard'", specifier = ">=0.15.1" },
+    { name = "watchfiles", marker = "extra == 'development'", specifier = ">=0.20" },
     { name = "watchfiles", marker = "extra == 'standard'", specifier = ">=0.20" },
     { name = "websockets", marker = "extra == 'standard'", specifier = ">=13.0" },
+    { name = "websockets", marker = "extra == 'websockets'", specifier = ">=13.0" },
 ]
-provides-extras = ["standard"]
+provides-extras = ["development", "dotenv", "performance", "standard", "websockets", "yaml"]
 
 [package.metadata.requires-dev]
 dev = [
