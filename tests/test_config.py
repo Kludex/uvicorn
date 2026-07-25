@@ -262,6 +262,20 @@ def test_socket_bind() -> None:
     sock.close()
 
 
+@pytest.mark.skipif(not socket.has_dualstack_ipv6(), reason="requires dual-stack IPv6 support")
+def test_bind_socket_ipv6_does_not_set_v6only() -> None:  # pragma: py-win32
+    config = Config(app=asgi_app, host="::")
+    config.load()
+    with closing(config.bind_socket()) as sock:
+        assert sock.family == socket.AF_INET6
+        v6only = sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY)
+
+        with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as default_sock:
+            expected_default = default_sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY)
+
+        assert v6only == expected_default
+
+
 def test_ssl_config(
     tls_ca_certificate_pem_path: str,
     tls_ca_certificate_private_key_path: str,
