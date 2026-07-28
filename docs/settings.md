@@ -138,6 +138,11 @@ The [SSL context](https://docs.python.org/3/library/ssl.html#ssl.SSLContext) can
 
 To understand more about the SSL context options, please refer to the [Python documentation](https://docs.python.org/3/library/ssl.html).
 
+On TLS connections Uvicorn exposes the negotiated parameters, and any client certificate, to the application through
+the [ASGI TLS Extension](https://asgi.readthedocs.io/en/latest/specs/tls.html) under `scope["extensions"]["tls"]`. A
+client certificate is only requested when `--ssl-cert-reqs` is set to `1` (`ssl.CERT_OPTIONAL`) or `2`
+(`ssl.CERT_REQUIRED`). See [TLS and client certificates](concepts/asgi.md#tls-and-client-certificates).
+
 For advanced TLS scenarios that the flags above don't cover (e.g., mutual TLS, certificate pinning, custom `SSLContext.options`), pass an `ssl_context_factory` to `uvicorn.run()` or `Config`. See [Running with HTTPS](deployment/index.md#customizing-the-ssl-context) for details.
 
 ## Resource Limits

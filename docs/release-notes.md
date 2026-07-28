@@ -2,6 +2,12 @@
 toc_depth: 2
 ---
 
+## Unreleased
+
+### Added
+
+* Implement the [ASGI TLS Extension](https://asgi.readthedocs.io/en/latest/specs/tls.html) (version 0.2) for all HTTP and WebSocket protocol implementations, exposing the negotiated TLS parameters and any client certificate as `scope["extensions"]["tls"]`. In addition to the keys defined by the extension, the entry carries `client_cert_dict`: the client certificate in the parsed form of `ssl.SSLSocket.getpeercert()`
+
 ## 0.51.0 (July 8, 2026)
 
 ### Added

@@ -79,6 +79,10 @@ The ASGI app can respond with:
 
 You can read more about it on the [ASGI documentation](https://asgi.readthedocs.io/en/latest/specs/www.html#websocket).
 
+Like the HTTP scope, the scope of a `wss://` connection carries the ASGI TLS extension under
+`scope["extensions"]["tls"]`, holding the negotiated TLS parameters and any client certificate.
+See [TLS and client certificates](asgi.md#tls-and-client-certificates).
+
 ## Protocol Implementations
 
 **Uvicorn** has three implementations of the WebSocket protocol.

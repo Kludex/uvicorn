@@ -24,7 +24,14 @@ from uvicorn._types import (
 from uvicorn.config import Config
 from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.protocols.http.flow_control import CLOSE_HEADER, HIGH_WATER_LIMIT, FlowControl, service_unavailable
-from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
+from uvicorn.protocols.utils import (
+    TLSExtension,
+    get_client_addr,
+    get_local_addr,
+    get_path_with_query_string,
+    get_remote_addr,
+    is_ssl,
+)
 from uvicorn.server import ServerState
 
 
@@ -82,6 +89,7 @@ class H11Protocol(asyncio.Protocol):
         self.server: tuple[str, int | None] | None = None
         self.client: tuple[str, int] | None = None
         self.scheme: Literal["http", "https"] | None = None
+        self.tls_extension: TLSExtension | None = None
 
         # Per-request state
         self.scope: HTTPScope = None  # type: ignore[assignment]
@@ -99,6 +107,7 @@ class H11Protocol(asyncio.Protocol):
         self.server = get_local_addr(transport)
         self.client = get_remote_addr(transport)
         self.scheme = "https" if is_ssl(transport) else "http"
+        self.tls_extension = TLSExtension.from_transport(transport)
 
         if self.logger.level <= TRACE_LOG_LEVEL:
             prefix = "%s:%d - " % self.client if self.client else ""
@@ -217,6 +226,8 @@ class H11Protocol(asyncio.Protocol):
                     "headers": self.headers,
                     "state": self.app_state.copy(),
                 }
+                if self.tls_extension is not None:
+                    self.scope["extensions"] = {"tls": self.tls_extension.scope_entry()}
                 if self._should_upgrade():
                     self.handle_websocket_upgrade(event)
                     return

@@ -55,6 +55,111 @@ An incoming HTTP request might have a connection `scope` like this:
 }
 ```
 
+Over HTTPS the scope additionally carries an `extensions` key, see
+[TLS and client certificates](#tls-and-client-certificates) below.
+
+### TLS and client certificates
+
+For TLS connections Uvicorn implements version 0.2 of the
+[ASGI TLS Extension](https://asgi.readthedocs.io/en/latest/specs/tls.html). The information is
+found under `scope["extensions"]["tls"]`, for all HTTP (`h11`, `httptools`) and WebSocket
+(`websockets`, `websockets-sansio`, `wsproto`) implementations.
+
+!!! warning
+    The extension is only present on connections that Uvicorn itself terminates with TLS. As
+    the specification requires, the `tls` key is **absent** for plain `http://` and `ws://`
+    connections — including when a proxy or load balancer terminates TLS in front of Uvicorn.
+    Always probe with `scope.get("extensions", {}).get("tls")` rather than indexing directly.
+
+| Key | Type | Value |
+| --- | --- | --- |
+| `server_cert` | `None` | Always `None`; CPython's `ssl` module has no API to read back the server's own certificate. |
+| `client_cert_chain` | `list[str]` | PEM-encoded certificates, the client certificate first. Empty if the client sent none. |
+| `client_cert_name` | `str \| None` | The Subject of the client certificate as an [RFC 4514](https://datatracker.ietf.org/doc/html/rfc4514) string, or `None`. |
+| `client_cert_error` | `None` | Always `None`, see below. |
+| `tls_version` | `int` | e.g. `0x0304` for TLS 1.3, `0x0303` for TLS 1.2. |
+| `cipher_suite` | `int` | 16-bit suite id, e.g. `0x1302` for `TLS_AES_256_GCM_SHA384`. |
+| `client_cert_dict` | `dict \| None` | **Uvicorn addition**, see [below](#the-client_cert_dict-addition). |
+
+An example, from a connection that presented a client certificate:
+
+```python
+{
+    'server_cert': None,
+    'client_cert_chain': ['-----BEGIN CERTIFICATE-----\nMIIC...', '-----BEGIN CERTIFICATE-----\nMIIB...'],
+    'client_cert_name': 'CN=client.example.org,O=Example Inc',
+    'client_cert_error': None,
+    'tls_version': 772,      # 0x0304
+    'cipher_suite': 4866,    # 0x1302
+    'client_cert_dict': {...},
+}
+```
+
+#### When is a client certificate present?
+
+The server only asks the client for a certificate when `--ssl-cert-reqs` is set:
+
+| `--ssl-cert-reqs` | Client sends a certificate | Result |
+| --- | --- | --- |
+| `0` = `ssl.CERT_NONE` (default) | — | Never requested. `client_cert_chain` is empty. |
+| `1` = `ssl.CERT_OPTIONAL` | no | Connection allowed, `client_cert_chain` is empty. |
+| `1` = `ssl.CERT_OPTIONAL` | yes, valid | `client_cert_chain` is populated. |
+| `2` = `ssl.CERT_REQUIRED` | yes, valid | `client_cert_chain` is populated. |
+| `2` = `ssl.CERT_REQUIRED` | no, or invalid | TLS handshake fails, the application is never called. |
+
+Validation requires a CA, so `--ssl-cert-reqs` other than `CERT_NONE` needs `--ssl-ca-certs`.
+
+Note that `client_cert_error` is always `None` in Uvicorn: Python's `ssl` module aborts the
+handshake when a certificate fails verification, so a connection with a rejected certificate
+never reaches the application. The field exists for servers that can be configured to accept
+such connections anyway.
+
+!!! note
+    `client_cert_chain` contains the full verified chain — the client certificate followed by
+    the issuing CA certificate(s) — only on Python 3.13 and newer, which added
+    `ssl.SSLObject.get_verified_chain()`. On Python 3.10 to 3.12 only the client certificate
+    itself is reachable, so the list holds exactly one entry. `client_cert_chain[0]` is the
+    client certificate on every version.
+
+#### The `client_cert_dict` addition
+
+Alongside the keys defined by the specification, Uvicorn adds `client_cert_dict`: the client
+certificate already parsed, in the format of
+[`ssl.SSLSocket.getpeercert()`](https://docs.python.org/3/library/ssl.html#ssl.SSLSocket.getpeercert).
+It is `None` when no client certificate was presented. This saves applications from parsing
+`client_cert_chain[0]` with a library such as `cryptography` for the common case of reading a
+name out of the certificate.
+
+```python
+{
+    'subject': ((('commonName', 'client.example.org'),), (('organizationName', 'Example Inc'),)),
+    'issuer': ((('commonName', 'Example CA'),),),
+    'version': 3,
+    'serialNumber': '057B7C9F3F0B2A1E',
+    'notBefore': 'Jan  1 00:00:00 2025 GMT',
+    'notAfter': 'Jan  1 00:00:00 2026 GMT',
+    'subjectAltName': (('DNS', 'client.example.org'), ('email', 'client@example.org')),
+}
+```
+
+`subject` and `issuer` are tuples of relative distinguished names, each of which is itself a
+tuple of `(name, value)` pairs — so they usually need flattening before use:
+
+```python
+async def app(scope, receive, send):
+    tls = scope.get('extensions', {}).get('tls')
+    cert = tls['client_cert_dict'] if tls else None
+    if cert is None:
+        common_name = None
+    else:
+        subject = {name: value for rdn in cert['subject'] for name, value in rdn}
+        common_name = subject.get('commonName')
+    ...
+```
+
+Because this key is not part of the specification, applications that need to run on other ASGI
+servers should use `client_cert_chain` or `client_cert_name` instead.
+
 ### HTTP Messages
 
 The instance coroutine communicates back to the server by sending messages to the `send` coroutine.

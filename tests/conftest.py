@@ -37,6 +37,9 @@ from uvicorn.importer import import_from_string
 # See also: https://github.com/pytest-dev/pytest/issues/3697
 LOGGING_CONFIG["loggers"]["uvicorn"]["propagate"] = True
 
+# Common name of the client certificate handed out by `tls_client_certificate`.
+CLIENT_CERT_COMMON_NAME = "uvicorn-test-client"
+
 
 @pytest.fixture
 def tls_certificate_authority() -> trustme.CA:
@@ -52,6 +55,22 @@ def tls_certificate(tls_certificate_authority: trustme.CA) -> trustme.LeafCert:
         "127.0.0.1",
         "::1",
     )
+
+
+@pytest.fixture
+def tls_client_certificate(tls_certificate_authority: trustme.CA) -> trustme.LeafCert:
+    """A leaf certificate suitable for TLS client authentication."""
+    return tls_certificate_authority.issue_cert(
+        "client@example.com",
+        common_name=CLIENT_CERT_COMMON_NAME,
+        organization_name="Uvicorn Test Suite",
+    )
+
+
+@pytest.fixture
+def tls_client_certificate_key_and_chain_path(tls_client_certificate: trustme.LeafCert):
+    with tls_client_certificate.private_key_and_cert_chain_pem.tempfile() as cert_pem:
+        yield cert_pem
 
 
 @pytest.fixture

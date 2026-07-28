@@ -26,6 +26,7 @@ from uvicorn.config import Config
 from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.protocols.utils import (
     ClientDisconnected,
+    TLSExtension,
     get_client_addr,
     get_local_addr,
     get_path_with_query_string,
@@ -94,6 +95,7 @@ class WSProtocol(asyncio.Protocol):
         self.server: tuple[str, int | None] | None = None
         self.client: tuple[str, int] | None = None
         self.scheme: Literal["wss", "ws"] = None  # type: ignore[assignment]
+        self.tls_extension: TLSExtension | None = None
 
         # WebSocket state
         self.queue: asyncio.Queue[WebSocketEvent] = asyncio.Queue()
@@ -129,6 +131,7 @@ class WSProtocol(asyncio.Protocol):
         self.server = get_local_addr(transport)
         self.client = get_remote_addr(transport)
         self.scheme = "wss" if is_ssl(transport) else "ws"
+        self.tls_extension = TLSExtension.from_transport(transport)
 
         if self.logger.level <= TRACE_LOG_LEVEL:
             prefix = "%s:%d - " % self.client if self.client else ""
@@ -214,6 +217,9 @@ class WSProtocol(asyncio.Protocol):
         path = unquote(raw_path)
         full_path = self.root_path + path
         full_raw_path = self.root_path.encode("ascii") + raw_path.encode("ascii")
+        scope_extensions: dict[str, dict[object, object]] = {"websocket.http.response": {}}
+        if self.tls_extension is not None:
+            scope_extensions["tls"] = self.tls_extension.scope_entry()
         self.scope: WebSocketScope = {
             "type": "websocket",
             "asgi": {"version": self.asgi_version, "spec_version": "2.4"},
@@ -228,7 +234,7 @@ class WSProtocol(asyncio.Protocol):
             "headers": headers,
             "subprotocols": event.subprotocols,
             "state": self.app_state.copy(),
-            "extensions": {"websocket.http.response": {}},
+            "extensions": scope_extensions,
         }
         self.queue.put_nowait({"type": "websocket.connect"})
         task = self.loop.create_task(self.run_asgi())

@@ -249,6 +249,10 @@ uvicorn.run(
 )
 ```
 
+Whichever way the context is built, the negotiated TLS parameters and any client certificate are
+available to the application under `scope["extensions"]["tls"]` — see
+[TLS and client certificates](../concepts/asgi.md#tls-and-client-certificates).
+
 The factory is called inside each worker process, so it works with `--reload` and `--workers > 1`. The factory itself must be picklable in those modes (a top-level function is fine; lambdas and local closures are not). The `ssl_*` settings on `Config` are only consumed by `default_ssl_context_factory()`; if you build the context yourself without calling it, those settings are ignored.
 
 ## Proxies and Forwarded Headers
