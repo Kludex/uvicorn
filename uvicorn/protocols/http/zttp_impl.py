@@ -26,11 +26,6 @@ from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_wi
 from uvicorn.server import ServerState
 
 
-def _has_token(value: bytes, token: bytes) -> bool:
-    """Check for `token` in a comma-separated list header value."""
-    return any(item.strip() == token for item in value.lower().split(b","))
-
-
 class ZttpProtocol(asyncio.Protocol):
     def __init__(
         self,
@@ -204,7 +199,6 @@ class ZttpProtocol(asyncio.Protocol):
                         default_headers=self.server_state.default_headers,
                         message_event=asyncio.Event(),
                         expect_100_continue=event.expect_continue,
-                        keep_alive=not self.conn.should_close(),
                         on_response=self.on_response_complete,
                     )
                     if self.config.reset_contextvars:
@@ -333,7 +327,6 @@ class RequestResponseCycle:
         default_headers: list[tuple[bytes, bytes]],
         message_event: asyncio.Event,
         expect_100_continue: bool,
-        keep_alive: bool,
         on_response: Callable[..., None],
     ) -> None:
         self.scope = scope
@@ -349,7 +342,7 @@ class RequestResponseCycle:
 
         # Connection state
         self.disconnected = False
-        self.keep_alive = keep_alive
+        self.keep_alive = True
         self.waiting_for_100_continue = expect_100_continue
 
         # Request state
@@ -452,8 +445,6 @@ class RequestResponseCycle:
                     # there is no Content-Length accounting to do here.
                     has_transfer_encoding = True
                     self.chunked_encoding = True
-                elif name == b"connection" and _has_token(value, b"close"):
-                    self.keep_alive = False
 
             # A response carrying both Content-Length and Transfer-Encoding is
             # a framing conflict that zttp rejects, so drop the Content-Length.
@@ -521,7 +512,9 @@ class RequestResponseCycle:
             raise RuntimeError(f"Unexpected ASGI message '{message['type']}' sent, after response already completed.")
 
         if self.response_complete:
-            if not self.keep_alive:
+            # `should_close()` covers both directions: the request's `Connection: close`
+            # or HTTP/1.0 default, and a `close` the response we just wrote declared.
+            if not self.keep_alive or self.conn.should_close():
                 self.transport.close()
             self.on_response()
 
