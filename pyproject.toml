@@ -164,7 +164,10 @@ exclude_lines = [
     "tests/supervisors/test_multiprocess.py",
 ]
 "sys_platform != 'win32'" = ["uvicorn/loops/asyncio.py"]
-"not is_installed('zttp')" = ["uvicorn/protocols/http/zttp_impl.py"]
+"not is_installed('zttp')" = [
+    "uvicorn/protocols/http/zttp_impl.py",
+    "tests/protocols/test_zttp.py",
+]
 
 [tool.coverage.coverage_conditional_plugin.rules]
 py-win32 = "sys_platform == 'win32'"
