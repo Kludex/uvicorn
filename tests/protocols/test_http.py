@@ -477,36 +477,18 @@ async def test_chunked_encoding_head_request(http_protocol_cls: type[HTTPProtoco
     assert not protocol.transport.is_closing()
 
 
-async def test_chunked_encoding_multiple_transfer_codings():
-    """zttp always chunk-frames the body, so `chunked` must be declared exactly once, last."""
+async def test_transfer_encoding_stripped_when_forbidden():
+    """RFC 9112 §6.1 forbids `Transfer-Encoding` on 1xx/204; zttp rejects it, so we drop it."""
     pytest.importorskip("zttp")
     from uvicorn.protocols.http.zttp_impl import ZttpProtocol
 
-    app = Response(b"Hello, world!", status_code=200, headers={"transfer-encoding": "gzip, chunked"})
+    app = Response(b"", status_code=204, headers={"transfer-encoding": "chunked"})
 
     protocol = get_connected_protocol(app, ZttpProtocol)
     protocol.data_received(SIMPLE_GET_REQUEST)
     await protocol.loop.run_one()
-    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
-    assert protocol.transport.buffer.lower().count(b"transfer-encoding") == 1
-    assert b"0\r\n\r\n" in protocol.transport.buffer
-    assert not protocol.transport.is_closing()
-
-
-async def test_chunked_encoding_appended_to_transfer_codings():
-    """A transfer-coding list without `chunked` gets it appended, as a trailing coding."""
-    pytest.importorskip("zttp")
-    from uvicorn.protocols.http.zttp_impl import ZttpProtocol
-
-    app = Response(b"Hello, world!", status_code=200, headers={"transfer-encoding": "gzip"})
-
-    protocol = get_connected_protocol(app, ZttpProtocol)
-    protocol.data_received(SIMPLE_GET_REQUEST)
-    await protocol.loop.run_one()
-    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
-    assert b"transfer-encoding: gzip\r\ntransfer-encoding: chunked\r\n" in protocol.transport.buffer
-    assert b"content-length" not in protocol.transport.buffer.lower()
-    assert b"0\r\n\r\n" in protocol.transport.buffer
+    assert b"HTTP/1.1 204 No Content" in protocol.transport.buffer
+    assert b"transfer-encoding" not in protocol.transport.buffer.lower()
 
 
 async def test_connection_close_within_multiple_tokens():

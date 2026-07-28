@@ -432,35 +432,40 @@ class RequestResponseCycle:
                 headers = headers + [CLOSE_HEADER]
 
             bodyless = self.scope["method"] == "HEAD" or status in (204, 304) or status < 200
+
+            # RFC 9112 §6.1 forbids Transfer-Encoding on 1xx and 204 responses, and
+            # zttp refuses to serialize one there, so drop it instead of erroring.
+            # HEAD and 304 may keep it: it describes the body a GET would return.
+            if status < 200 or status == 204:
+                headers = [(name, value) for name, value in headers if name.lower() != b"transfer-encoding"]
+
             has_content_length = False
-            transfer_codings: list[bytes] = []
+            has_transfer_encoding = False
             for name, value in headers:
                 name = name.lower()
                 if name == b"content-length":
                     has_content_length = True
                     self.expected_content_length = int(value.decode())
                 elif name == b"transfer-encoding":
-                    # zttp frames the body itself as soon as a transfer-coding is
-                    # declared, whatever the codings are, so any value here means
-                    # we must not do Content-Length accounting on the body.
-                    transfer_codings.extend(token.strip() for token in value.lower().split(b","))
+                    # zttp only accepts a sole, final `chunked` coding - anything
+                    # else raises, like h11 - and it frames the body itself, so
+                    # there is no Content-Length accounting to do here.
+                    has_transfer_encoding = True
                     self.chunked_encoding = True
                 elif name == b"connection" and _has_token(value, b"close"):
                     self.keep_alive = False
 
             # A response carrying both Content-Length and Transfer-Encoding is
             # a framing conflict that zttp rejects, so drop the Content-Length.
-            if transfer_codings and has_content_length:
+            if has_transfer_encoding and has_content_length:
                 headers = [(name, value) for name, value in headers if name.lower() != b"content-length"]
                 has_content_length = False
                 self.expected_content_length = 0
 
             # zttp refuses to frame the body unless the response declares
-            # Content-Length or Transfer-Encoding, and it always frames it as
-            # chunked, so make sure `chunked` is declared. An extra header line
-            # extends the transfer-coding list, keeping `chunked` last.
-            needs_chunked = b"chunked" not in transfer_codings if transfer_codings else not has_content_length
-            if not bodyless and needs_chunked:
+            # Content-Length or Transfer-Encoding, so add chunked encoding
+            # ourselves when the application provides neither.
+            if not bodyless and not has_transfer_encoding and not has_content_length:
                 self.chunked_encoding = True
                 headers = headers + [(b"transfer-encoding", b"chunked")]
 
