@@ -879,6 +879,31 @@ async def test_server_reject_connection_with_response(
     assert disconnected_message == {"type": "websocket.disconnect", "code": 1006}
 
 
+async def test_server_reject_connection_with_custom_content_headers(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+):
+    body = b'{"detail":"Unauthorized"}'
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert scope["type"] == "websocket"
+        await receive()
+        response = Response(body, status_code=401, media_type="application/json")
+        await response(scope, receive, send)
+
+    async def websocket_session(url: str):
+        with pytest.raises(websockets.exceptions.InvalidStatus) as exc_info:
+            async with connect(url):
+                pass  # pragma: no cover
+        response = exc_info.value.response
+        assert response.body == body
+        assert response.headers.get_all("Content-Length") == [str(len(body))]
+        assert response.headers.get_all("Content-Type") == ["application/json"]
+
+    config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
+    async with run_server(config):
+        await websocket_session(f"ws://127.0.0.1:{unused_tcp_port}")
+
+
 async def test_server_reject_connection_with_multibody_response(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
 ):

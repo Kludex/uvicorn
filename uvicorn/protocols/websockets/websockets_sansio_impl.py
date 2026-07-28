@@ -471,6 +471,8 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 self.initial_response = self.initial_response[:2] + (body,)
                 if not message.get("more_body", False):
                     response = self.conn.reject(self.initial_response[0], body.decode())
+                    for name, _ in self.initial_response[1]:
+                        response.headers.pop(name, None)
                     response.headers.update(self.initial_response[1])
                     self.queue.put_nowait({"type": "websocket.disconnect", "code": 1006})
                     self.conn.send_response(response)
