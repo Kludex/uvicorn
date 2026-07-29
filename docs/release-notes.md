@@ -2,6 +2,16 @@
 toc_depth: 2
 ---
 
+## 0.52.0 (July 29, 2026)
+
+### Added
+
+* Add an experimental `zttp` HTTP/1.1 implementation, selectable with `--http zttp` (#2979)
+
+### Fixed
+
+* Keep non-ASCII WebSocket request headers intact with websockets 17.0, which encodes them with ISO-8859-1 (#3036)
+
 ## 0.51.0 (July 8, 2026)
 
 ### Added
