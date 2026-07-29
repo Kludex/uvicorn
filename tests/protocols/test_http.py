@@ -445,6 +445,16 @@ async def test_close(http_protocol_cls: type[HTTPProtocol]):
     assert protocol.transport.is_closing()
 
 
+async def test_bodyless_response_with_transfer_encoding(http_protocol_cls: type[HTTPProtocol]):
+    """RFC 9112 §6.1 forbids `Transfer-Encoding` on a 204, which zttp refuses to serialize."""
+    app = Response(b"", status_code=204, headers={"transfer-encoding": "chunked"})
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 204 No Content" in protocol.transport.buffer
+
+
 async def test_chunked_encoding(http_protocol_cls: type[HTTPProtocol]):
     app = Response(b"Hello, world!", status_code=200, headers={"transfer-encoding": "chunked"})
 
