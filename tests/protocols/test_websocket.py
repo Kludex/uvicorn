@@ -16,6 +16,7 @@ from websockets.typing import Subprotocol
 from tests.response import Response
 from tests.utils import run_server
 from uvicorn._types import (
+    ASGIApplication,
     ASGIReceiveCallable,
     ASGIReceiveEvent,
     ASGISendCallable,
@@ -1388,22 +1389,115 @@ async def test_server_keepalive_ping_timeout(
             assert exc_info.value.rcvd.reason == "keepalive ping timeout"
 
 
-@skip_if_no_wsproto
-async def test_wsproto_connection_lost_unblocks_paused_send():
-    """Test that connection loss releases a wsproto send blocked on backpressure."""
+WS_HANDSHAKE_REQUEST = (
+    b"GET / HTTP/1.1\r\n"
+    b"Host: 127.0.0.1\r\n"
+    b"Upgrade: websocket\r\n"
+    b"Connection: Upgrade\r\n"
+    b"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+    b"Sec-WebSocket-Version: 13\r\n\r\n"
+)
+
+
+class MockWriteTransport:
+    """Minimal transport for driving a websocket protocol's write path in-process."""
+
+    def __init__(self) -> None:
+        self.buffer = b""
+        self.closed = False
+
+    def get_extra_info(self, name: str, default: Any = None) -> Any:
+        return {"sockname": ("127.0.0.1", 8000), "peername": ("127.0.0.1", 8001)}.get(name, default)
+
+    def write(self, data: bytes) -> None:
+        self.buffer += data
+
+    def close(self) -> None:
+        self.closed = True
+
+    def is_closing(self) -> bool:
+        return self.closed
+
+
+def connected_ws_protocol(
+    app: ASGIApplication, ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol
+) -> tuple[Any, MockWriteTransport]:
+    """Return a websocket protocol driven by a mock transport, past the handshake."""
+    config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off")
+    config.load()
+    protocol = ws_protocol_cls(config=config, server_state=ServerState(), app_state={})
+    transport = MockWriteTransport()
+    protocol.connection_made(transport)  # type: ignore[arg-type]
+    protocol.data_received(WS_HANDSHAKE_REQUEST)
+    return protocol, transport
+
+
+async def test_send_respects_write_backpressure(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol):
+    """Test that `send()` blocks while the transport's write buffer is full.
+
+    Without backpressure, a server-initiated close can outrun in-flight data.
+    See https://github.com/Kludex/uvicorn/issues/3047.
+    """
+    accepted = asyncio.Event()
+    close_requested = asyncio.Event()
+    close_sent = asyncio.Event()
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
-        pass  # pragma: no cover
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        await close_requested.wait()
+        await send({"type": "websocket.close", "code": 1000})
+        close_sent.set()
 
-    config = Config(app=app, lifespan="off")
-    server_state = ServerState()
-    protocol = _WSProtocol(config=config, server_state=server_state, app_state={})
-    server_state.connections.add(protocol)
-    protocol.writable.clear()
+    protocol, transport = connected_ws_protocol(app, ws_protocol_cls, http_protocol_cls)
+    await accepted.wait()
 
-    protocol.connection_lost(Exception())
+    protocol.pause_writing()
+    close_requested.set()
+    # Yield repeatedly so the app task can progress through send() and (wrongly) complete the close if unblocked.
+    for _ in range(10):
+        await asyncio.sleep(0)
+    assert not close_sent.is_set()
+    assert not transport.closed
 
-    assert protocol.writable.is_set()
+    protocol.resume_writing()
+    await close_sent.wait()
+    assert transport.closed
+
+    protocol.connection_lost(None)
+
+
+async def test_connection_lost_unblocks_paused_send(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol
+):
+    """Test that connection loss releases a send blocked on backpressure."""
+    accepted = asyncio.Event()
+    send_requested = asyncio.Event()
+    app_finished = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        await send_requested.wait()
+        try:
+            await send({"type": "websocket.send", "text": "x"})
+        finally:
+            app_finished.set()
+
+    protocol, _ = connected_ws_protocol(app, ws_protocol_cls, http_protocol_cls)
+    await accepted.wait()
+
+    protocol.pause_writing()
+    send_requested.set()
+    # Yield repeatedly so the app task reaches the blocking wait inside send().
+    for _ in range(10):
+        await asyncio.sleep(0)
+    assert not app_finished.is_set()
+
+    protocol.connection_lost(None)
+    await asyncio.wait_for(app_finished.wait(), timeout=1)
 
 
 async def test_server_keepalive_disabled(

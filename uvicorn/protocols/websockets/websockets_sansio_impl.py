@@ -134,11 +134,26 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             self.logger.log(TRACE_LOG_LEVEL, "%sWebSocket connection lost", prefix)
 
         self.handshake_complete = True
+        # Unblock any send() awaiting writable: asyncio never calls resume_writing() on a
+        # transport that is lost while paused, and the buffer will never drain now.
+        self.writable.set()
         if exc is None:
             self.transport.close()
 
     def eof_received(self) -> None:
         pass
+
+    def pause_writing(self) -> None:
+        """
+        Called by the transport when the write buffer exceeds the high water mark.
+        """
+        self.writable.clear()  # pragma: full coverage
+
+    def resume_writing(self) -> None:
+        """
+        Called by the transport when the write buffer drops below the low water mark.
+        """
+        self.writable.set()  # pragma: full coverage
 
     def shutdown(self) -> None:
         self.stop_keepalive()
