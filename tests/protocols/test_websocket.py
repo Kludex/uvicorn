@@ -28,6 +28,7 @@ from uvicorn._types import (
 )
 from uvicorn.config import Config
 from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
+from uvicorn.server import ServerState
 
 try:
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol as _WSProtocol
@@ -1385,6 +1386,24 @@ async def test_server_keepalive_ping_timeout(
             assert exc_info.value.rcvd is not None
             assert exc_info.value.rcvd.code == 1011
             assert exc_info.value.rcvd.reason == "keepalive ping timeout"
+
+
+@skip_if_no_wsproto
+async def test_wsproto_connection_lost_unblocks_paused_send():
+    """Test that connection loss releases a wsproto send blocked on backpressure."""
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        pass  # pragma: no cover
+
+    config = Config(app=app, lifespan="off")
+    server_state = ServerState()
+    protocol = _WSProtocol(config=config, server_state=server_state, app_state={})
+    server_state.connections.add(protocol)
+    protocol.writable.clear()
+
+    protocol.connection_lost(Exception())
+
+    assert protocol.writable.is_set()
 
 
 async def test_server_keepalive_disabled(

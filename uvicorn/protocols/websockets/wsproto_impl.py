@@ -145,6 +145,8 @@ class WSProtocol(asyncio.Protocol):
             self.logger.log(TRACE_LOG_LEVEL, "%sWebSocket connection lost", prefix)
 
         self.handshake_complete = True
+        # asyncio never calls resume_writing() when a paused transport is lost.
+        self.writable.set()
         if exc is None:
             self.transport.close()
 
