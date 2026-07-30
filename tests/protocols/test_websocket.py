@@ -1468,9 +1468,7 @@ async def test_send_respects_write_backpressure(ws_protocol_cls: WSProtocol, htt
     protocol.connection_lost(None)
 
 
-async def test_connection_lost_unblocks_paused_send(
-    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol
-):
+async def test_connection_lost_unblocks_paused_send(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol):
     """Test that connection loss releases a send blocked on backpressure."""
     accepted = asyncio.Event()
     send_requested = asyncio.Event()
