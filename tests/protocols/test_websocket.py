@@ -1473,6 +1473,7 @@ async def test_connection_lost_unblocks_paused_send(ws_protocol_cls: WSProtocol,
     accepted = asyncio.Event()
     send_requested = asyncio.Event()
     app_finished = asyncio.Event()
+    send_failed = asyncio.Event()
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         await receive()  # websocket.connect
@@ -1481,6 +1482,8 @@ async def test_connection_lost_unblocks_paused_send(ws_protocol_cls: WSProtocol,
         await send_requested.wait()
         try:
             await send({"type": "websocket.send", "text": "x"})
+        except OSError:
+            send_failed.set()
         finally:
             app_finished.set()
 
@@ -1496,6 +1499,7 @@ async def test_connection_lost_unblocks_paused_send(ws_protocol_cls: WSProtocol,
 
     protocol.connection_lost(None)
     await asyncio.wait_for(app_finished.wait(), timeout=1)
+    assert send_failed.is_set()
 
 
 async def test_server_keepalive_disabled(

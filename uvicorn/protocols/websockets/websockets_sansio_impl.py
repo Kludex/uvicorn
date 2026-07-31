@@ -394,6 +394,8 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
 
     async def send(self, message: ASGISendEvent) -> None:
         await self.writable.wait()
+        if self.transport.is_closing():
+            raise ClientDisconnected()
 
         if not self.handshake_complete and self.initial_response is None:
             if message["type"] == "websocket.accept":
