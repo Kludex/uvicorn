@@ -164,6 +164,12 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
 
     def shutdown(self) -> None:
         self.stop_keepalive()
+        if self.close_sent:
+            if self.close_timer is not None:
+                self.close_timer.cancel()
+                self.close_timer = None
+            self.transport.close()
+            return
         if self.handshake_complete:
             self.queue.put_nowait({"type": "websocket.disconnect", "code": 1012})
             self.conn.send_close(1012)
@@ -182,6 +188,10 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
 
     def handle_events(self) -> None:
         for event in self.conn.events_received():
+            if self.close_sent and isinstance(event, Frame):
+                if event.opcode == Opcode.CLOSE:
+                    self.handle_close(event)
+                continue
             if isinstance(event, Request):
                 self.handle_connect(event)
             if isinstance(event, Frame):
