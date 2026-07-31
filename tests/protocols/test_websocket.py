@@ -1397,6 +1397,7 @@ WS_HANDSHAKE_REQUEST = (
     b"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
     b"Sec-WebSocket-Version: 13\r\n\r\n"
 )
+CLIENT_CLOSE_FRAME = b"\x88\x82\x00\x00\x00\x00\x03\xe8"  # masked close, code 1000
 
 
 class MockWriteTransport:
@@ -1464,6 +1465,34 @@ async def test_send_respects_write_backpressure(ws_protocol_cls: WSProtocol, htt
     protocol.resume_writing()
     await close_sent.wait()
     assert transport.closed
+
+    protocol.connection_lost(None)
+
+
+async def test_send_after_peer_close_raises_client_disconnected(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol
+):
+    """Test that protocol-specific close errors are converted to OSError."""
+    accepted = asyncio.Event()
+    send_failed = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        message = await receive()
+        assert message["type"] == "websocket.disconnect"
+        try:
+            await send({"type": "websocket.send", "text": "x"})
+        except OSError:
+            send_failed.set()
+
+    protocol, _ = connected_ws_protocol(app, ws_protocol_cls, http_protocol_cls)
+    await accepted.wait()
+
+    # The peer closes the WebSocket before the transport invokes connection_lost().
+    protocol.data_received(CLIENT_CLOSE_FRAME)
+    await asyncio.wait_for(send_failed.wait(), timeout=1)
 
     protocol.connection_lost(None)
 
