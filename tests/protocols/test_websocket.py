@@ -1397,7 +1397,6 @@ WS_HANDSHAKE_REQUEST = (
     b"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
     b"Sec-WebSocket-Version: 13\r\n\r\n"
 )
-CLIENT_CLOSE_FRAME = b"\x88\x82\x00\x00\x00\x00\x03\xe8"  # masked close, code 1000
 
 
 class MockWriteTransport:
@@ -1491,7 +1490,7 @@ async def test_send_after_peer_close_raises_client_disconnected(
     await accepted.wait()
 
     # The peer closes the WebSocket before the transport invokes connection_lost().
-    protocol.data_received(CLIENT_CLOSE_FRAME)
+    protocol.data_received(b"\x88\x82\x00\x00\x00\x00\x03\xe8")  # masked close, code 1000
     await asyncio.wait_for(send_failed.wait(), timeout=1)
 
     protocol.connection_lost(None)
