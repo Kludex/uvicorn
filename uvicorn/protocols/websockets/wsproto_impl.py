@@ -355,6 +355,7 @@ class WSProtocol(asyncio.Protocol):
 
     async def send(self, message: ASGISendEvent) -> None:
         await self.writable.wait()
+
         if self.disconnected:
             raise ClientDisconnected()
 
