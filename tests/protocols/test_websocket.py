@@ -1405,6 +1405,7 @@ class MockWriteTransport:
     def __init__(self) -> None:
         self.buffer = b""
         self.closed = False
+        self.reading_paused = False
 
     def get_extra_info(self, name: str, default: Any = None) -> Any:
         return {"sockname": ("127.0.0.1", 8000), "peername": ("127.0.0.1", 8001)}.get(name, default)
@@ -1417,6 +1418,12 @@ class MockWriteTransport:
 
     def is_closing(self) -> bool:
         return self.closed
+
+    def pause_reading(self) -> None:
+        self.reading_paused = True
+
+    def resume_reading(self) -> None:
+        self.reading_paused = False
 
 
 def connected_ws_protocol(
@@ -1439,6 +1446,40 @@ async def test_send_respects_write_backpressure(ws_protocol_cls: WSProtocol, htt
     See https://github.com/Kludex/uvicorn/issues/3047.
     """
     accepted = asyncio.Event()
+    send_requested = asyncio.Event()
+    send_completed = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        await send_requested.wait()
+        await send({"type": "websocket.send", "text": "x"})
+        send_completed.set()
+
+    protocol, transport = connected_ws_protocol(app, ws_protocol_cls, http_protocol_cls)
+    await accepted.wait()
+
+    initial_buffer = transport.buffer
+    protocol.pause_writing()
+    send_requested.set()
+    # Yield repeatedly so the app task can progress through send() and (wrongly) complete it if unblocked.
+    for _ in range(10):
+        await asyncio.sleep(0)
+    assert not send_completed.is_set()
+    assert transport.buffer == initial_buffer
+
+    protocol.resume_writing()
+    await send_completed.wait()
+    assert transport.buffer != initial_buffer
+
+    protocol.connection_lost(None)
+
+
+@pytest.mark.parametrize("outcome", ["reply", "timeout", "connection_lost"])
+async def test_sansio_server_initiated_close(http_protocol_cls: HTTPProtocol, outcome: str):
+    """Test that a server close waits for its reply, with bounded cleanup."""
+    accepted = asyncio.Event()
     close_requested = asyncio.Event()
     close_sent = asyncio.Event()
 
@@ -1450,22 +1491,35 @@ async def test_send_respects_write_backpressure(ws_protocol_cls: WSProtocol, htt
         await send({"type": "websocket.close", "code": 1000})
         close_sent.set()
 
-    protocol, transport = connected_ws_protocol(app, ws_protocol_cls, http_protocol_cls)
+    protocol, transport = connected_ws_protocol(app, WebSocketsSansIOProtocol, http_protocol_cls)
     await accepted.wait()
 
-    protocol.pause_writing()
+    if outcome == "reply":
+        # Leave a message unconsumed so reads are paused when the app closes.
+        protocol.data_received(b"\x81\x81\x00\x00\x00\x00x")  # masked text, payload "x"
+        assert transport.reading_paused
+    elif outcome == "timeout":
+        protocol.close_timeout = 0
+
     close_requested.set()
-    # Yield repeatedly so the app task can progress through send() and (wrongly) complete the close if unblocked.
+    await close_sent.wait()
     for _ in range(10):
         await asyncio.sleep(0)
-    assert not close_sent.is_set()
-    assert not transport.closed
 
-    protocol.resume_writing()
-    await close_sent.wait()
+    if outcome == "reply":
+        assert not transport.reading_paused
+        assert not transport.closed
+        protocol.data_received(b"\x88\x82\x00\x00\x00\x00\x03\xe8")  # masked close, code 1000
+    elif outcome == "connection_lost":
+        assert not transport.closed
+        protocol.connection_lost(None)
+    else:
+        assert transport.closed
+
     assert transport.closed
-
-    protocol.connection_lost(None)
+    if outcome != "connection_lost":
+        protocol.connection_lost(None)
+    assert protocol.close_timer is None
 
 
 async def test_send_after_peer_close_raises_client_disconnected(
