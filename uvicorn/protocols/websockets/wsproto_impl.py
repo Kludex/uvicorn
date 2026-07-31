@@ -100,6 +100,8 @@ class WSProtocol(asyncio.Protocol):
         self.handshake_complete = False
         self.close_sent = False
         self.disconnected = False
+        self.close_timer: TimerHandle | None = None
+        self.close_timeout = 10.0
 
         # Rejection state
         self.response_started = False
@@ -149,6 +151,9 @@ class WSProtocol(asyncio.Protocol):
         self.disconnected = True
         # asyncio never calls resume_writing() when a paused transport is lost.
         self.writable.set()
+        if self.close_timer is not None:
+            self.close_timer.cancel()
+            self.close_timer = None
         if exc is None:
             self.transport.close()
 
@@ -172,6 +177,10 @@ class WSProtocol(asyncio.Protocol):
     def handle_events(self) -> None:
         for event in self.conn.events():
             if self.close_sent:
+                if isinstance(event, events.CloseConnection) and self.close_timer is not None:
+                    self.close_timer.cancel()
+                    self.close_timer = None
+                    self.transport.close()
                 return
             if isinstance(event, events.Request):
                 self.handle_connect(event)
@@ -351,7 +360,8 @@ class WSProtocol(asyncio.Protocol):
                 self.send_500_response()
             elif result is not None:
                 self.logger.error("ASGI callable should return None, but returned '%s'.", result)
-        self.transport.close()
+        if self.close_timer is None:
+            self.transport.close()
 
     async def send(self, message: ASGISendEvent) -> None:
         await self.writable.wait()
@@ -442,7 +452,10 @@ class WSProtocol(asyncio.Protocol):
                     output = self.conn.send(wsproto.events.CloseConnection(code=code, reason=reason))
                     if not self.transport.is_closing():
                         self.transport.write(output)
-                        self.transport.close()
+                        if self.read_paused:
+                            self.read_paused = False
+                            self.transport.resume_reading()
+                        self.close_timer = self.loop.call_later(self.close_timeout, self.transport.close)
 
                 else:
                     raise RuntimeError(

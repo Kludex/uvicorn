@@ -1477,7 +1477,7 @@ async def test_send_respects_write_backpressure(ws_protocol_cls: WSProtocol, htt
 
 
 @pytest.mark.parametrize("outcome", ["reply", "timeout", "connection_lost"])
-async def test_sansio_server_initiated_close(http_protocol_cls: HTTPProtocol, outcome: str):
+async def test_server_initiated_close(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, outcome: str):
     """Test that a server close waits for its reply, with bounded cleanup."""
     accepted = asyncio.Event()
     close_requested = asyncio.Event()
@@ -1491,7 +1491,7 @@ async def test_sansio_server_initiated_close(http_protocol_cls: HTTPProtocol, ou
         await send({"type": "websocket.close", "code": 1000})
         close_sent.set()
 
-    protocol, transport = connected_ws_protocol(app, WebSocketsSansIOProtocol, http_protocol_cls)
+    protocol, transport = connected_ws_protocol(app, ws_protocol_cls, http_protocol_cls)
     await accepted.wait()
 
     if outcome == "reply":
