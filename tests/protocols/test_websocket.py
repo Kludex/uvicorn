@@ -1476,7 +1476,9 @@ async def test_send_respects_write_backpressure(ws_protocol_cls: WSProtocol, htt
     protocol.connection_lost(None)
 
 
-@pytest.mark.parametrize("outcome", ["reply", "data_then_reply", "same_read", "timeout", "connection_lost", "shutdown"])
+@pytest.mark.parametrize(
+    "outcome", ["reply", "data_then_reply", "same_read", "ping_then_reply", "timeout", "connection_lost", "shutdown"]
+)
 async def test_server_initiated_close(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, outcome: str):
     """Test that a server close waits for its reply, with bounded cleanup."""
     accepted = asyncio.Event()
@@ -1520,6 +1522,11 @@ async def test_server_initiated_close(ws_protocol_cls: WSProtocol, http_protocol
             b"\x81\x81\x00\x00\x00\x00x"  # masked text, payload "x"
             b"\x88\x82\x00\x00\x00\x00\x03\xe8"  # masked close, code 1000
         )
+    elif outcome == "ping_then_reply":
+        protocol.data_received(b"\x89\x80\x00\x00\x00\x00")  # masked ping
+        assert not transport.reading_paused
+        assert not transport.closed
+        protocol.data_received(b"\x88\x82\x00\x00\x00\x00\x03\xe8")  # masked close, code 1000
     elif outcome == "connection_lost":
         assert not transport.closed
         protocol.connection_lost(None)

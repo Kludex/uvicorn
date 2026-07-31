@@ -188,10 +188,6 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
 
     def handle_events(self) -> None:
         for event in self.conn.events_received():
-            if self.close_sent and isinstance(event, Frame):
-                if event.opcode == Opcode.CLOSE:
-                    self.handle_close(event)
-                continue
             if isinstance(event, Request):
                 self.handle_connect(event)
             if isinstance(event, Frame):
@@ -281,6 +277,10 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
     def send_receive_event_to_app(self) -> None:
         data = self.frames[0] if len(self.frames) == 1 else b"".join(self.frames)
         self.frames = []
+        if self.close_sent:
+            # The app is past `websocket.close`: discard the message rather than queueing
+            # it, so reads stay active until the peer's close reply arrives.
+            return
         if self.curr_msg_data_type == "text":
             try:
                 self.queue.put_nowait({"type": "websocket.receive", "text": data.decode()})
