@@ -144,6 +144,7 @@ class WSProtocol(asyncio.Protocol):
             prefix = "%s:%d - " % self.client if self.client else ""
             self.logger.log(TRACE_LOG_LEVEL, "%sWebSocket connection lost", prefix)
 
+        self.conn.receive_data(None)
         self.handshake_complete = True
         # asyncio never calls resume_writing() when a paused transport is lost.
         self.writable.set()
@@ -354,9 +355,6 @@ class WSProtocol(asyncio.Protocol):
     async def send(self, message: ASGISendEvent) -> None:
         await self.writable.wait()
 
-        if not self.close_sent and self.transport.is_closing():
-            raise ClientDisconnected()
-
         if not self.handshake_complete:
             if message["type"] == "websocket.accept":
                 self.logger.info(
@@ -447,7 +445,7 @@ class WSProtocol(asyncio.Protocol):
                         f"Expected ASGI message 'websocket.send' or 'websocket.close', but got '{message['type']}'."
                     )
             except LocalProtocolError as exc:
-                raise ClientDisconnected from exc  # pragma: no cover
+                raise ClientDisconnected from exc
         elif self.response_started:
             if message["type"] == "websocket.http.response.body":
                 body_finished = not message.get("more_body", False)

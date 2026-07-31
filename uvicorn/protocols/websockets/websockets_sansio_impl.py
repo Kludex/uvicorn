@@ -133,6 +133,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             prefix = "%s:%d - " % self.client if self.client else ""
             self.logger.log(TRACE_LOG_LEVEL, "%sWebSocket connection lost", prefix)
 
+        self.conn.receive_eof()
         self.handshake_complete = True
         # Unblock any send() awaiting writable: asyncio never calls resume_writing() on a
         # transport that is lost while paused, and the buffer will never drain now.
@@ -167,7 +168,11 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.transport.close()
 
     def data_received(self, data: bytes) -> None:
-        self.conn.receive_data(data)
+        try:
+            self.conn.receive_data(data)
+        except EOFError:
+            # A pending proactor read may deliver data after connection_lost().
+            return
         if self.conn.parser_exc is not None:  # pragma: no cover
             self.handle_parser_exception()
             return
@@ -395,9 +400,6 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
     async def send(self, message: ASGISendEvent) -> None:
         await self.writable.wait()
 
-        if not self.close_sent and self.transport.is_closing():
-            raise ClientDisconnected()
-
         if not self.handshake_complete and self.initial_response is None:
             if message["type"] == "websocket.accept":
                 self.logger.info(
@@ -482,7 +484,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                         f"Expected ASGI message 'websocket.send' or 'websocket.close', but got '{message['type']}'."
                     )
             except InvalidState:
-                raise ClientDisconnected()  # pragma: no cover
+                raise ClientDisconnected()
         elif self.initial_response is not None:
             if message["type"] == "websocket.http.response.body":
                 body = self.initial_response[2] + message["body"]
