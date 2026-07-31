@@ -354,7 +354,7 @@ class WSProtocol(asyncio.Protocol):
     async def send(self, message: ASGISendEvent) -> None:
         await self.writable.wait()
 
-        if self.transport.is_closing():
+        if not self.close_sent and self.transport.is_closing():
             raise ClientDisconnected()
 
         if not self.handshake_complete:
@@ -447,7 +447,7 @@ class WSProtocol(asyncio.Protocol):
                         f"Expected ASGI message 'websocket.send' or 'websocket.close', but got '{message['type']}'."
                     )
             except LocalProtocolError as exc:
-                raise ClientDisconnected from exc
+                raise ClientDisconnected from exc  # pragma: no cover
         elif self.response_started:
             if message["type"] == "websocket.http.response.body":
                 body_finished = not message.get("more_body", False)

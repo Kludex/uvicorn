@@ -395,7 +395,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
     async def send(self, message: ASGISendEvent) -> None:
         await self.writable.wait()
 
-        if self.transport.is_closing():
+        if not self.close_sent and self.transport.is_closing():
             raise ClientDisconnected()
 
         if not self.handshake_complete and self.initial_response is None:
@@ -482,7 +482,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                         f"Expected ASGI message 'websocket.send' or 'websocket.close', but got '{message['type']}'."
                     )
             except InvalidState:
-                raise ClientDisconnected()
+                raise ClientDisconnected()  # pragma: no cover
         elif self.initial_response is not None:
             if message["type"] == "websocket.http.response.body":
                 body = self.initial_response[2] + message["body"]
