@@ -177,10 +177,8 @@ class WSProtocol(asyncio.Protocol):
     def handle_events(self) -> None:
         for event in self.conn.events():
             if self.close_sent:
-                if isinstance(event, events.CloseConnection) and self.close_timer is not None:
-                    self.close_timer.cancel()
-                    self.close_timer = None
-                    self.transport.close()
+                if isinstance(event, events.CloseConnection):
+                    self.handle_close(event)
                 continue
             if isinstance(event, events.Request):
                 self.handle_connect(event)
@@ -273,6 +271,13 @@ class WSProtocol(asyncio.Protocol):
                 self.transport.pause_reading()
 
     def handle_close(self, event: events.CloseConnection) -> None:
+        if self.close_sent:
+            # The peer echoed our close frame: the closing handshake is complete.
+            if self.close_timer is not None:
+                self.close_timer.cancel()
+                self.close_timer = None
+                self.transport.close()
+            return
         if self.conn.state == ConnectionState.REMOTE_CLOSING:
             self.transport.write(self.conn.send(event.response()))
         self.queue.put_nowait({"type": "websocket.disconnect", "code": event.code, "reason": event.reason})

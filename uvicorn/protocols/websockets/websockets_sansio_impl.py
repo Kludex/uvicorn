@@ -361,12 +361,14 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.transport.close()
 
     def handle_close(self, event: Frame) -> None:
-        if self.close_timer is not None:
-            self.close_timer.cancel()
-            self.close_timer = None
-            self.transport.close()
+        if self.close_sent:
+            # The peer echoed our close frame: the closing handshake is complete.
+            if self.close_timer is not None:
+                self.close_timer.cancel()
+                self.close_timer = None
+                self.transport.close()
             return
-        if not self.close_sent and not self.transport.is_closing():
+        if not self.transport.is_closing():
             assert self.conn.close_rcvd is not None
             code = self.conn.close_rcvd.code
             reason = self.conn.close_rcvd.reason
