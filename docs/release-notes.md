@@ -2,6 +2,20 @@
 toc_depth: 2
 ---
 
+## 0.52.0 (July 29, 2026)
+
+This release adds an experimental HTTP/1.1 implementation backed by [zttp](https://zttp.marcelotryle.com/), a sans-IO HTTP parser I've been developing on the side: a core written in Zig, with bindings to Python. It has been running under a fuzzer for some weeks now, and has been through multiple rounds of security auditing.
+
+It is still **experimental**, so don't put it in front of production traffic yet. Try it with `--http zttp`, and please send any feedback to the [issue tracker](https://github.com/Kludex/uvicorn/issues).
+
+### Added
+
+* Add an experimental `zttp` HTTP/1.1 implementation, selectable with `--http zttp` (#2979)
+
+### Fixed
+
+* Keep non-ASCII WebSocket request headers intact with websockets 17.0, which encodes them with ISO-8859-1 (#3036)
+
 ## 0.51.0 (July 8, 2026)
 
 ### Added
