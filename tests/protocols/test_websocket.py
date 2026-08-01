@@ -932,6 +932,33 @@ async def test_server_reject_connection_with_non_utf8_body(
         await websocket_session(f"ws://127.0.0.1:{unused_tcp_port}")
 
 
+async def test_server_reject_connection_with_non_standard_status(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+):
+    body = b"custom error"
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert scope["type"] == "websocket"
+        await receive()
+        await send(
+            {
+                "type": "websocket.http.response.start",
+                "status": 599,
+                "headers": [(b"content-type", b"text/plain")],
+            }
+        )
+        await send({"type": "websocket.http.response.body", "body": body})
+
+    async def websocket_session(url: str):
+        response = await wsresponse(url)
+        assert response.status_code == 599
+        assert response.content == body
+
+    config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
+    async with run_server(config):
+        await websocket_session(f"ws://127.0.0.1:{unused_tcp_port}")
+
+
 async def test_server_reject_connection_with_multibody_response(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
 ):

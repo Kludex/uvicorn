@@ -43,6 +43,16 @@ else:  # pragma: no cover
     from typing_extensions import assert_never
 
 
+def _get_status_phrase(status_code: int) -> str:
+    try:
+        return HTTPStatus(status_code).phrase
+    except ValueError:
+        return ""
+
+
+STATUS_PHRASES = {status_code: _get_status_phrase(status_code) for status_code in range(100, 600)}
+
+
 class WebSocketsSansIOProtocol(asyncio.Protocol):
     def __init__(
         self,
@@ -472,13 +482,13 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 body = self.initial_response[2] + message["body"]
                 self.initial_response = self.initial_response[:2] + (body,)
                 if not message.get("more_body", False):
-                    status = HTTPStatus(self.initial_response[0])
+                    status_code = self.initial_response[0]
                     response_headers = Headers(self.initial_response[1])
                     response_headers.setdefault("Date", email.utils.formatdate(usegmt=True))
                     response_headers.setdefault("Connection", "close")
                     response_headers.setdefault("Content-Length", str(len(body)))
                     response_headers.setdefault("Content-Type", "text/plain; charset=utf-8")
-                    response = Response(status.value, status.phrase, response_headers, body)
+                    response = Response(status_code, STATUS_PHRASES[status_code], response_headers, body)
                     self.queue.put_nowait({"type": "websocket.disconnect", "code": 1006})
                     self.conn.send_response(response)
                     output = self.conn.data_to_send()
