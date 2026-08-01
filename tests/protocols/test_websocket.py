@@ -1680,7 +1680,8 @@ async def test_close_gives_up_when_the_peer_never_replies(ws_protocol_cls: WSPro
         accept_then_close_app, ws_protocol_cls, http_protocol_cls, close_timeout=0
     ) as connection:
         await connection.app_finished()
-        # The zero-delay close timer has already fired while the app task was awaited.
+        # The zero-delay close timer fires on the next event-loop iteration.
+        await asyncio.sleep(0)
         assert connection.transport_closed
 
     assert not connection.awaiting_close_reply
