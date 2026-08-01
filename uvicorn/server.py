@@ -19,16 +19,19 @@ from typing import TYPE_CHECKING, TypeAlias
 
 from uvicorn._ansi import style
 from uvicorn._compat import asyncio_run
-from uvicorn.config import Config
+from uvicorn.config import STARTUP_FAILURE, Config
 
 if TYPE_CHECKING:
     from uvicorn.protocols.http.h11_impl import H11Protocol
     from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
+    from uvicorn.protocols.http.zttp_impl import ZttpProtocol
     from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
     from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol
 
-    Protocols: TypeAlias = H11Protocol | HttpToolsProtocol | WSProtocol | WebSocketProtocol | WebSocketsSansIOProtocol
+    Protocols: TypeAlias = (
+        H11Protocol | HttpToolsProtocol | ZttpProtocol | WSProtocol | WebSocketProtocol | WebSocketsSansIOProtocol
+    )
 
 HANDLED_SIGNALS = (
     signal.SIGINT,  # Unix signal 2. Sent by Ctrl+C.
@@ -103,8 +106,7 @@ class Server:
     async def startup(self, sockets: list[socket.socket] | None = None) -> None:
         await self.lifespan.startup()
         if self.lifespan.should_exit:
-            self.should_exit = True
-            return
+            sys.exit(STARTUP_FAILURE)
 
         config = self.config
 
@@ -178,7 +180,7 @@ class Server:
             except OSError as exc:
                 logger.error(exc)
                 await self.lifespan.shutdown()
-                sys.exit(1)
+                sys.exit(STARTUP_FAILURE)
 
             assert server.sockets is not None
             listeners = server.sockets

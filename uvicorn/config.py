@@ -35,7 +35,7 @@ class UvicornDeprecationWarning(UserWarning):
     """
 
 
-HTTPProtocolType = Literal["auto", "h11", "httptools"]
+HTTPProtocolType = Literal["auto", "h11", "httptools", "zttp"]
 WSProtocolType = Literal["auto", "none", "websockets", "websockets-sansio", "wsproto"]
 LifespanType = Literal["auto", "on", "off"]
 LoopFactoryType = Literal["none", "auto", "asyncio", "uvloop"]
@@ -53,6 +53,7 @@ HTTP_PROTOCOLS: dict[str, str] = {
     "auto": "uvicorn.protocols.http.auto:AutoHTTPProtocol",
     "h11": "uvicorn.protocols.http.h11_impl:H11Protocol",
     "httptools": "uvicorn.protocols.http.httptools_impl:HttpToolsProtocol",
+    "zttp": "uvicorn.protocols.http.zttp_impl:ZttpProtocol",
 }
 WS_PROTOCOLS: dict[str, str | None] = {
     "auto": "uvicorn.protocols.websockets.auto:AutoWebSocketsProtocol",
@@ -75,6 +76,8 @@ LOOP_FACTORIES: dict[str, str | None] = {
 INTERFACES: list[InterfaceType] = ["auto", "asgi3", "asgi2", "wsgi"]
 
 SSL_PROTOCOL_VERSION: int = ssl.PROTOCOL_TLS_SERVER
+
+STARTUP_FAILURE = 3
 
 LOGGING_CONFIG: dict[str, Any] = {
     "version": 1,
@@ -425,7 +428,7 @@ class Config:
             return import_from_string(self.app)
         except ImportFromStringError as exc:
             logger.error("Error loading ASGI app. %s" % exc)
-            sys.exit(1)
+            sys.exit(STARTUP_FAILURE)
 
     def load(self) -> None:
         assert not self.loaded
@@ -495,7 +498,7 @@ class Config:
         except TypeError as exc:
             if self.factory:
                 logger.error("Error loading ASGI app factory: %s", exc)
-                sys.exit(1)
+                sys.exit(STARTUP_FAILURE)
         else:
             if not self.factory:
                 logger.warning(
@@ -540,7 +543,7 @@ class Config:
                 return import_from_string(self.loop)
             except ImportFromStringError as exc:
                 logger.error("Error loading custom loop setup function. %s" % exc)
-                sys.exit(1)
+                sys.exit(STARTUP_FAILURE)
         if loop_factory is None:
             return None
         return loop_factory(use_subprocess=self.use_subprocess)
@@ -556,7 +559,7 @@ class Config:
                 os.chmod(self.uds, uds_perms)
             except OSError as exc:  # pragma: full coverage
                 logger.error(exc)
-                sys.exit(1)
+                sys.exit(STARTUP_FAILURE)
 
             message = "Uvicorn running on unix socket %s (Press CTRL+C to quit)"
             sock_name_format = "%s"
@@ -583,7 +586,7 @@ class Config:
                 sock.bind((self.host, self.port))
             except OSError as exc:  # pragma: full coverage
                 logger.error(exc)
-                sys.exit(1)
+                sys.exit(STARTUP_FAILURE)
 
             message = f"Uvicorn running on {addr_format} (Press CTRL+C to quit)"
             color_message = "Uvicorn running on " + style(addr_format, bold=True) + " (Press CTRL+C to quit)"

@@ -70,8 +70,19 @@ Uvicorn provides the following timeouts:
 
 Uvicorn provides the following resource limiting:
 
-* Concurrency. Defaults to `None`. If set, this provides a maximum number of concurrent tasks *or* open connections that should be allowed. Any new requests or connections that occur once this limit has been reached will result in a "503 Service Unavailable" response. Setting this value to a limit that you know your servers are able to support will help ensure reliable resource usage, even against significantly over-resourced servers.
-* Max requests. Defaults to `None`. If set, this provides a maximum number of HTTP requests that will be serviced before terminating a process. Together with a process manager this can be used to prevent memory leaks from impacting long running processes.
+* Concurrency (`--limit-concurrency`). Defaults to `None`. If set, this provides a maximum number of concurrent tasks *or* open connections that should be allowed. Any new requests that arrive once this limit has been reached will result in a "503 Service Unavailable" response. Setting this value to a limit that you know your servers are able to support will help ensure reliable resource usage, even against significantly over-resourced servers.
+* Backlog (`--backlog`). Defaults to `2048`. The maximum number of connections the operating system will hold in the socket's accept queue before the worker accepts them. This is passed straight to the listening socket's `listen()` call.
+* Max requests (`--limit-max-requests`). Defaults to `None`. If set, this provides a maximum number of HTTP requests that will be serviced before terminating a process. Together with a process manager this can be used to prevent memory leaks from impacting long running processes.
+
+### Concurrency and backlog
+
+`--limit-concurrency` and `--backlog` operate at different layers and do not interact. It is a common misconception that requests refused by `--limit-concurrency` are held in the `--backlog`; they are not.
+
+**`--limit-concurrency` is an application-level gate.** When a request's headers have been fully received, Uvicorn checks whether the number of open connections *or* the number of in-flight request/response tasks has reached the limit. If so, it responds immediately with a "503 Service Unavailable" - the request is **not** queued and does **not** wait for a slot to free up. Both counts include the connection serving the current request, so a value of `N` admits at most `N - 1` *other* concurrent requests; in particular a value of `1` refuses every request. Note that the open-connection count includes idle keep-alive connections, so those also consume the budget: once the number of open connections reaches the limit, further requests are refused even if few requests are actively being processed. Because the check only runs after a connection has been accepted, `--limit-concurrency` does not stop connections from being accepted in the first place - that is governed by `--backlog`.
+
+**`--backlog` is an OS-level socket setting.** It bounds the kernel's accept queue: connections that have completed the TCP handshake but that the worker has not yet `accept()`ed. Uvicorn accepts new connections eagerly, so under normal operation this queue stays near-empty and the setting has little observable effect. It only comes into play when connections arrive faster than the worker can accept them (for example during a large burst, or while the event loop is blocked). Once the queue is full the kernel stops accepting new connection attempts, and clients see a connection failure or timeout rather than a 503 (TCP will typically retry). Note that `--backlog` does not limit the number of connections a worker will ultimately serve - it only limits how many may sit *unaccepted* at once.
+
+To make the distinction concrete, consider `--limit-concurrency 5` with a slow application and a burst of simultaneous requests: once the limit is reached, the excess requests receive a 503 essentially immediately - they are not held in the backlog and processed later. To instead *queue* excess load, put a reverse proxy (e.g. nginx) in front of Uvicorn, or scale out with more workers.
 
 ---
 
