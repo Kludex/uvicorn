@@ -895,6 +895,7 @@ async def test_server_reject_connection_with_custom_content_headers(
             async with connect(url):
                 pass  # pragma: no cover
         response = exc_info.value.response
+        assert response.status_code == 401
         assert response.body == body
         assert response.headers.get_all("Content-Length") == [str(len(body))]
         assert response.headers.get_all("Content-Type") == ["application/json"]
