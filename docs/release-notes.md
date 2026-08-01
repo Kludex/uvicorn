@@ -2,6 +2,15 @@
 toc_depth: 2
 ---
 
+## 0.52.1 (August 1, 2026)
+
+### Fixed
+
+* Complete the closing handshake on server-initiated WebSocket closes in the `websockets-sansio` and `wsproto` implementations, waiting for the client's close reply with a 10 second timeout instead of resetting the connection (#3053)
+* Add missing write flow control to the `websockets-sansio` implementation, preventing data truncation on server-initiated closes with large in-flight payloads (#3048)
+* Handle connection loss while a WebSocket write is waiting on backpressure (#3050)
+* Remove duplicate `Content-Type` and `Content-Length` headers from WebSocket denial responses on the `websockets-sansio` implementation, and deliver non-UTF-8 denial bodies intact (#3041)
+
 ## 0.52.0 (July 29, 2026)
 
 This release adds an experimental HTTP/1.1 implementation backed by [zttp](https://zttp.marcelotryle.com/), a sans-IO HTTP parser I've been developing on the side: a core written in Zig, with bindings to Python. It has been running under a fuzzer for some weeks now, and has been through multiple rounds of security auditing.
