@@ -1397,6 +1397,9 @@ WS_HANDSHAKE_REQUEST = (
     b"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
     b"Sec-WebSocket-Version: 13\r\n\r\n"
 )
+MASKED_TEXT_FRAME = b"\x81\x81\x00\x00\x00\x00x"  # payload "x"
+MASKED_PING_FRAME = b"\x89\x80\x00\x00\x00\x00"
+MASKED_CLOSE_FRAME = b"\x88\x82\x00\x00\x00\x00\x03\xe8"  # code 1000
 
 
 class MockWriteTransport:
@@ -1476,70 +1479,159 @@ async def test_send_respects_write_backpressure(ws_protocol_cls: WSProtocol, htt
     protocol.connection_lost(None)
 
 
-@pytest.mark.parametrize(
-    "outcome", ["reply", "data_then_reply", "same_read", "ping_then_reply", "timeout", "connection_lost", "shutdown"]
-)
-async def test_server_initiated_close(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, outcome: str):
-    """Test that a server close waits for its reply, with bounded cleanup."""
+async def closing_ws_protocol(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, close_timeout: float = 10.0
+) -> tuple[Any, MockWriteTransport]:
+    """Return a protocol just past a server-initiated `websocket.close`, and its transport."""
     accepted = asyncio.Event()
-    close_requested = asyncio.Event()
     close_sent = asyncio.Event()
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         await receive()  # websocket.connect
         await send({"type": "websocket.accept"})
         accepted.set()
-        await close_requested.wait()
+        await send({"type": "websocket.close", "code": 1000})
+        close_sent.set()
+
+    protocol, transport = connected_ws_protocol(app, ws_protocol_cls, http_protocol_cls)
+    protocol.close_timeout = close_timeout
+    await accepted.wait()
+    await close_sent.wait()
+    # Yield repeatedly so run_asgi() finishes and (wrongly) closes the transport if broken.
+    for _ in range(10):
+        await asyncio.sleep(0)
+    return protocol, transport
+
+
+async def test_close_waits_for_the_peer_close_frame(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol):
+    """Test that a server close leaves the transport open until the peer echoes it.
+
+    Closing it right away makes the peer\'s reply (RFC 6455 5.5.1) land on a closed socket,
+    which the kernel answers with a TCP RST that discards data the peer has not read yet.
+    See https://github.com/Kludex/uvicorn/issues/3047.
+    """
+    protocol, transport = await closing_ws_protocol(ws_protocol_cls, http_protocol_cls)
+    assert not transport.closed
+
+    protocol.data_received(MASKED_CLOSE_FRAME)
+    assert transport.closed
+    assert protocol.close_timer is None
+
+    protocol.connection_lost(None)
+
+
+async def test_close_resumes_reads_paused_on_an_unconsumed_message(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol
+):
+    """Test that closing resumes paused reads, so the peer close frame can be received."""
+    accepted = asyncio.Event()
+    message_queued = asyncio.Event()
+    close_sent = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        await message_queued.wait()
+        # Close without consuming the queued message, leaving reads paused.
         await send({"type": "websocket.close", "code": 1000})
         close_sent.set()
 
     protocol, transport = connected_ws_protocol(app, ws_protocol_cls, http_protocol_cls)
     await accepted.wait()
 
-    if outcome == "reply":
-        # Leave a message unconsumed so reads are paused when the app closes.
-        protocol.data_received(b"\x81\x81\x00\x00\x00\x00x")  # masked text, payload "x"
-        assert transport.reading_paused
-    elif outcome == "timeout":
-        protocol.close_timeout = 0
-
-    close_requested.set()
+    protocol.data_received(MASKED_TEXT_FRAME)
+    assert transport.reading_paused
+    message_queued.set()
     await close_sent.wait()
     for _ in range(10):
         await asyncio.sleep(0)
+    assert not transport.reading_paused
+    assert not transport.closed
 
-    if outcome == "reply":
-        assert not transport.reading_paused
-        assert not transport.closed
-        protocol.data_received(b"\x88\x82\x00\x00\x00\x00\x03\xe8")  # masked close, code 1000
-    elif outcome == "data_then_reply":
-        protocol.data_received(b"\x81\x81\x00\x00\x00\x00x")  # masked text, payload "x"
-        assert not transport.reading_paused
-        assert not transport.closed
-        protocol.data_received(b"\x88\x82\x00\x00\x00\x00\x03\xe8")  # masked close, code 1000
-    elif outcome == "same_read":
-        protocol.data_received(
-            b"\x81\x81\x00\x00\x00\x00x"  # masked text, payload "x"
-            b"\x88\x82\x00\x00\x00\x00\x03\xe8"  # masked close, code 1000
-        )
-    elif outcome == "ping_then_reply":
-        protocol.data_received(b"\x89\x80\x00\x00\x00\x00")  # masked ping
-        assert not transport.reading_paused
-        assert not transport.closed
-        protocol.data_received(b"\x88\x82\x00\x00\x00\x00\x03\xe8")  # masked close, code 1000
-    elif outcome == "connection_lost":
-        assert not transport.closed
-        protocol.connection_lost(None)
-    elif outcome == "shutdown":
-        assert not transport.closed
-        protocol.shutdown()
-    else:
-        assert transport.closed
-
+    protocol.data_received(MASKED_CLOSE_FRAME)
     assert transport.closed
-    if outcome != "connection_lost":
-        protocol.connection_lost(None)
+
+    protocol.connection_lost(None)
+
+
+async def test_data_frame_while_closing_does_not_pause_reads(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol
+):
+    """Test that a data frame crossing the server close cannot block the peer close frame."""
+    protocol, transport = await closing_ws_protocol(ws_protocol_cls, http_protocol_cls)
+
+    protocol.data_received(MASKED_TEXT_FRAME)
+    assert not transport.reading_paused
+    assert not transport.closed
+
+    protocol.data_received(MASKED_CLOSE_FRAME)
+    assert transport.closed
+
+    protocol.connection_lost(None)
+
+
+async def test_data_frame_and_peer_close_frame_in_one_read(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol
+):
+    """Test that a peer close frame is processed even when preceded by data in the same read."""
+    protocol, transport = await closing_ws_protocol(ws_protocol_cls, http_protocol_cls)
+
+    protocol.data_received(MASKED_TEXT_FRAME + MASKED_CLOSE_FRAME)
+    assert transport.closed
     assert protocol.close_timer is None
+
+    protocol.connection_lost(None)
+
+
+async def test_ping_while_closing(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol):
+    """Test that a ping crossing the server close cannot break the closing handshake."""
+    protocol, transport = await closing_ws_protocol(ws_protocol_cls, http_protocol_cls)
+
+    protocol.data_received(MASKED_PING_FRAME)
+    assert not transport.reading_paused
+    assert not transport.closed
+
+    protocol.data_received(MASKED_CLOSE_FRAME)
+    assert transport.closed
+
+    protocol.connection_lost(None)
+
+
+async def test_close_gives_up_when_the_peer_never_replies(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol):
+    """Test that a peer that never echoes the close frame cannot keep the connection.
+
+    RFC 6455 7.1.1 lets the server close the connection once the reply is late.
+    """
+    protocol, transport = await closing_ws_protocol(ws_protocol_cls, http_protocol_cls, close_timeout=0)
+    # The zero-delay close timer has already fired during the helper's yields.
+    assert transport.closed
+
+    protocol.connection_lost(None)
+    assert protocol.close_timer is None
+
+
+async def test_connection_lost_cancels_the_pending_close_timer(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol
+):
+    """Test that losing the connection stops waiting for the peer close frame."""
+    protocol, _ = await closing_ws_protocol(ws_protocol_cls, http_protocol_cls)
+    assert protocol.close_timer is not None
+
+    protocol.connection_lost(None)
+    assert protocol.close_timer is None
+
+
+async def test_shutdown_while_the_close_reply_is_pending(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol):
+    """Test that server shutdown does not send a second close frame during the handshake."""
+    protocol, transport = await closing_ws_protocol(ws_protocol_cls, http_protocol_cls)
+    assert not transport.closed
+
+    protocol.shutdown()
+    assert transport.closed
+    assert protocol.close_timer is None
+
+    protocol.connection_lost(None)
 
 
 async def test_send_after_peer_close_raises_client_disconnected(
@@ -1564,7 +1656,7 @@ async def test_send_after_peer_close_raises_client_disconnected(
     await accepted.wait()
 
     # The peer closes the WebSocket before the transport invokes connection_lost().
-    protocol.data_received(b"\x88\x82\x00\x00\x00\x00\x03\xe8")  # masked close, code 1000
+    protocol.data_received(MASKED_CLOSE_FRAME)
     await asyncio.wait_for(send_failed.wait(), timeout=1)
 
     protocol.connection_lost(None)
