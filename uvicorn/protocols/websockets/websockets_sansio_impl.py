@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import email.utils
 import logging
 import random
 import struct
@@ -12,10 +13,11 @@ from typing import Any, Literal, cast
 from urllib.parse import unquote
 
 from websockets import __version__ as websockets_version
+from websockets.datastructures import Headers
 from websockets.exceptions import InvalidState
 from websockets.extensions.permessage_deflate import ServerPerMessageDeflateFactory
 from websockets.frames import Frame, Opcode
-from websockets.http11 import Request
+from websockets.http11 import Request, Response
 from websockets.server import ServerProtocol
 
 from uvicorn._types import (
@@ -470,11 +472,13 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 body = self.initial_response[2] + message["body"]
                 self.initial_response = self.initial_response[:2] + (body,)
                 if not message.get("more_body", False):
-                    response = self.conn.reject(self.initial_response[0], body.decode())
-                    del response.headers["Content-Type"], response.headers["Content-Length"]
-                    response.headers.update(self.initial_response[1])
-                    response.headers.setdefault("Content-Length", str(len(body)))
-                    response.headers.setdefault("Content-Type", "text/plain; charset=utf-8")
+                    status = HTTPStatus(self.initial_response[0])
+                    response_headers = Headers(self.initial_response[1])
+                    response_headers.setdefault("Date", email.utils.formatdate(usegmt=True))
+                    response_headers.setdefault("Connection", "close")
+                    response_headers.setdefault("Content-Length", str(len(body)))
+                    response_headers.setdefault("Content-Type", "text/plain; charset=utf-8")
+                    response = Response(status.value, status.phrase, response_headers, body)
                     self.queue.put_nowait({"type": "websocket.disconnect", "code": 1006})
                     self.conn.send_response(response)
                     output = self.conn.data_to_send()
