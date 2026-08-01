@@ -10,7 +10,7 @@ import websockets.exceptions
 from websockets import __version__ as websockets_version
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.extensions.permessage_deflate import ClientPerMessageDeflateFactory
-from websockets.frames import Opcode
+from websockets.frames import Close, CloseCode, Frame, Opcode
 from websockets.typing import Subprotocol
 
 from tests.response import Response
@@ -1397,9 +1397,9 @@ WS_HANDSHAKE_REQUEST = (
     b"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
     b"Sec-WebSocket-Version: 13\r\n\r\n"
 )
-MASKED_TEXT_FRAME = b"\x81\x81\x00\x00\x00\x00x"  # payload "x"
-MASKED_PING_FRAME = b"\x89\x80\x00\x00\x00\x00"
-MASKED_CLOSE_FRAME = b"\x88\x82\x00\x00\x00\x00\x03\xe8"  # code 1000
+MASKED_TEXT_FRAME = Frame(Opcode.TEXT, b"x").serialize(mask=True)
+MASKED_PING_FRAME = Frame(Opcode.PING, b"").serialize(mask=True)
+MASKED_CLOSE_FRAME = Frame(Opcode.CLOSE, Close(CloseCode.NORMAL_CLOSURE, "").serialize()).serialize(mask=True)
 
 
 class MockWriteTransport:
