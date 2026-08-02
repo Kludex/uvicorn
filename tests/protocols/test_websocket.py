@@ -30,6 +30,7 @@ from uvicorn._types import (
     WebSocketResponseStartEvent,
 )
 from uvicorn.config import Config
+from uvicorn.protocols.utils import ClientDisconnected
 from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
 from uvicorn.server import ServerState
 
@@ -541,18 +542,23 @@ async def test_client_disconnect_before_accept(
     'websocket.close'``. The disconnect should surface as ``ClientDisconnected``
     instead, which ``run_asgi`` already handles.
     """
-    send_error: BaseException | None = None
+    send_error: Exception | None = None
+    app_finished = asyncio.Event()
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         nonlocal send_error
         message = await receive()
         assert message["type"] == "websocket.connect"
-        # Give the client time to drop the connection before we accept it.
-        await asyncio.sleep(0.1)
+        # Wait for the peer to actually go away instead of sleeping a fixed amount, so
+        # the accept below is guaranteed to happen after connection_lost().
+        message = await receive()
+        assert message["type"] == "websocket.disconnect"
         try:
             await send({"type": "websocket.accept"})
-        except BaseException as exc:  # pragma: no cover - recorded for the assertion
+        except Exception as exc:
             send_error = exc
+        finally:
+            app_finished.set()
 
     config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
     async with run_server(config):
@@ -570,9 +576,9 @@ async def test_client_disconnect_before_accept(
         await writer.drain()
         writer.close()
         await writer.wait_closed()
-        await asyncio.sleep(0.25)
+        await asyncio.wait_for(app_finished.wait(), timeout=5)
 
-    assert not isinstance(send_error, RuntimeError), f"accept after disconnect raised {send_error!r}"
+    assert isinstance(send_error, ClientDisconnected), f"expected ClientDisconnected, got {send_error!r}"
 
 
 async def test_client_connection_lost(
