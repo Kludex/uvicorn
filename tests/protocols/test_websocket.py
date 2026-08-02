@@ -529,6 +529,52 @@ async def test_client_close(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTP
     assert disconnect_message == {"type": "websocket.disconnect", "code": 1001, "reason": "custom reason"}
 
 
+async def test_client_disconnect_before_accept(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+):
+    """A peer that disconnects before the application accepts must not look like a
+    duplicate accept.
+
+    ``connection_lost`` marks the handshake as complete, so an application that calls
+    ``websocket.accept`` afterwards used to fall into the post-handshake branch of
+    ``send`` and raise ``RuntimeError: Expected ASGI message 'websocket.send' or
+    'websocket.close'``. The disconnect should surface as ``ClientDisconnected``
+    instead, which ``run_asgi`` already handles.
+    """
+    send_error: BaseException | None = None
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        nonlocal send_error
+        message = await receive()
+        assert message["type"] == "websocket.connect"
+        # Give the client time to drop the connection before we accept it.
+        await asyncio.sleep(0.1)
+        try:
+            await send({"type": "websocket.accept"})
+        except BaseException as exc:  # pragma: no cover - recorded for the assertion
+            send_error = exc
+
+    config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
+    async with run_server(config):
+        _, writer = await asyncio.open_connection("127.0.0.1", unused_tcp_port)
+        writer.write(
+            (
+                "GET /ws HTTP/1.1\r\n"
+                f"Host: 127.0.0.1:{unused_tcp_port}\r\n"
+                "Upgrade: websocket\r\n"
+                "Connection: Upgrade\r\n"
+                "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                "Sec-WebSocket-Version: 13\r\n\r\n"
+            ).encode()
+        )
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+        await asyncio.sleep(0.25)
+
+    assert not isinstance(send_error, RuntimeError), f"accept after disconnect raised {send_error!r}"
+
+
 async def test_client_connection_lost(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
 ):
