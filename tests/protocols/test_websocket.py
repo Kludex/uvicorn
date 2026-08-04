@@ -276,8 +276,8 @@ async def test_root_path(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPPro
             await self.send({"type": "websocket.accept"})
 
     async def open_connection(url: str):
-        async with websockets.client.connect(url) as websocket:
-            return websocket.open
+        async with connect(url):
+            return True
 
     config = Config(
         app=App, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port, root_path="/app"
@@ -296,8 +296,8 @@ async def test_asgi_root_path(ws_protocol_cls: WSProtocol, http_protocol_cls: HT
             await self.send({"type": "websocket.accept"})
 
     async def open_connection(url: str):
-        async with websockets.client.connect(url) as websocket:
-            return websocket.open
+        async with connect(url):
+            return True
 
     config = Config(
         app=App,
