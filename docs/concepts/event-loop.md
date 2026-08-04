@@ -13,10 +13,10 @@ By default, Uvicorn uses `--loop auto`, which automatically selects:
 
 Since `uvloop` is not compatible with Windows or PyPy, it is not available on these platforms.
 
-On Windows, the asyncio implementation uses [`ProactorEventLoop`][asyncio.ProactorEventLoop] if running with multiple workers,
-otherwise it uses the standard [`SelectorEventLoop`][asyncio.SelectorEventLoop] for better performance.
+On Windows, the asyncio implementation uses the standard [`ProactorEventLoop`][asyncio.ProactorEventLoop] in single-process mode.
+When running with `--reload` or multiple workers, it uses [`SelectorEventLoop`][asyncio.SelectorEventLoop] instead.
 
-??? info "Why does `SelectorEventLoop` not work with multiple processes on Windows?"
+??? info "Why can `ProactorEventLoop` fail with multiple processes on Windows?"
     If you want to know more about it, you can read the issue [#cpython/122240](https://github.com/python/cpython/issues/122240).
 
 ## Custom Event Loop

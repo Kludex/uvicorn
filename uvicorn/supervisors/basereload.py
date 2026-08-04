@@ -10,8 +10,7 @@ from pathlib import Path
 from socket import socket
 from types import FrameType
 
-import click
-
+from uvicorn._ansi import style
 from uvicorn._subprocess import get_subprocess
 from uvicorn.config import Config
 
@@ -73,8 +72,8 @@ class BaseReload:
     def startup(self) -> None:
         message = f"Started reloader process [{self.pid}] using {self.reloader_name}"
         color_message = "Started reloader process [{}] using {}".format(
-            click.style(str(self.pid), fg="cyan", bold=True),
-            click.style(str(self.reloader_name), fg="cyan", bold=True),
+            style(str(self.pid), fg="cyan", bold=True),
+            style(str(self.reloader_name), fg="cyan", bold=True),
         )
         logger.info(message, extra={"color_message": color_message})
 
@@ -111,7 +110,7 @@ class BaseReload:
             sock.close()
 
         message = f"Stopping reloader process [{str(self.pid)}]"
-        color_message = "Stopping reloader process [{}]".format(click.style(str(self.pid), fg="cyan", bold=True))
+        color_message = "Stopping reloader process [{}]".format(style(str(self.pid), fg="cyan", bold=True))
         logger.info(message, extra={"color_message": color_message})
 
     def should_restart(self) -> list[Path] | None:

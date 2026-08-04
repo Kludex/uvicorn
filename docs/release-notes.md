@@ -2,6 +2,158 @@
 toc_depth: 2
 ---
 
+## 0.52.1 (August 1, 2026)
+
+### Fixed
+
+* Complete the closing handshake on server-initiated WebSocket closes in the `websockets-sansio` and `wsproto` implementations, waiting for the client's close reply with a 10 second timeout instead of resetting the connection (#3053)
+* Add missing write flow control to the `websockets-sansio` implementation, preventing data truncation on server-initiated closes with large in-flight payloads (#3048)
+* Handle connection loss while a WebSocket write is waiting on backpressure (#3050)
+* Remove duplicate `Content-Type` and `Content-Length` headers from WebSocket denial responses on the `websockets-sansio` implementation, and deliver non-UTF-8 denial bodies intact (#3041)
+
+## 0.52.0 (July 29, 2026)
+
+This release adds an experimental HTTP/1.1 implementation backed by [zttp](https://zttp.marcelotryle.com/), a sans-IO HTTP parser I've been developing on the side: a core written in Zig, with bindings to Python. It has been running under a fuzzer for some weeks now, and has been through multiple rounds of security auditing.
+
+It is still **experimental**, so don't put it in front of production traffic yet. Try it with `--http zttp`, and please send any feedback to the [issue tracker](https://github.com/Kludex/uvicorn/issues).
+
+### Added
+
+* Add an experimental `zttp` HTTP/1.1 implementation, selectable with `--http zttp` (#2979)
+
+### Fixed
+
+* Keep non-ASCII WebSocket request headers intact with websockets 17.0, which encodes them with ISO-8859-1 (#3036)
+
+## 0.51.0 (July 8, 2026)
+
+### Added
+
+* Restart workers one at a time on `SIGHUP`, bringing each replacement up before retiring the old worker, so reloads no longer drop requests (#3025)
+
+### Removed
+
+* Remove `colorama` from the `standard` extra (#3027)
+
+## 0.50.2 (July 6, 2026)
+
+### Fixed
+
+* Require `websockets>=13.0`, which the default `websockets-sansio` implementation needs (#3021)
+
+## 0.50.1 (July 6, 2026)
+
+### Fixed
+
+* Split comma-separated `Sec-WebSocket-Protocol` values in the `websockets-sansio` implementation (#3019)
+
+## 0.50.0 (July 4, 2026)
+
+If you use WebSockets, note that `--ws auto` now picks the `websockets-sansio` implementation. You shouldn't need it, but you can pin `--ws websockets` to get the deprecated legacy one back.
+
+### Changed
+
+* Exit with the dedicated code 3 on any startup failure: app loading, socket bind and lifespan startup errors previously exited with a mix of 0, 1 and 3 (#3001)
+* Stop the multiprocess supervisor when a worker exits with code 3 instead of restarting it forever (#3001)
+* Default `--ws auto` to `websockets-sansio` when websockets is installed (#2985)
+* Skip the eager app import in the parent process with `--reload` or `--workers`, fixing a memory regression introduced in 0.47.0 (#3012)
+* Build a fresh `asgi` scope dict per request (#2977)
+* Cache the `asgi` scope sub-dict per connection (#2976)
+* Avoid copying single-frame WebSocket payloads in `websockets-sansio` (#2983)
+* Memoize trusted host checks in `ProxyHeadersMiddleware` (#2970)
+* Replace `click.style` with an internal ANSI style helper (#2981)
+
+### Deprecated
+
+* Deprecate the legacy `websockets` implementation; use `websockets-sansio` or `wsproto` instead (#2985)
+
+## 0.49.0 (June 3, 2026)
+
+### Changed
+
+* Bump `httptools` minimum version to 0.8.0 (#2962)
+* Consume duplicate forwarding headers in `ProxyHeadersMiddleware` (reverses the 0.48.0 behavior of ignoring them) (#2971)
+
+## 0.48.0 (May 24, 2026)
+
+### Changed
+
+* Default `ssl_ciphers` to `None` and use OpenSSL defaults (#2940)
+
+### Fixed
+
+* Ignore duplicate forwarding headers in `ProxyHeadersMiddleware` (#2944)
+
+## 0.47.0 (May 14, 2026)
+
+### Added
+
+* Add `ssl_context_factory` for custom `SSLContext` configuration (#2920)
+
+### Changed
+
+* Eagerly import the ASGI app in the parent process (#2919)
+
+### Fixed
+
+* Treat `fd=0` as a valid file descriptor with reload/workers (#2927)
+
+## 0.46.0 (April 23, 2026)
+
+### Added
+
+* Support `ws_max_size` in `wsproto` implementation (#2915)
+* Support `ws_ping_interval` and `ws_ping_timeout` in `wsproto` implementation (#2916)
+
+### Changed
+
+* Use `bytearray` for incoming WebSocket message buffer in `websockets-sansio` (#2917)
+
+## 0.45.0 (April 21, 2026)
+
+### Added
+
+* Add `--reset-contextvars` flag to isolate ASGI request context (#2912)
+* Accept `os.PathLike` for `log_config` (#2905)
+* Accept `log_level` strings case-insensitively (#2907)
+
+### Changed
+
+* Revert "Emit `http.disconnect` on server shutdown for streaming responses" (#2913)
+* Revert "Explicitly start ASGI run with empty context" (#2911)
+
+### Fixed
+
+* Preserve forwarded client ports in proxy headers middleware (#2903)
+* Raise helpful `ImportError` when PyYAML is missing for YAML log config (#2906)
+
+## 0.44.0 (April 6, 2026)
+
+### Added
+
+* Implement websocket keepalive pings for websockets-sansio (#2888)
+
+## 0.43.0 (April 3, 2026)
+
+You can quit Uvicorn now. We heard you, @pamelafox - all 47 of your Ctrl+C's (thanks for flagging it, and thanks to @tiangolo for the fix 🙏). [See the tweet](https://x.com/pamelafox/status/2039097686155227623).
+
+### Changed
+
+* Emit `http.disconnect` ASGI `receive()` event on server shutting down for streaming responses (#2829)
+* Use native `context` parameter for `create_task` on Python 3.11+ (#2859)
+* Drop cast in ASGI types (#2875)
+
+## 0.42.0 (March 16, 2026)
+
+### Changed
+
+* Use `bytearray` for request body accumulation to avoid O(n^2) allocation on fragmented bodies (#2845)
+
+### Fixed
+
+* Escape brackets and backslash in httptools `HEADER_RE` regex (#2824)
+* Fix multiple issues in websockets sans-io implementation (#2825)
+
 ## 0.41.0 (February 16, 2026)
 
 ### Added

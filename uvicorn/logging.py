@@ -6,7 +6,7 @@ import sys
 from copy import copy
 from typing import Literal
 
-import click
+from uvicorn._ansi import style as ansi_style
 
 TRACE_LOG_LEVEL = 5
 
@@ -21,12 +21,12 @@ class ColourizedFormatter(logging.Formatter):
     """
 
     level_name_colors = {
-        TRACE_LOG_LEVEL: lambda level_name: click.style(str(level_name), fg="blue"),
-        logging.DEBUG: lambda level_name: click.style(str(level_name), fg="cyan"),
-        logging.INFO: lambda level_name: click.style(str(level_name), fg="green"),
-        logging.WARNING: lambda level_name: click.style(str(level_name), fg="yellow"),
-        logging.ERROR: lambda level_name: click.style(str(level_name), fg="red"),
-        logging.CRITICAL: lambda level_name: click.style(str(level_name), fg="bright_red"),
+        TRACE_LOG_LEVEL: lambda level_name: ansi_style(str(level_name), fg="blue"),
+        logging.DEBUG: lambda level_name: ansi_style(str(level_name), fg="cyan"),
+        logging.INFO: lambda level_name: ansi_style(str(level_name), fg="green"),
+        logging.WARNING: lambda level_name: ansi_style(str(level_name), fg="yellow"),
+        logging.ERROR: lambda level_name: ansi_style(str(level_name), fg="red"),
+        logging.CRITICAL: lambda level_name: ansi_style(str(level_name), fg="bright_red"),
     }
 
     def __init__(
@@ -72,11 +72,11 @@ class DefaultFormatter(ColourizedFormatter):
 
 class AccessFormatter(ColourizedFormatter):
     status_code_colours = {
-        1: lambda code: click.style(str(code), fg="bright_white"),
-        2: lambda code: click.style(str(code), fg="green"),
-        3: lambda code: click.style(str(code), fg="yellow"),
-        4: lambda code: click.style(str(code), fg="red"),
-        5: lambda code: click.style(str(code), fg="bright_red"),
+        1: lambda code: ansi_style(str(code), fg="bright_white"),
+        2: lambda code: ansi_style(str(code), fg="green"),
+        3: lambda code: ansi_style(str(code), fg="yellow"),
+        4: lambda code: ansi_style(str(code), fg="red"),
+        5: lambda code: ansi_style(str(code), fg="bright_red"),
     }
 
     def get_status_code(self, status_code: int) -> str:
@@ -106,7 +106,7 @@ class AccessFormatter(ColourizedFormatter):
         status_code = self.get_status_code(int(status_code))  # type: ignore[arg-type]
         request_line = f"{method} {full_path} HTTP/{http_version}"
         if self.use_colors:
-            request_line = click.style(request_line, bold=True)
+            request_line = ansi_style(request_line, bold=True)
         recordcopy.__dict__.update(
             {
                 "client_addr": client_addr,

@@ -28,10 +28,10 @@ except ModuleNotFoundError:  # pragma: no cover
 
 if TYPE_CHECKING:
     from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
-    from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
+    from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol as _WSProtocol
 
-    WSProtocol: TypeAlias = WebSocketProtocol | _WSProtocol
+    WSProtocol: TypeAlias = WebSocketsSansIOProtocol | _WSProtocol
     HTTPProtocol: TypeAlias = H11Protocol | HttpToolsProtocol
 
 pytestmark = pytest.mark.anyio
@@ -306,6 +306,42 @@ async def test_header_value_allowed_characters(http_protocol_cls: type[HTTPProto
     assert b"Hello, world" in protocol.transport.buffer
 
 
+@pytest.mark.parametrize(
+    "name",
+    [
+        pytest.param("bad header", id="reject_space"),
+        pytest.param("bad\x00header", id="reject_null"),
+        pytest.param("bad(header", id="reject_open_paren"),
+        pytest.param("bad)header", id="reject_close_paren"),
+        pytest.param("bad<header", id="reject_less_than"),
+        pytest.param("bad>header", id="reject_greater_than"),
+        pytest.param("bad@header", id="reject_at"),
+        pytest.param("bad,header", id="reject_comma"),
+        pytest.param("bad;header", id="reject_semicolon"),
+        pytest.param("bad:header", id="reject_colon"),
+        pytest.param("bad[header", id="reject_open_bracket"),
+        pytest.param("bad]header", id="reject_close_bracket"),
+        pytest.param("bad{header", id="reject_open_brace"),
+        pytest.param("bad}header", id="reject_close_brace"),
+        pytest.param("bad=header", id="reject_equals"),
+        pytest.param('bad"header', id="reject_double_quote"),
+        pytest.param("bad\\header", id="reject_backslash"),
+        pytest.param("bad\theader", id="reject_tab"),
+        pytest.param("bad\x7fheader", id="reject_del"),
+    ],
+)
+async def test_invalid_header_name(http_protocol_cls: type[HTTPProtocol], name: str):
+    app = Response("Hello, world", media_type="text/plain", headers={name: "value"})
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    # No 500 is sent because `response_started` is set before header validation,
+    # so the error handler just closes the connection.
+    assert b"HTTP/1.1 500 Internal Server Error" not in protocol.transport.buffer
+    assert name.encode() not in protocol.transport.buffer
+    assert protocol.transport.is_closing()
+
+
 @pytest.mark.parametrize("path", ["/", "/?foo", "/?foo=bar", "/?foo=bar&baz=1"])
 async def test_request_logging(path: str, http_protocol_cls: type[HTTPProtocol], caplog: pytest.LogCaptureFixture):
     get_request_with_query_string = b"\r\n".join(
@@ -407,6 +443,16 @@ async def test_close(http_protocol_cls: type[HTTPProtocol]):
     await protocol.loop.run_one()
     assert b"HTTP/1.1 204 No Content" in protocol.transport.buffer
     assert protocol.transport.is_closing()
+
+
+async def test_bodyless_response_with_transfer_encoding(http_protocol_cls: type[HTTPProtocol]):
+    """RFC 9112 §6.1 forbids `Transfer-Encoding` on a 204, which zttp refuses to serialize."""
+    app = Response(b"", status_code=204, headers={"transfer-encoding": "chunked"})
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 204 No Content" in protocol.transport.buffer
 
 
 async def test_chunked_encoding(http_protocol_cls: type[HTTPProtocol]):
@@ -633,6 +679,11 @@ async def test_early_response(http_protocol_cls: type[HTTPProtocol]):
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
     protocol.data_received(FINISH_POST_REQUEST)
     assert not protocol.transport.is_closing()
+
+    protocol.transport.clear_buffer()
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
 
 
 async def test_read_after_response(http_protocol_cls: type[HTTPProtocol]):

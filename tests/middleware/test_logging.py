@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, TypeAlias
 
 import httpx
 import pytest
-import websockets.client
+from websockets.asyncio.client import connect
 from websockets.protocol import State
 
 from tests.utils import run_server
@@ -19,10 +19,10 @@ from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 if TYPE_CHECKING:
     import sys
 
-    from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
+    from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol as _WSProtocol
 
-    WSProtocol: TypeAlias = "type[WebSocketProtocol | _WSProtocol]"
+    WSProtocol: TypeAlias = "type[WebSocketsSansIOProtocol | _WSProtocol]"
 
 pytestmark = pytest.mark.anyio
 
@@ -101,7 +101,7 @@ async def test_trace_logging_on_ws_protocol(
                 break
 
     async def open_connection(url: str):
-        async with websockets.client.connect(url) as websocket:
+        async with connect(url) as websocket:
             return websocket.state is State.OPEN
 
     config = Config(
