@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import email.utils
 import logging
 import random
 import struct
@@ -12,10 +13,11 @@ from typing import Any, Literal, cast
 from urllib.parse import unquote
 
 from websockets import __version__ as websockets_version
+from websockets.datastructures import Headers
 from websockets.exceptions import InvalidState
 from websockets.extensions.permessage_deflate import ServerPerMessageDeflateFactory
 from websockets.frames import Frame, Opcode
-from websockets.http11 import Request
+from websockets.http11 import Request, Response
 from websockets.server import ServerProtocol
 
 from uvicorn._types import (
@@ -39,6 +41,16 @@ if sys.version_info >= (3, 11):  # pragma: no cover
     from typing import assert_never
 else:  # pragma: no cover
     from typing_extensions import assert_never
+
+
+def _get_status_phrase(status_code: int) -> str:
+    try:
+        return HTTPStatus(status_code).phrase
+    except ValueError:
+        return ""
+
+
+STATUS_PHRASES = {status_code: _get_status_phrase(status_code) for status_code in range(100, 600)}
 
 
 class WebSocketsSansIOProtocol(asyncio.Protocol):
@@ -76,6 +88,9 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.handshake_initiated = False
         self.handshake_complete = False
         self.close_sent = False
+        self.disconnected = False
+        self.close_timer: TimerHandle | None = None
+        self.close_timeout = 10.0
         self.initial_response: tuple[int, list[tuple[str, str]], bytes] | None = None
 
         extensions = []
@@ -134,14 +149,39 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             self.logger.log(TRACE_LOG_LEVEL, "%sWebSocket connection lost", prefix)
 
         self.handshake_complete = True
+        self.disconnected = True
+        # Unblock any send() awaiting writable: asyncio never calls resume_writing() on a
+        # transport that is lost while paused, and the buffer will never drain now.
+        self.writable.set()
+        if self.close_timer is not None:
+            self.close_timer.cancel()
+            self.close_timer = None
         if exc is None:
             self.transport.close()
 
     def eof_received(self) -> None:
         pass
 
+    def pause_writing(self) -> None:
+        """
+        Called by the transport when the write buffer exceeds the high water mark.
+        """
+        self.writable.clear()  # pragma: full coverage
+
+    def resume_writing(self) -> None:
+        """
+        Called by the transport when the write buffer drops below the low water mark.
+        """
+        self.writable.set()  # pragma: full coverage
+
     def shutdown(self) -> None:
         self.stop_keepalive()
+        if self.close_sent:
+            if self.close_timer is not None:
+                self.close_timer.cancel()
+                self.close_timer = None
+            self.transport.close()
+            return
         if self.handshake_complete:
             self.queue.put_nowait({"type": "websocket.disconnect", "code": 1012})
             self.conn.send_close(1012)
@@ -249,6 +289,10 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
     def send_receive_event_to_app(self) -> None:
         data = self.frames[0] if len(self.frames) == 1 else b"".join(self.frames)
         self.frames = []
+        if self.close_sent:
+            # The app is past `websocket.close`: discard the message rather than queueing
+            # it, so reads stay active until the peer's close reply arrives.
+            return
         if self.curr_msg_data_type == "text":
             try:
                 self.queue.put_nowait({"type": "websocket.receive", "text": data.decode()})
@@ -329,7 +373,14 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.transport.close()
 
     def handle_close(self, event: Frame) -> None:
-        if not self.close_sent and not self.transport.is_closing():
+        if self.close_sent:
+            # The peer echoed our close frame: the closing handshake is complete.
+            if self.close_timer is not None:
+                self.close_timer.cancel()
+                self.close_timer = None
+                self.transport.close()
+            return
+        if not self.transport.is_closing():
             assert self.conn.close_rcvd is not None
             code = self.conn.close_rcvd.code
             reason = self.conn.close_rcvd.reason
@@ -367,7 +418,8 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 self.send_500_response()
             elif result is not None:
                 self.logger.error("ASGI callable should return None, but returned '%s'.", result)
-        self.transport.close()
+        if self.close_timer is None:
+            self.transport.close()
 
     def send_500_response(self) -> None:
         if self.initial_response or self.handshake_complete:
@@ -379,6 +431,9 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
 
     async def send(self, message: ASGISendEvent) -> None:
         await self.writable.wait()
+
+        if self.disconnected:
+            raise ClientDisconnected()
 
         if not self.handshake_complete and self.initial_response is None:
             if message["type"] == "websocket.accept":
@@ -458,7 +513,10 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                         output = self.conn.data_to_send()
                         self.transport.write(b"".join(output))
                         self.close_sent = True
-                        self.transport.close()
+                        if self.read_paused:
+                            self.read_paused = False
+                            self.transport.resume_reading()
+                        self.close_timer = self.loop.call_later(self.close_timeout, self.transport.close)
                 else:
                     raise RuntimeError(
                         f"Expected ASGI message 'websocket.send' or 'websocket.close', but got '{message['type']}'."
@@ -470,8 +528,13 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 body = self.initial_response[2] + message["body"]
                 self.initial_response = self.initial_response[:2] + (body,)
                 if not message.get("more_body", False):
-                    response = self.conn.reject(self.initial_response[0], body.decode())
-                    response.headers.update(self.initial_response[1])
+                    status_code = self.initial_response[0]
+                    response_headers = Headers(self.initial_response[1])
+                    response_headers.setdefault("Date", email.utils.formatdate(usegmt=True))
+                    response_headers.setdefault("Connection", "close")
+                    response_headers.setdefault("Content-Length", str(len(body)))
+                    response_headers.setdefault("Content-Type", "text/plain; charset=utf-8")
+                    response = Response(status_code, STATUS_PHRASES[status_code], response_headers, body)
                     self.queue.put_nowait({"type": "websocket.disconnect", "code": 1006})
                     self.conn.send_response(response)
                     output = self.conn.data_to_send()
