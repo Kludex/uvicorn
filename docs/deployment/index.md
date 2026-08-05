@@ -191,17 +191,19 @@ http {
 
 ### Subpath deployments
 
-If your proxy serves the application from a subpath and forwards requests without stripping that prefix, use `--asgi-root-path` so ASGI `root_path` is set without duplicating the request path.
+If your proxy serves the application from a subpath and forwards requests without stripping that prefix, use [`--asgi-root-path`](../settings.md#http) so ASGI `root_path` is set without duplicating the request path.
 
 For example:
 
-```nginx
+```conf
 location /proxy/ {
   proxy_pass http://127.0.0.1:8000;
-  proxy_set_header Host $host;
-  proxy_set_header X-Real-IP $remote_addr;
+  proxy_http_version 1.1;
+  proxy_set_header Host $http_host;
   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
   proxy_set_header X-Forwarded-Proto $scheme;
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection $connection_upgrade;
 }
 ```
 

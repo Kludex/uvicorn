@@ -252,14 +252,15 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     "--root-path",
     type=str,
     default="",
-    help="Serve the application under the provided root path.",
+    help="Serve the application under the provided root path. "
+    "Prefixes incoming request paths and sets the ASGI 'root_path'.",
 )
 @click.option(
     "--asgi-root-path",
     type=str,
     default="",
-    help="Set the ASGI 'root_path' for applications submounted below a given URL path. "
-    "This is useful for applications served on a sub-URL, such as behind a reverse proxy.",
+    help="Set the ASGI 'root_path' without prefixing incoming request paths. "
+    "Useful when a reverse proxy serves the app on a sub-URL without stripping the prefix.",
 )
 @click.option(
     "--limit-concurrency",
@@ -611,6 +612,10 @@ def run(
         h11_max_incomplete_event_size=h11_max_incomplete_event_size,
         reset_contextvars=reset_contextvars,
     )
+    if root_path and asgi_root_path:
+        # Config did already log an error. Just quit before loading the app.
+        sys.exit(STARTUP_FAILURE)
+
     if config.reload or config.workers > 1:
         if not isinstance(app, str):
             logger = logging.getLogger("uvicorn.error")
@@ -620,10 +625,6 @@ def run(
         config.load_app()
 
     server = Server(config=config)
-
-    if root_path and asgi_root_path:
-        # Config did already log an error. Just quit.
-        sys.exit(1)
 
     try:
         if config.should_reload:
