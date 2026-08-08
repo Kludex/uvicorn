@@ -194,6 +194,7 @@ class Config:
         app: ASGIApplication | Callable[..., Any] | str,
         host: str = "127.0.0.1",
         port: int = 8000,
+        ipv6_v6only: bool | None = None,
         uds: str | None = None,
         fd: int | None = None,
         loop: LoopFactoryType | str = "auto",
@@ -247,6 +248,7 @@ class Config:
         self.app = app
         self.host = host
         self.port = port
+        self.ipv6_v6only = ipv6_v6only
         self.uds = uds
         self.fd = fd
         self.loop = loop
@@ -548,7 +550,7 @@ class Config:
             return None
         return loop_factory(use_subprocess=self.use_subprocess)
 
-    def bind_socket(self) -> socket.socket:
+    def bind_socket(self, log: bool = True) -> socket.socket:
         logger_args: list[str | int]
         if self.uds is not None:  # pragma: py-win32
             path = self.uds
@@ -582,6 +584,8 @@ class Config:
 
             sock = socket.socket(family=family)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if family == socket.AF_INET6 and self.ipv6_v6only is not None:
+                sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, self.ipv6_v6only)
             try:
                 sock.bind((self.host, self.port))
             except OSError as exc:  # pragma: full coverage
@@ -592,7 +596,8 @@ class Config:
             color_message = "Uvicorn running on " + style(addr_format, bold=True) + " (Press CTRL+C to quit)"
             protocol_name = "https" if self.is_ssl else "http"
             logger_args = [protocol_name, self.host, sock.getsockname()[1]]
-        logger.info(message, *logger_args, extra={"color_message": color_message})
+        if log:
+            logger.info(message, *logger_args, extra={"color_message": color_message})
         sock.set_inheritable(True)
         return sock
 

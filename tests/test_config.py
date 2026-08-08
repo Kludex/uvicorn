@@ -262,6 +262,40 @@ def test_socket_bind() -> None:
     sock.close()
 
 
+def test_bind_socket_ipv6_v6only_unset_leaves_os_default() -> None:
+    """
+    By default, `ipv6_v6only` is left unset, so `bind_socket()` doesn't touch
+    the IPV6_V6ONLY socket option at all, matching the pre-existing behavior.
+    """
+    config = Config(app=asgi_app, host="::1", port=0)
+    config.load()
+    with closing(config.bind_socket(log=False)) as sock:
+        # We can't assert a specific OS default value here (it's platform
+        # dependent), just that we didn't explicitly force a particular value.
+        assert isinstance(sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY), int)
+
+
+@pytest.mark.parametrize("v6only", [True, False])
+def test_bind_socket_ipv6_v6only_explicit(v6only: bool) -> None:
+    """
+    An explicit `ipv6_v6only` is applied to the bound socket (#2945).
+    """
+    config = Config(app=asgi_app, host="::1", port=0, ipv6_v6only=v6only)
+    config.load()
+    with closing(config.bind_socket(log=False)) as sock:
+        assert bool(sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY)) is v6only
+
+
+def test_bind_socket_ipv6_v6only_ignored_for_ipv4() -> None:
+    """
+    `ipv6_v6only` has no effect (and doesn't raise) when binding an IPv4 host.
+    """
+    config = Config(app=asgi_app, host="127.0.0.1", port=0, ipv6_v6only=False)
+    config.load()
+    with closing(config.bind_socket(log=False)) as sock:
+        assert sock.family == socket.AF_INET
+
+
 def test_ssl_config(
     tls_ca_certificate_pem_path: str,
     tls_ca_certificate_private_key_path: str,

@@ -74,6 +74,16 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     help="Bind socket to this port. If 0, an available port will be picked.",
     show_default=True,
 )
+@click.option(
+    "--ipv6-v6only/--no-ipv6-v6only",
+    default=None,
+    help=(
+        "Explicitly set the IPV6_V6ONLY socket option for an IPv6 --host, instead of "
+        "relying on the OS default (which differs from Python's own asyncio default). "
+        "By default this is left unset, and single- vs multi-worker mode may bind "
+        "differently."
+    ),
+)
 @click.option("--uds", type=str, default=None, help="Bind to a UNIX domain socket.")
 @click.option("--fd", type=int, default=None, help="Bind to socket from this file descriptor.")
 @click.option("--reload", is_flag=True, default=False, help="Enable auto-reload.")
@@ -389,6 +399,7 @@ def main(
     app: str,
     host: str,
     port: int,
+    ipv6_v6only: bool | None,
     uds: str,
     fd: int,
     loop: LoopFactoryType | str,
@@ -441,6 +452,7 @@ def main(
         app,
         host=host,
         port=port,
+        ipv6_v6only=ipv6_v6only,
         uds=uds,
         fd=fd,
         loop=loop,
@@ -496,6 +508,7 @@ def run(
     *,
     host: str = "127.0.0.1",
     port: int = 8000,
+    ipv6_v6only: bool | None = None,
     uds: str | None = None,
     fd: int | None = None,
     loop: LoopFactoryType | str = "auto",
@@ -552,6 +565,7 @@ def run(
         app,
         host=host,
         port=port,
+        ipv6_v6only=ipv6_v6only,
         uds=uds,
         fd=fd,
         loop=loop,

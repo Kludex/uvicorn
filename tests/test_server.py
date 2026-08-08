@@ -122,6 +122,22 @@ async def test_shutdown_on_early_exit_during_startup(unused_tcp_port: int):
     assert shutdown_complete, "lifespan.shutdown was not called despite startup completing"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="binding '::' behaves differently on Windows CI")
+async def test_ipv6_v6only_false_accepts_ipv4_in_single_worker_mode(unused_tcp_port: int) -> None:
+    """An explicit ipv6_v6only=False makes single-worker mode accept IPv4
+    connections on a dual-stack '::' bind, instead of asyncio's
+    create_server() silently forcing IPv6-only. Regression for #2945.
+    """
+    config = Config(app=app, host="::", port=unused_tcp_port, ipv6_v6only=False)
+    async with run_server(config):
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"http://127.0.0.1:{unused_tcp_port}")
+            assert response.status_code == 200
+
+            response = await client.get(f"http://[::1]:{unused_tcp_port}")
+            assert response.status_code == 200
+
+
 def test_run_exits_with_startup_failure_on_unloadable_app() -> None:
     """A server exits with the dedicated startup-failure code when the app can't load.
 
