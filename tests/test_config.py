@@ -18,7 +18,7 @@ import yaml
 from pytest_mock import MockerFixture
 
 from tests.custom_loop_utils import CustomLoop
-from tests.utils import as_cwd, get_asyncio_default_loop_per_os
+from tests.utils import as_cwd, get_asyncio_default_loop_per_os, has_ipv6
 from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallable, Environ, Scope, StartResponse
 from uvicorn.config import Config, LoopFactoryType, UvicornDeprecationWarning
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -262,6 +262,7 @@ def test_socket_bind() -> None:
     sock.close()
 
 
+@pytest.mark.skipif(not has_ipv6("::1"), reason="IPV6 not enabled")
 def test_bind_socket_ipv6_v6only_unset_leaves_os_default() -> None:
     """
     By default, `ipv6_v6only` is left unset, so `bind_socket()` doesn't touch
@@ -275,6 +276,7 @@ def test_bind_socket_ipv6_v6only_unset_leaves_os_default() -> None:
         assert isinstance(sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY), int)
 
 
+@pytest.mark.skipif(not has_ipv6("::1"), reason="IPV6 not enabled")
 @pytest.mark.parametrize("v6only", [True, False])
 def test_bind_socket_ipv6_v6only_explicit(v6only: bool) -> None:
     """

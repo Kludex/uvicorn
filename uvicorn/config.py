@@ -194,7 +194,6 @@ class Config:
         app: ASGIApplication | Callable[..., Any] | str,
         host: str = "127.0.0.1",
         port: int = 8000,
-        ipv6_v6only: bool | None = None,
         uds: str | None = None,
         fd: int | None = None,
         loop: LoopFactoryType | str = "auto",
@@ -244,11 +243,11 @@ class Config:
         factory: bool = False,
         h11_max_incomplete_event_size: int | None = None,
         reset_contextvars: bool = False,
+        ipv6_v6only: bool | None = None,
     ):
         self.app = app
         self.host = host
         self.port = port
-        self.ipv6_v6only = ipv6_v6only
         self.uds = uds
         self.fd = fd
         self.loop = loop
@@ -294,6 +293,7 @@ class Config:
         self.factory = factory
         self.h11_max_incomplete_event_size = h11_max_incomplete_event_size
         self.reset_contextvars = reset_contextvars
+        self.ipv6_v6only = ipv6_v6only
 
         self.loaded = False
         self.configure_logging()

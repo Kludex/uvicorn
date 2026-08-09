@@ -198,6 +198,13 @@ class Server:
                 logger.error(exc)
                 await self.lifespan.shutdown()
                 sys.exit(STARTUP_FAILURE)
+            except SystemExit:
+                # config.bind_socket() already logged and called sys.exit()
+                # itself on a bind failure (e.g. an occupied IPv6 port); run
+                # lifespan cleanup before propagating, matching the OSError
+                # path above instead of skipping it.
+                await self.lifespan.shutdown()
+                raise
 
             assert server.sockets is not None
             listeners = server.sockets

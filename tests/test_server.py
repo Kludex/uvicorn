@@ -14,7 +14,7 @@ import httpx
 import pytest
 
 from tests.protocols.test_http import SIMPLE_GET_REQUEST
-from tests.utils import run_server
+from tests.utils import has_ipv6, run_server
 from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.config import STARTUP_FAILURE, Config
 from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT
@@ -123,6 +123,7 @@ async def test_shutdown_on_early_exit_during_startup(unused_tcp_port: int):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="binding '::' behaves differently on Windows CI")
+@pytest.mark.skipif(not has_ipv6("::"), reason="IPV6 not enabled")
 async def test_ipv6_v6only_false_accepts_ipv4_in_single_worker_mode(unused_tcp_port: int) -> None:
     """An explicit ipv6_v6only=False makes single-worker mode accept IPv4
     connections on a dual-stack '::' bind, instead of asyncio's
