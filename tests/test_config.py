@@ -276,13 +276,21 @@ def test_bind_socket_ipv6_v6only_unset_leaves_os_default() -> None:
         assert isinstance(sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY), int)
 
 
-@pytest.mark.skipif(not has_ipv6("::1"), reason="IPV6 not enabled")
+@pytest.mark.skipif(not has_ipv6("::"), reason="IPV6 not enabled")
 @pytest.mark.parametrize("v6only", [True, False])
 def test_bind_socket_ipv6_v6only_explicit(v6only: bool) -> None:
     """
     An explicit `ipv6_v6only` is applied to the bound socket (#2945).
+
+    Uses the wildcard `::` host rather than `::1`: on Linux, binding
+    specifically to the loopback address `::1` silently forces
+    IPV6_V6ONLY=True regardless of the requested socket option, since a
+    loopback-only bind can never be meaningfully dual-stack (there is no
+    IPv4-loopback equivalent of `::1`, unlike `::`/`0.0.0.0`). That's a
+    sensible kernel behavior, not a bug -- but it means `::1` can't be used
+    to test that an explicit `ipv6_v6only=False` sticks.
     """
-    config = Config(app=asgi_app, host="::1", port=0, ipv6_v6only=v6only)
+    config = Config(app=asgi_app, host="::", port=0, ipv6_v6only=v6only)
     config.load()
     with closing(config.bind_socket(log=False)) as sock:
         assert bool(sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY)) is v6only
