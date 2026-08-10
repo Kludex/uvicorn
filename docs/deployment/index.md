@@ -196,11 +196,7 @@ If your proxy serves the application from a subpath and forwards requests withou
 For example:
 
 ```conf
-map $http_upgrade $connection_upgrade {
-  default upgrade;
-  '' close;
-}
-
+# requires the `map $http_upgrade $connection_upgrade` block from the example above
 location /proxy/ {
   proxy_pass http://127.0.0.1:8000;
   proxy_http_version 1.1;
