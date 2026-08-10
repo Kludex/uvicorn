@@ -165,11 +165,12 @@ async def test_ipv6_v6only_bind_failure_runs_lifespan_shutdown() -> None:
                     return
 
     blocker = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-    blocker.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    blocker.bind(("::", 0))
-    blocker.listen(1)
-    port = blocker.getsockname()[1]
     try:
+        blocker.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        blocker.bind(("::", 0))
+        blocker.listen(1)
+        port = blocker.getsockname()[1]
+
         config = Config(app=app, host="::", port=port, ipv6_v6only=False, lifespan="on")
         config.load_app()
         server = Server(config=config)
