@@ -198,11 +198,14 @@ class Server:
                 logger.error(exc)
                 await self.lifespan.shutdown()
                 sys.exit(STARTUP_FAILURE)
-            except SystemExit:
+            except SystemExit:  # pragma: py-win32
                 # config.bind_socket() already logged and called sys.exit()
                 # itself on a bind failure (e.g. an occupied IPv6 port); run
                 # lifespan cleanup before propagating, matching the OSError
-                # path above instead of skipping it.
+                # path above instead of skipping it. Untested on Windows:
+                # its looser SO_REUSEADDR semantics mean the bind conflict
+                # this relies on doesn't reliably occur there (see the
+                # skip on test_ipv6_v6only_bind_failure_runs_lifespan_shutdown).
                 await self.lifespan.shutdown()
                 raise
 
