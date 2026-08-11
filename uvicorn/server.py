@@ -170,7 +170,11 @@ class Server:
         else:
             # Standard case. Create a socket from a host/port pair.
             try:
-                if config.ipv6_v6only is not None and config.host and ":" in config.host:
+                if config.ipv6_v6only is not None and config.host and ":" in config.host:  # pragma: py-win32
+                    # Untested on Windows: both tests exercising this branch are
+                    # skipped there (looser SO_REUSEADDR / dual-stack bind
+                    # semantics make them unreliable), so it isn't covered on
+                    # that platform. It's still expected to work at runtime.
                     # asyncio's create_server(host=..., port=...) always forces
                     # IPV6_V6ONLY=True for IPv6 addresses, ignoring the OS
                     # default and any socket option set beforehand. To honor

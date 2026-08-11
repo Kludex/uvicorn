@@ -125,7 +125,9 @@ async def test_shutdown_on_early_exit_during_startup(unused_tcp_port: int):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="binding '::' behaves differently on Windows CI")
 @pytest.mark.skipif(not has_ipv6("::"), reason="IPV6 not enabled")
-async def test_ipv6_v6only_false_accepts_ipv4_in_single_worker_mode(unused_tcp_port: int) -> None:
+async def test_ipv6_v6only_false_accepts_ipv4_in_single_worker_mode(  # pragma: py-win32
+    unused_tcp_port: int,
+) -> None:
     """An explicit ipv6_v6only=False makes single-worker mode accept IPv4
     connections on a dual-stack '::' bind, instead of asyncio's
     create_server() silently forcing IPv6-only. Regression for #2945.
@@ -146,7 +148,7 @@ async def test_ipv6_v6only_false_accepts_ipv4_in_single_worker_mode(unused_tcp_p
     "failure this test relies on never happens there (confirmed via a hung CI run)",
 )
 @pytest.mark.skipif(not has_ipv6("::"), reason="IPV6 not enabled")
-async def test_ipv6_v6only_bind_failure_runs_lifespan_shutdown() -> None:
+async def test_ipv6_v6only_bind_failure_runs_lifespan_shutdown() -> None:  # pragma: py-win32
     """The explicit-bind path (taken when ipv6_v6only is set) still runs lifespan
     shutdown on a bind failure, matching the plain OSError path below it.
 
