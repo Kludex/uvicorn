@@ -140,7 +140,6 @@ async def test_ipv6_v6only_false_accepts_ipv4_in_single_worker_mode(unused_tcp_p
             assert response.status_code == 200
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="binding '::' behaves differently on Windows CI")
 @pytest.mark.skipif(not has_ipv6("::"), reason="IPV6 not enabled")
 async def test_ipv6_v6only_bind_failure_runs_lifespan_shutdown() -> None:
     """The explicit-bind path (taken when ipv6_v6only is set) still runs lifespan
