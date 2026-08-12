@@ -349,6 +349,12 @@ async def test_invalid_header_name(http_protocol_cls: type[HTTPProtocol], name: 
         pytest.param("abc", id="reject_non_numeric"),
         pytest.param("", id="reject_empty"),
         pytest.param("1 2", id="reject_embedded_space"),
+        # `int()` accepts these, but RFC 9110 does not: Content-Length is
+        # 1*DIGIT, with no sign, separator or surrounding whitespace.
+        pytest.param("-1", id="reject_negative"),
+        pytest.param("+12", id="reject_leading_plus"),
+        pytest.param("1_2", id="reject_underscore_separator"),
+        pytest.param(" 12", id="reject_leading_space"),
     ],
 )
 async def test_invalid_content_length_value(

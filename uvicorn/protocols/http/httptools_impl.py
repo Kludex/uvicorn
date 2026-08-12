@@ -502,10 +502,15 @@ class RequestResponseCycle:
 
                 name = name.lower()
                 if name == b"content-length" and self.chunked_encoding is None:
-                    try:
-                        self.expected_content_length = int(value.decode())
-                    except ValueError:
-                        raise RuntimeError("Invalid HTTP header value for content-length.") from None
+                    # RFC 9110 requires Content-Length to be 1*DIGIT. `int()` is
+                    # more permissive than that -- it accepts a sign, underscore
+                    # separators and surrounding whitespace -- so check the bytes
+                    # before converting. A negative value would otherwise reach
+                    # the length bookkeeping below and be reported as a body
+                    # length mismatch rather than a bad header.
+                    if not value.isdigit():
+                        raise RuntimeError("Invalid HTTP header value for content-length.")
+                    self.expected_content_length = int(value)
                     self.chunked_encoding = False
                 elif name == b"transfer-encoding" and value.lower() == b"chunked":
                     self.expected_content_length = 0
