@@ -52,6 +52,16 @@ if sys.platform == "win32":  # pragma: py-not-win32
 logger = logging.getLogger("uvicorn.error")
 
 
+def worker_id_from_env() -> int | None:
+    raw = os.environ.get("UVICORN_WORKER_ID")
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
 class ServerState:
     """
     Shared servers state that is available between all protocol instances.
@@ -65,8 +75,9 @@ class ServerState:
 
 
 class Server:
-    def __init__(self, config: Config) -> None:
+    def __init__(self, config: Config, *, worker_id: int | None = None) -> None:
         self.config = config
+        self.worker_id = worker_id
         self.server_state = ServerState()
 
         self.started = False
@@ -82,17 +93,31 @@ class Server:
             return None
         return self.config.limit_max_requests + random.randint(0, self.config.limit_max_requests_jitter)
 
-    def run(self, sockets: list[socket.socket] | None = None, worker_id: int = 1) -> None:
-        return asyncio_run(
-            self.serve(sockets=sockets, worker_id=worker_id),
-            loop_factory=self.config.get_loop_factory(),
-        )
+    def run(self, sockets: list[socket.socket] | None = None) -> None:
+        return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
 
-    async def serve(self, sockets: list[socket.socket] | None = None, worker_id: int = 1) -> None:
+    async def serve(self, sockets: list[socket.socket] | None = None) -> None:
         with self.capture_signals():
-            await self._serve(sockets, worker_id=worker_id)
+            await self._serve(sockets)
 
-    async def _serve(self, sockets: list[socket.socket] | None = None, worker_id: int = 1) -> None:
+    def _apply_worker_id(self) -> None:
+        if self.worker_id is not None:
+            os.environ["UVICORN_WORKER_ID"] = str(self.worker_id)
+
+    def _log_server_process(self, action: str, process_id: int) -> None:
+        if self.worker_id is None:
+            message = f"{action} server process [%d]"
+            color_message = f"{action} server process [" + style("%d", fg="cyan") + "]"
+            logger.info(message, process_id, extra={"color_message": color_message})
+            return
+        message = f"{action} server process [%d] (worker %d)"
+        color_message = (
+            f"{action} server process [" + style("%d", fg="cyan") + "] (worker " + style("%d", fg="cyan") + ")"
+        )
+        logger.info(message, process_id, self.worker_id, extra={"color_message": color_message})
+
+    async def _serve(self, sockets: list[socket.socket] | None = None) -> None:
+        self._apply_worker_id()
         process_id = os.getpid()
 
         config = self.config
@@ -101,23 +126,18 @@ class Server:
 
         self.lifespan = config.lifespan_class(config)
 
-        message = "Started server process [%d]"
-        color_message = "Started server process [" + style("%d", fg="cyan") + "]"
-        logger.info(message, process_id, extra={"color_message": color_message})
+        self._log_server_process("Started", process_id)
 
-        await self.startup(sockets=sockets, worker_id=worker_id)
+        await self.startup(sockets=sockets)
         if not self.should_exit:
             await self.main_loop()
         if self.started:
             await self.shutdown(sockets=sockets)
+            self._log_server_process("Finished", process_id)
 
-            message = "Finished server process [%d]"
-            color_message = "Finished server process [" + style("%d", fg="cyan") + "]"
-            logger.info(message, process_id, extra={"color_message": color_message})
-
-    async def startup(self, sockets: list[socket.socket] | None = None, worker_id: int = 1) -> None:
-        # Stable across worker restarts when using the built-in process manager.
-        self.lifespan.state["uvicorn_worker_id"] = worker_id
+    async def startup(self, sockets: list[socket.socket] | None = None) -> None:
+        if self.worker_id is not None:
+            self.lifespan.state["uvicorn_worker_id"] = self.worker_id
 
         await self.lifespan.startup()
         if self.lifespan.should_exit:

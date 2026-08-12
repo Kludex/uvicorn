@@ -1330,8 +1330,8 @@ async def test_multiple_server_header(
 
 async def test_lifespan_state(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
     expected_states: list[dict[str, Any]] = [
-        {"uvicorn_worker_id": 1, "a": 123, "b": [1]},
-        {"uvicorn_worker_id": 1, "a": 123, "b": [1, 2]},
+        {"a": 123, "b": [1]},
+        {"a": 123, "b": [1, 2]},
     ]
 
     actual_states: list[dict[str, Any]] = []

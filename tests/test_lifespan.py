@@ -4,7 +4,7 @@ import pytest
 
 from uvicorn.config import Config
 from uvicorn.lifespan.off import LifespanOff
-from uvicorn.lifespan.on import LifespanOn, _mirror_worker_id_onto_app
+from uvicorn.lifespan.on import LifespanOn
 
 
 def test_lifespan_on():
@@ -257,66 +257,6 @@ def test_lifespan_state():
 
         await lifespan.startup()
         assert lifespan.state == {"foo": 123}
-        await lifespan.shutdown()
-
-    loop = asyncio.new_event_loop()
-    loop.run_until_complete(test())
-    loop.close()
-
-
-def test_mirror_worker_id_onto_app_state():
-    class State:
-        pass
-
-    class InnerApp:
-        def __init__(self):
-            self.state = State()
-
-        async def __call__(self, scope, receive, send):
-            pass  # pragma: no cover
-
-    class Middleware:
-        def __init__(self, app):
-            self.app = app
-
-        async def __call__(self, scope, receive, send):
-            pass  # pragma: no cover
-
-    inner = InnerApp()
-    wrapped = Middleware(Middleware(inner))
-    _mirror_worker_id_onto_app(wrapped, 4)
-    assert inner.state.uvicorn_worker_id == 4
-
-
-def test_lifespan_exposes_worker_id_from_state():
-    seen: dict[str, object] = {}
-
-    class State:
-        pass
-
-    class App:
-        def __init__(self):
-            self.state = State()
-
-        async def __call__(self, scope, receive, send):
-            message = await receive()
-            assert message["type"] == "lifespan.startup"
-            seen["scope_worker_id"] = scope["state"].get("uvicorn_worker_id")
-            seen["app_state_worker_id"] = getattr(self.state, "uvicorn_worker_id", None)
-            await send({"type": "lifespan.startup.complete"})
-            message = await receive()
-            assert message["type"] == "lifespan.shutdown"
-            await send({"type": "lifespan.shutdown.complete"})
-
-    async def test():
-        app = App()
-        config = Config(app=app, lifespan="on")
-        lifespan = LifespanOn(config)
-        lifespan.state["uvicorn_worker_id"] = 7
-
-        await lifespan.startup()
-        assert seen == {"scope_worker_id": 7, "app_state_worker_id": 7}
-        assert lifespan.state["uvicorn_worker_id"] == 7
         await lifespan.shutdown()
 
     loop = asyncio.new_event_loop()

@@ -95,12 +95,14 @@ def test_multiprocess_health_check() -> None:
     supervisor = Multiprocess(config, sockets=[])
     try:
         supervisor.init_processes()
+        original_ids = [process.worker_id for process in supervisor.processes]
         process = supervisor.processes[0]
         process.kill()
         process.join()
         supervisor.keep_subprocess_alive()
 
         assert process not in supervisor.processes
+        assert [process.worker_id for process in supervisor.processes] == original_ids
         assert all(process.is_alive() for process in supervisor.processes)
     finally:
         supervisor.terminate_all()

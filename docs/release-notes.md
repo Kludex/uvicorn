@@ -2,6 +2,12 @@
 toc_depth: 2
 ---
 
+## Unreleased
+
+### Added
+
+* Add a stable `uvicorn_worker_id` in ASGI lifespan state (and `UVICORN_WORKER_ID`) for workers managed by `--workers`
+
 ## 0.54.0 (September 24, 2026)
 
 HTTP/2 support remains experimental. Install `zttp>=0.0.34` and enable it with `--http zttp --http2`.

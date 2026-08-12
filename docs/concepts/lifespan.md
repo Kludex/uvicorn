@@ -8,9 +8,11 @@ the lifetime of the application, such as database connections, caches, or other 
 Keep in mind that the lifespan is executed **only once per application instance**. If you have
 multiple workers, each worker will execute the lifespan independently.
 
-When using Uvicorn's built-in `--workers` process manager, each worker's lifespan
-`scope["state"]` includes a stable `uvicorn_worker_id` integer (starting at `1`). See
-[deployment](../deployment/index.md#built-in) for details.
+When using Uvicorn's built-in `--workers` process manager (more than one worker), each
+worker's lifespan `scope["state"]` includes a stable `uvicorn_worker_id` integer
+(starting at `1`). The same value is available as `UVICORN_WORKER_ID` before the app
+is imported. See [deployment](../deployment/index.md#built-in) for restart and resize
+behavior. Single-process mode does not set a worker ID.
 
 ## Lifespan Architecture
 
