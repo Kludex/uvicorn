@@ -9,6 +9,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, TypeAlias
 
 import pytest
+from h11._util import LocalProtocolError
 
 from tests.response import Response
 from uvicorn import Server
@@ -340,6 +341,40 @@ async def test_invalid_header_name(http_protocol_cls: type[HTTPProtocol], name: 
     assert b"HTTP/1.1 500 Internal Server Error" not in protocol.transport.buffer
     assert name.encode() not in protocol.transport.buffer
     assert protocol.transport.is_closing()
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param("abc", id="reject_non_numeric"),
+        pytest.param("", id="reject_empty"),
+        pytest.param("1 2", id="reject_embedded_space"),
+    ],
+)
+async def test_invalid_content_length_value(
+    http_protocol_cls: type[HTTPProtocol], value: str, caplog: pytest.LogCaptureFixture
+):
+    """
+    A non-numeric content-length must be rejected the same way as any other bad
+    header value, rather than escaping as a bare `ValueError` from `int()`.
+    """
+    app = Response("Hello, world", media_type="text/plain", headers={"content-length": value})
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    with caplog.at_level(logging.ERROR, logger="uvicorn.error"):
+        protocol.data_received(SIMPLE_GET_REQUEST)
+        await protocol.loop.run_one()
+
+    # `response_started` is set before header validation, so the error handler
+    # only closes the connection -- the exception type is what distinguishes a
+    # handled rejection from the raw int() failure.
+    assert b"HTTP/1.1 500 Internal Server Error" not in protocol.transport.buffer
+    assert protocol.transport.is_closing()
+
+    errors = [r for r in caplog.records if r.exc_info]
+    assert errors, "the invalid header should have been reported"
+    raised = errors[-1].exc_info[0]
+    assert raised is not ValueError, "content-length must not fail with a bare ValueError"
+    assert issubclass(raised, (RuntimeError, LocalProtocolError))
 
 
 @pytest.mark.parametrize("path", ["/", "/?foo", "/?foo=bar", "/?foo=bar&baz=1"])

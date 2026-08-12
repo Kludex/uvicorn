@@ -502,7 +502,10 @@ class RequestResponseCycle:
 
                 name = name.lower()
                 if name == b"content-length" and self.chunked_encoding is None:
-                    self.expected_content_length = int(value.decode())
+                    try:
+                        self.expected_content_length = int(value.decode())
+                    except ValueError:
+                        raise RuntimeError("Invalid HTTP header value for content-length.") from None
                     self.chunked_encoding = False
                 elif name == b"transfer-encoding" and value.lower() == b"chunked":
                     self.expected_content_length = 0
