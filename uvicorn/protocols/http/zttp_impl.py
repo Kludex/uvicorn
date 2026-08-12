@@ -438,7 +438,10 @@ class RequestResponseCycle:
                 name = name.lower()
                 if name == b"content-length":
                     has_content_length = True
-                    self.expected_content_length = int(value.decode())
+                    try:
+                        self.expected_content_length = int(value.decode())
+                    except ValueError:
+                        raise RuntimeError("Invalid HTTP header value for content-length.") from None
                 elif name == b"transfer-encoding":
                     # zttp only accepts a sole, final `chunked` coding - anything
                     # else raises, like h11 - and it frames the body itself, so
