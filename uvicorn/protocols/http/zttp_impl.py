@@ -153,8 +153,13 @@ class ZttpProtocol(asyncio.Protocol):
         try:
             for event in self.events():
                 if isinstance(event, zttp.Request):
-                    self.headers = [(key.lower(), value) for key, value in event.headers]
-                    path = unquote(event.path.decode("ascii"))
+                    if isinstance(event.headers, zttp.HeaderBlock):
+                        self.headers = event.headers.to_list(lowercase_names=True)
+                    else:
+                        self.headers = [(key.lower(), value) for key, value in event.headers]
+                    path = event.path.decode("ascii")
+                    if "%" in path:
+                        path = unquote(path)
                     full_path = self.root_path + path
                     full_raw_path = self.root_path.encode("ascii") + event.path
                     self.scope = {
@@ -201,6 +206,9 @@ class ZttpProtocol(asyncio.Protocol):
                         expect_100_continue=event.expect_continue,
                         on_response=self.on_response_complete,
                     )
+                    if event.end_stream:
+                        self.cycle.more_body = False
+                        self.cycle.message_event.set()
                     if self.config.reset_contextvars:
                         if sys.version_info >= (3, 11):  # pragma: py-lt-311
                             task = self.loop.create_task(self.cycle.run_asgi(app), context=contextvars.Context())

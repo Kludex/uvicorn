@@ -12,7 +12,7 @@ import pytest
 
 from tests.response import Response
 from uvicorn import Server
-from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallable, Scope
+from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGIReceiveEvent, ASGISendCallable, Scope
 from uvicorn.config import WS_PROTOCOLS, Config
 from uvicorn.lifespan.off import LifespanOff
 from uvicorn.lifespan.on import LifespanOn
@@ -385,6 +385,22 @@ async def test_post_request(http_protocol_cls: type[HTTPProtocol]):
     await protocol.loop.run_one()
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
     assert b'Body: {"hello": "world"}' in protocol.transport.buffer
+
+
+async def test_bodyless_request_receive(http_protocol_cls: type[HTTPProtocol]):
+    request_message: ASGIReceiveEvent | None = None
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        nonlocal request_message
+        request_message = await receive()
+        response = Response(b"", status_code=204)
+        await response(scope, receive, send)
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+
+    assert request_message == {"type": "http.request", "body": b"", "more_body": False}
 
 
 async def test_keepalive(http_protocol_cls: type[HTTPProtocol]):
