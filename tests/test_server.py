@@ -56,6 +56,54 @@ async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
     await send({"type": "http.response.body", "body": b"", "more_body": False})
 
 
+async def test_server_injects_worker_id_into_lifespan_state(unused_tcp_port: int) -> None:
+    seen: dict[str, object] = {}
+
+    async def lifespan_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        if scope["type"] == "lifespan":
+            message = await receive()
+            assert message["type"] == "lifespan.startup"
+            seen["worker_id"] = scope["state"].get("uvicorn_worker_id")
+            await send({"type": "lifespan.startup.complete"})
+            message = await receive()
+            assert message["type"] == "lifespan.shutdown"
+            await send({"type": "lifespan.shutdown.complete"})
+            return
+        await app(scope, receive, send)
+
+    config = Config(app=lifespan_app, lifespan="on", port=unused_tcp_port)
+    async with run_server(config):
+        pass
+    assert seen["worker_id"] == 1
+
+
+async def test_server_uses_explicit_worker_id(unused_tcp_port: int) -> None:
+    seen: dict[str, object] = {}
+
+    async def lifespan_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        if scope["type"] == "lifespan":
+            message = await receive()
+            assert message["type"] == "lifespan.startup"
+            seen["worker_id"] = scope["state"].get("uvicorn_worker_id")
+            await send({"type": "lifespan.startup.complete"})
+            message = await receive()
+            assert message["type"] == "lifespan.shutdown"
+            await send({"type": "lifespan.shutdown.complete"})
+            return
+        await app(scope, receive, send)
+
+    config = Config(app=lifespan_app, lifespan="on", port=unused_tcp_port)
+    server = Server(config=config)
+    task = asyncio.create_task(server.serve(worker_id=5))
+    while not server.started:
+        await asyncio.sleep(0.05)
+    await server.shutdown()
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+    assert seen["worker_id"] == 5
+
+
 if sys.platform == "win32":  # pragma: py-not-win32
     signals = [signal.SIGBREAK]
     signal_captures = [capture_signal_sync]

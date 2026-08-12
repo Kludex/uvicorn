@@ -8,6 +8,10 @@ the lifetime of the application, such as database connections, caches, or other 
 Keep in mind that the lifespan is executed **only once per application instance**. If you have
 multiple workers, each worker will execute the lifespan independently.
 
+When using Uvicorn's built-in `--workers` process manager, each worker's lifespan
+`scope["state"]` includes a stable `uvicorn_worker_id` integer (starting at `1`). See
+[deployment](../deployment/index.md#built-in) for details.
+
 ## Lifespan Architecture
 
 The lifespan protocol runs as a sibling task alongside your main application, allowing both to execute concurrently.

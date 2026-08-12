@@ -28,8 +28,10 @@ class Process:
         self,
         config: Config,
         sockets: list[socket],
+        worker_id: int,
     ) -> None:
         self.config = config
+        self.worker_id = worker_id
         self._server: Server | None = None
 
         self.parent_conn, self.child_conn = Pipe()
@@ -74,7 +76,7 @@ class Process:
             )
 
         threading.Thread(target=self.always_pong, daemon=True).start()
-        self.server.run(sockets)
+        self.server.run(sockets, worker_id=self.worker_id)
 
     def is_alive(self, timeout: float = 5) -> bool:
         if not self.process.is_alive():
@@ -156,9 +158,17 @@ class Multiprocess:
         for sig in SIGNALS:
             signal.signal(sig, lambda sig, frame: self.signal_queue.append(sig))
 
+    def allocate_worker_id(self) -> int:
+        """Return the lowest positive worker ID not currently in use."""
+        used = {process.worker_id for process in self.processes}
+        worker_id = 1
+        while worker_id in used:
+            worker_id += 1
+        return worker_id
+
     def init_processes(self) -> None:
         for _ in range(self.processes_num):
-            process = Process(self.config, self.sockets)
+            process = Process(self.config, self.sockets, worker_id=self.allocate_worker_id())
             process.start()
             self.processes.append(process)
 
@@ -176,7 +186,7 @@ class Multiprocess:
             if self.should_exit.is_set():
                 return
 
-            new_process = Process(self.config, self.sockets)
+            new_process = Process(self.config, self.sockets, worker_id=old_process.worker_id)
             new_process.start()
 
             if not new_process.wait_until_ready(self.config.timeout_worker_healthcheck, self.should_exit):
@@ -234,7 +244,7 @@ class Multiprocess:
                 return  # pragma: full coverage
 
             logger.info(f"Child process [{process.pid}] died")
-            process = Process(self.config, self.sockets)
+            process = Process(self.config, self.sockets, worker_id=process.worker_id)
             process.start()
             self.processes[idx] = process
 
@@ -267,7 +277,7 @@ class Multiprocess:
     def handle_ttin(self) -> None:  # pragma: py-win32
         logger.info("Received SIGTTIN, increasing the number of processes.")
         self.processes_num += 1
-        process = Process(self.config, self.sockets)
+        process = Process(self.config, self.sockets, worker_id=self.allocate_worker_id())
         process.start()
         self.processes.append(process)
 
