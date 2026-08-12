@@ -41,18 +41,18 @@ async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
 
 
 def test_process_ping_pong() -> None:
-    process = Process(Config(app=app), sockets=[])
+    process = Process(Config(app=app), sockets=[], worker_id=1)
     threading.Thread(target=process.always_pong, daemon=True).start()
     assert process.ping()
 
 
 def test_process_ping_pong_timeout() -> None:
-    process = Process(Config(app=app), sockets=[])
+    process = Process(Config(app=app), sockets=[], worker_id=1)
     assert not process.ping(0.1)
 
 
 def test_process_ping_broken_pipe() -> None:
-    process = Process(Config(app=app), sockets=[])
+    process = Process(Config(app=app), sockets=[], worker_id=1)
     process.parent_conn.close()
     process.child_conn.close()
     assert not process.ping(0.1)
@@ -60,7 +60,7 @@ def test_process_ping_broken_pipe() -> None:
 
 def test_process_ready() -> None:
     """`is_ready()` reflects whether the worker's server has finished startup."""
-    process = Process(Config(app=app), sockets=[])
+    process = Process(Config(app=app), sockets=[], worker_id=1)
     threading.Thread(target=process.always_pong, daemon=True).start()
 
     assert process.ping()
@@ -188,7 +188,7 @@ def test_multiprocess_restart_aborts_when_replacement_not_ready(monkeypatch: pyt
 
 
 def test_wait_until_ready_bails_on_shutdown_or_dead_worker() -> None:
-    process = Process(Config(app=app), sockets=[])
+    process = Process(Config(app=app), sockets=[], worker_id=1)
 
     should_exit = threading.Event()
     should_exit.set()
@@ -198,12 +198,45 @@ def test_wait_until_ready_bails_on_shutdown_or_dead_worker() -> None:
 
 def test_multiprocess_restart_stops_when_shutting_down() -> None:
     supervisor = Multiprocess(Config(app=app, workers=1), sockets=[])
-    supervisor.processes = [Process(supervisor.config, [])]
+    supervisor.processes = [Process(supervisor.config, [], worker_id=1)]
     supervisor.should_exit.set()
 
     supervisor.restart_all()
 
     assert len(supervisor.processes) == 1
+    assert supervisor.processes[0].worker_id == 1
+
+
+def test_allocate_worker_id_reuses_lowest_free_id() -> None:
+    supervisor = Multiprocess(Config(app=app, workers=1), sockets=[])
+    supervisor.processes = [
+        Process(supervisor.config, [], worker_id=1),
+        Process(supervisor.config, [], worker_id=3),
+    ]
+    assert supervisor.allocate_worker_id() == 2
+
+
+@pytest.mark.skipif(os.name == "nt", reason="test spawns real worker processes")
+def test_init_processes_assigns_contiguous_worker_ids() -> None:
+    supervisor = Multiprocess(Config(app=app, workers=3), sockets=[])
+    supervisor.init_processes()
+    assert [process.worker_id for process in supervisor.processes] == [1, 2, 3]
+    supervisor.terminate_all()
+    supervisor.join_all()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="test spawns real worker processes")
+def test_restart_preserves_worker_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    supervisor = Multiprocess(Config(app=app, workers=2, timeout_worker_healthcheck=30), sockets=[])
+    supervisor.init_processes()
+    original_ids = [process.worker_id for process in supervisor.processes]
+
+    monkeypatch.setattr(Process, "wait_until_ready", lambda self, timeout=5, should_exit=None: True)
+    supervisor.restart_all()
+
+    assert [process.worker_id for process in supervisor.processes] == original_ids
+    supervisor.terminate_all()
+    supervisor.join_all()
 
 
 @pytest.mark.skipif(not hasattr(signal, "SIGTTIN"), reason="platform unsupports SIGTTIN")
@@ -214,9 +247,17 @@ def test_multiprocess_sigttin() -> None:
     config = Config(app=app, workers=2)
     supervisor = Multiprocess(config, sockets=[])
     threading.Thread(target=supervisor.run, daemon=True).start()
+    deadline = time.monotonic() + 10
+    while len(supervisor.processes) < 2:  # pragma: no cover
+        assert time.monotonic() < deadline, "Timed out waiting for initial workers"
+        time.sleep(0.1)
+    assert sorted(p.worker_id for p in supervisor.processes) == [1, 2]
     supervisor.signal_queue.append(signal.SIGTTIN)
-    time.sleep(1)
-    assert len(supervisor.processes) == 3
+    deadline = time.monotonic() + 10
+    while len(supervisor.processes) < 3:  # pragma: no cover
+        assert time.monotonic() < deadline, "Timed out waiting for SIGTTIN worker"
+        time.sleep(0.1)
+    assert sorted(p.worker_id for p in supervisor.processes) == [1, 2, 3]
     supervisor.signal_queue.append(signal.SIGINT)
     supervisor.join_all()
 
@@ -229,11 +270,51 @@ def test_multiprocess_sigttou() -> None:
     config = Config(app=app, workers=2)
     supervisor = Multiprocess(config, sockets=[])
     threading.Thread(target=supervisor.run, daemon=True).start()
+    deadline = time.monotonic() + 10
+    while len(supervisor.processes) < 2:  # pragma: no cover
+        assert time.monotonic() < deadline, "Timed out waiting for initial workers"
+        time.sleep(0.1)
+    supervisor.signal_queue.append(signal.SIGTTOU)
+    deadline = time.monotonic() + 10
+    while len(supervisor.processes) != 1:  # pragma: no cover
+        assert time.monotonic() < deadline, "Timed out waiting for SIGTTOU"
+        time.sleep(0.1)
+    assert [p.worker_id for p in supervisor.processes] == [1]
     supervisor.signal_queue.append(signal.SIGTTOU)
     time.sleep(1)
     assert len(supervisor.processes) == 1
+    assert [p.worker_id for p in supervisor.processes] == [1]
+    supervisor.signal_queue.append(signal.SIGINT)
+    supervisor.join_all()
+
+
+@pytest.mark.skipif(
+    not hasattr(signal, "SIGTTIN") or not hasattr(signal, "SIGTTOU"),
+    reason="platform unsupports SIGTTIN/SIGTTOU",
+)
+def test_multiprocess_ttou_then_ttin_reuses_worker_id() -> None:
+    """After shrinking, growing again reuses the lowest free worker ID."""
+    config = Config(app=app, workers=3)
+    supervisor = Multiprocess(config, sockets=[])
+    threading.Thread(target=supervisor.run, daemon=True).start()
+    deadline = time.monotonic() + 10
+    while len(supervisor.processes) < 3:  # pragma: no cover
+        assert time.monotonic() < deadline, "Timed out waiting for initial workers"
+        time.sleep(0.1)
+
     supervisor.signal_queue.append(signal.SIGTTOU)
-    time.sleep(1)
-    assert len(supervisor.processes) == 1
+    deadline = time.monotonic() + 10
+    while len(supervisor.processes) != 2:  # pragma: no cover
+        assert time.monotonic() < deadline, "Timed out waiting for SIGTTOU"
+        time.sleep(0.1)
+    assert sorted(p.worker_id for p in supervisor.processes) == [1, 2]
+
+    supervisor.signal_queue.append(signal.SIGTTIN)
+    deadline = time.monotonic() + 10
+    while len(supervisor.processes) != 3:  # pragma: no cover
+        assert time.monotonic() < deadline, "Timed out waiting for SIGTTIN"
+        time.sleep(0.1)
+    assert sorted(p.worker_id for p in supervisor.processes) == [1, 2, 3]
+
     supervisor.signal_queue.append(signal.SIGINT)
     supervisor.join_all()

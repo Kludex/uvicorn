@@ -28,6 +28,27 @@ LifespanSendMessage = (
 STATE_TRANSITION_ERROR = "Got invalid state transition on lifespan protocol."
 
 
+def _mirror_worker_id_onto_app(app: Any, worker_id: int) -> None:
+    """Copy the worker ID onto Starlette/FastAPI `app.state` when available.
+
+    Frameworks that expose a mutable `.state` (possibly under nested `.app`
+    wrappers from middleware) can then read the ID during lifespan startup.
+    """
+    seen: set[int] = set()
+    current = app
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        state = getattr(current, "state", None)
+        if state is not None:
+            try:
+                state.uvicorn_worker_id = worker_id
+            except (AttributeError, TypeError):  # pragma: no cover
+                pass
+            else:
+                return
+        current = getattr(current, "app", None)
+
+
 class LifespanOn:
     def __init__(self, config: Config) -> None:
         if not config.loaded:
@@ -78,6 +99,9 @@ class LifespanOn:
     async def main(self) -> None:
         try:
             app = self.config.loaded_app
+            worker_id = self.state.get("uvicorn_worker_id")
+            if isinstance(worker_id, int):
+                _mirror_worker_id_onto_app(app, worker_id)
             scope: LifespanScope = {
                 "type": "lifespan",
                 "asgi": {"version": self.config.asgi_version, "spec_version": "2.0"},

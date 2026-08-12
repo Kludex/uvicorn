@@ -82,14 +82,17 @@ class Server:
             return None
         return self.config.limit_max_requests + random.randint(0, self.config.limit_max_requests_jitter)
 
-    def run(self, sockets: list[socket.socket] | None = None) -> None:
-        return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+    def run(self, sockets: list[socket.socket] | None = None, worker_id: int = 1) -> None:
+        return asyncio_run(
+            self.serve(sockets=sockets, worker_id=worker_id),
+            loop_factory=self.config.get_loop_factory(),
+        )
 
-    async def serve(self, sockets: list[socket.socket] | None = None) -> None:
+    async def serve(self, sockets: list[socket.socket] | None = None, worker_id: int = 1) -> None:
         with self.capture_signals():
-            await self._serve(sockets)
+            await self._serve(sockets, worker_id=worker_id)
 
-    async def _serve(self, sockets: list[socket.socket] | None = None) -> None:
+    async def _serve(self, sockets: list[socket.socket] | None = None, worker_id: int = 1) -> None:
         process_id = os.getpid()
 
         config = self.config
@@ -102,7 +105,7 @@ class Server:
         color_message = "Started server process [" + style("%d", fg="cyan") + "]"
         logger.info(message, process_id, extra={"color_message": color_message})
 
-        await self.startup(sockets=sockets)
+        await self.startup(sockets=sockets, worker_id=worker_id)
         if not self.should_exit:
             await self.main_loop()
         if self.started:
@@ -112,7 +115,10 @@ class Server:
             color_message = "Finished server process [" + style("%d", fg="cyan") + "]"
             logger.info(message, process_id, extra={"color_message": color_message})
 
-    async def startup(self, sockets: list[socket.socket] | None = None) -> None:
+    async def startup(self, sockets: list[socket.socket] | None = None, worker_id: int = 1) -> None:
+        # Stable across worker restarts when using the built-in process manager.
+        self.lifespan.state["uvicorn_worker_id"] = worker_id
+
         await self.lifespan.startup()
         if self.lifespan.should_exit:
             sys.exit(STARTUP_FAILURE)
