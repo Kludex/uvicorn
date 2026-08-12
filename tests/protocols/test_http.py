@@ -370,11 +370,10 @@ async def test_invalid_content_length_value(
     assert b"HTTP/1.1 500 Internal Server Error" not in protocol.transport.buffer
     assert protocol.transport.is_closing()
 
-    errors = [r for r in caplog.records if r.exc_info]
-    assert errors, "the invalid header should have been reported"
-    raised = errors[-1].exc_info[0]
-    assert raised is not ValueError, "content-length must not fail with a bare ValueError"
-    assert issubclass(raised, (RuntimeError, LocalProtocolError))
+    raised = [r.exc_info[1] for r in caplog.records if r.exc_info and r.exc_info[1] is not None]
+    assert raised, "the invalid header should have been reported"
+    assert not isinstance(raised[-1], ValueError), "content-length must not fail with a bare ValueError"
+    assert isinstance(raised[-1], (RuntimeError, LocalProtocolError))
 
 
 @pytest.mark.parametrize("path", ["/", "/?foo", "/?foo=bar", "/?foo=bar&baz=1"])
