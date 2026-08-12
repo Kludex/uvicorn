@@ -82,11 +82,22 @@ You can also manage child processes by sending specific signals to the main proc
 - `SIGTTIN`: Increase the number of worker processes by one.
 - `SIGTTOU`: Decrease the number of worker processes by one.
 
-When using this built-in process manager, each worker receives a stable integer ID in
-ASGI [lifespan state](https://asgi.readthedocs.io/en/latest/specs/lifespan.html#lifespan-state)
-as `uvicorn_worker_id` (1-based). The same ID is reused when a worker is restarted, so
-startup/shutdown logic can be idempotent per worker. Single-process mode also sets
-`uvicorn_worker_id` to `1`. This does not apply when Uvicorn is managed by Gunicorn.
+When using this built-in process manager (`--workers` greater than 1), each worker
+gets a stable 1-based integer ID:
+
+- ASGI [lifespan state](https://asgi.readthedocs.io/en/latest/specs/lifespan.html#lifespan-state)
+  as `uvicorn_worker_id`
+- the `UVICORN_WORKER_ID` environment variable, set before the app is imported
+
+The same ID is reused when that worker is restarted or replaced after a crash, so
+per-worker startup/shutdown can stay idempotent. `SIGTTIN` assigns the lowest free
+ID, which may be higher than the original `--workers` count. `SIGTTOU` retires the
+most recently added worker.
+
+During a `SIGHUP` rolling restart the replacement is brought up before the old
+worker is retired, so two processes can briefly share the same ID.
+
+Single-process mode (`--workers 1`, the default) does not set a worker ID.
 
 ### Gunicorn
 
@@ -108,6 +119,11 @@ The following will start Gunicorn with four worker processes:
 The `UvicornWorker` implementation uses the `uvloop` and `httptools` implementations. To run under PyPy you'll want to use pure-python implementation instead. You can do this by using the `UvicornH11Worker` class.
 
 `gunicorn -w 4 -k uvicorn.workers.UvicornH11Worker`
+
+Gunicorn does not expose a stable 1..N worker slot, so Uvicorn does not invent a
+`uvicorn_worker_id` under Gunicorn. If you set `UVICORN_WORKER_ID` in the worker
+process (for example in a `post_fork` hook), `UvicornWorker` copies it into lifespan
+state.
 
 Gunicorn provides a different set of configuration options to Uvicorn, so  some options such as `--limit-concurrency` are not yet supported when running with Gunicorn.
 

@@ -12,7 +12,7 @@ from gunicorn.workers.base import Worker
 
 from uvicorn._compat import asyncio_run
 from uvicorn.config import Config
-from uvicorn.server import Server
+from uvicorn.server import Server, worker_id_from_env
 
 warnings.warn(
     "The `uvicorn.workers` module is deprecated. Please use `uvicorn-worker` package instead.\n"
@@ -94,7 +94,7 @@ class UvicornWorker(Worker):
 
     async def _serve(self) -> None:
         self.config.app = self.wsgi
-        server = Server(config=self.config)
+        server = Server(config=self.config, worker_id=worker_id_from_env())
         self._install_sigquit_handler()
         await server.serve(sockets=self.sockets)
         if not server.started:

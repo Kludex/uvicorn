@@ -2,6 +2,12 @@
 toc_depth: 2
 ---
 
+## Unreleased
+
+### Added
+
+* Add a stable `uvicorn_worker_id` in ASGI lifespan state (and `UVICORN_WORKER_ID`) for workers managed by `--workers`
+
 ## 0.52.4 (August 18, 2026)
 
 ### Fixed

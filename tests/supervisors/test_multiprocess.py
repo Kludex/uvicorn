@@ -94,6 +94,7 @@ def test_multiprocess_health_check() -> None:
     supervisor = Multiprocess(config, sockets=[])
     threading.Thread(target=supervisor.run, daemon=True).start()
     time.sleep(1)
+    original_ids = [p.worker_id for p in supervisor.processes]
     process = supervisor.processes[0]
     process.kill()
     assert not process.is_alive()
@@ -101,6 +102,7 @@ def test_multiprocess_health_check() -> None:
     while not all(p.is_alive() for p in supervisor.processes):  # pragma: no cover
         assert time.monotonic() < deadline, "Timed out waiting for processes to be alive"
         time.sleep(0.1)
+    assert [p.worker_id for p in supervisor.processes] == original_ids
     supervisor.signal_queue.append(signal.SIGINT)
     supervisor.join_all()
 

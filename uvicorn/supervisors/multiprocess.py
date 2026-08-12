@@ -76,7 +76,7 @@ class Process:
             )
 
         threading.Thread(target=self.always_pong, daemon=True).start()
-        self.server.run(sockets, worker_id=self.worker_id)
+        self.server.run(sockets)
 
     def is_alive(self, timeout: float = 5) -> bool:
         if not self.process.is_alive():
@@ -128,7 +128,7 @@ class Process:
     @property
     def server(self) -> Server:
         if self._server is None:
-            self._server = Server(config=self.config)
+            self._server = Server(config=self.config, worker_id=self.worker_id)
         return self._server
 
     @property
