@@ -62,18 +62,7 @@ factory_env: list[str | None] = []
 
 def factory_reads_worker_id() -> ASGIApplication:
     factory_env.append(os.environ.get("UVICORN_WORKER_ID"))
-
-    async def factory_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
-        if scope["type"] == "lifespan":
-            message = await receive()
-            if message["type"] == "lifespan.startup":
-                await send({"type": "lifespan.startup.complete"})
-            elif message["type"] == "lifespan.shutdown":
-                await send({"type": "lifespan.shutdown.complete"})
-            return
-        await app(scope, receive, send)
-
-    return factory_app
+    return app
 
 
 async def _serve_until_started(server: Server) -> None:
@@ -86,6 +75,21 @@ async def _serve_until_started(server: Server) -> None:
         await task
 
 
+async def _record_lifespan_state(
+    scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable, seen: dict[str, object]
+) -> None:
+    assert scope["type"] == "lifespan"
+    message = await receive()
+    assert message["type"] == "lifespan.startup"
+    seen["has_worker_id"] = "uvicorn_worker_id" in scope["state"]
+    seen["worker_id"] = scope["state"].get("uvicorn_worker_id")
+    seen["env"] = os.environ.get("UVICORN_WORKER_ID")
+    await send({"type": "lifespan.startup.complete"})
+    message = await receive()
+    assert message["type"] == "lifespan.shutdown"
+    await send({"type": "lifespan.shutdown.complete"})
+
+
 async def test_server_does_not_inject_worker_id_by_default(
     unused_tcp_port: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -93,16 +97,7 @@ async def test_server_does_not_inject_worker_id_by_default(
     seen: dict[str, object] = {}
 
     async def lifespan_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
-        if scope["type"] == "lifespan":
-            message = await receive()
-            assert message["type"] == "lifespan.startup"
-            seen["has_worker_id"] = "uvicorn_worker_id" in scope["state"]
-            await send({"type": "lifespan.startup.complete"})
-            message = await receive()
-            assert message["type"] == "lifespan.shutdown"
-            await send({"type": "lifespan.shutdown.complete"})
-            return
-        await app(scope, receive, send)
+        await _record_lifespan_state(scope, receive, send, seen)
 
     config = Config(app=lifespan_app, lifespan="on", port=unused_tcp_port)
     async with run_server(config):
@@ -117,22 +112,13 @@ async def test_server_injects_worker_id_into_lifespan_state(
     seen: dict[str, object] = {}
 
     async def lifespan_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
-        if scope["type"] == "lifespan":
-            message = await receive()
-            assert message["type"] == "lifespan.startup"
-            seen["worker_id"] = scope["state"].get("uvicorn_worker_id")
-            seen["env"] = os.environ.get("UVICORN_WORKER_ID")
-            await send({"type": "lifespan.startup.complete"})
-            message = await receive()
-            assert message["type"] == "lifespan.shutdown"
-            await send({"type": "lifespan.shutdown.complete"})
-            return
-        await app(scope, receive, send)
+        await _record_lifespan_state(scope, receive, send, seen)
 
     config = Config(app=lifespan_app, lifespan="on", port=unused_tcp_port)
     server = Server(config=config, worker_id=5)
     await _serve_until_started(server)
-    assert seen == {"worker_id": 5, "env": "5"}
+    assert seen["worker_id"] == 5
+    assert seen["env"] == "5"
 
 
 async def test_server_does_not_adopt_leftover_worker_id_env(
@@ -142,16 +128,7 @@ async def test_server_does_not_adopt_leftover_worker_id_env(
     seen: dict[str, object] = {}
 
     async def lifespan_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
-        if scope["type"] == "lifespan":
-            message = await receive()
-            assert message["type"] == "lifespan.startup"
-            seen["has_worker_id"] = "uvicorn_worker_id" in scope["state"]
-            await send({"type": "lifespan.startup.complete"})
-            message = await receive()
-            assert message["type"] == "lifespan.shutdown"
-            await send({"type": "lifespan.shutdown.complete"})
-            return
-        await app(scope, receive, send)
+        await _record_lifespan_state(scope, receive, send, seen)
 
     config = Config(app=lifespan_app, lifespan="on", port=unused_tcp_port)
     server = Server(config=config)
@@ -173,16 +150,7 @@ async def test_explicit_worker_id_from_env_is_injected(unused_tcp_port: int, mon
     seen: dict[str, object] = {}
 
     async def lifespan_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
-        if scope["type"] == "lifespan":
-            message = await receive()
-            assert message["type"] == "lifespan.startup"
-            seen["worker_id"] = scope["state"].get("uvicorn_worker_id")
-            await send({"type": "lifespan.startup.complete"})
-            message = await receive()
-            assert message["type"] == "lifespan.shutdown"
-            await send({"type": "lifespan.shutdown.complete"})
-            return
-        await app(scope, receive, send)
+        await _record_lifespan_state(scope, receive, send, seen)
 
     config = Config(app=lifespan_app, lifespan="on", port=unused_tcp_port)
     server = Server(config=config, worker_id=worker_id_from_env())
@@ -196,7 +164,7 @@ async def test_worker_id_env_is_set_before_app_load(unused_tcp_port: int, monkey
     config = Config(
         app="tests.test_server:factory_reads_worker_id",
         factory=True,
-        lifespan="on",
+        lifespan="off",
         port=unused_tcp_port,
     )
     server = Server(config=config, worker_id=3)
