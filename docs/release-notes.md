@@ -2,6 +2,12 @@
 toc_depth: 2
 ---
 
+## 0.52.3 (August 13, 2026)
+
+### Changed
+
+* Update `zttp` to 0.0.24 and use its combined receive path, improving HTTP/1.1 request parsing performance (#3067)
+
 ## 0.52.2 (August 13, 2026)
 
 ### Fixed
