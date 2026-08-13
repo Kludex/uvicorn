@@ -42,6 +42,85 @@ def _get_status_line(status_code: int) -> bytes:
 STATUS_LINE = {status_code: _get_status_line(status_code) for status_code in range(100, 600)}
 
 
+class _RejectedUpgradeBody:
+    """Collect a request body after httptools stops at a rejected Upgrade.
+
+    httptools raises HttpParserUpgrade before on_body/on_message_complete.
+    RFC 7230 §6.7 allows ignoring an unsupported Upgrade and continuing.
+    """
+
+    def __init__(self, headers: list[tuple[bytes, bytes]]) -> None:
+        chunked = False
+        content_length = 0
+        for name, value in headers:
+            if name == b"transfer-encoding" and b"chunked" in value.lower():
+                chunked = True
+            elif name == b"content-length":
+                content_length = int(value)
+        self.body = bytearray()
+        self._buf = bytearray()
+        self._chunked = chunked
+        self._length_left = 0 if chunked else content_length
+        self._chunk_left: int | None = None
+        self._after_chunk_crlf = False
+        self._trailers = False
+
+    def feed(self, data: bytes) -> bytes | None:
+        """Return leftover bytes when the body is complete, or None if more is needed."""
+        if not self._chunked:
+            self._buf += data
+            if len(self._buf) < self._length_left:
+                return None
+            self.body = self._buf[: self._length_left]
+            leftover = bytes(self._buf[self._length_left :])
+            self._buf.clear()
+            return leftover
+        return self._feed_chunked(data)
+
+    def _feed_chunked(self, data: bytes) -> bytes | None:
+        self._buf += data
+        while True:
+            if self._trailers:
+                idx = self._buf.find(b"\r\n")
+                if idx < 0:
+                    return None
+                line = bytes(self._buf[:idx])
+                del self._buf[: idx + 2]
+                if line == b"":
+                    leftover = bytes(self._buf)
+                    self._buf.clear()
+                    return leftover
+                continue
+            if self._after_chunk_crlf:
+                if len(self._buf) < 2:
+                    return None
+                if bytes(self._buf[:2]) != b"\r\n":
+                    raise ValueError("invalid chunk framing")
+                del self._buf[:2]
+                self._after_chunk_crlf = False
+                continue
+            if self._chunk_left is not None:
+                if len(self._buf) < self._chunk_left:
+                    return None
+                self.body += self._buf[: self._chunk_left]
+                del self._buf[: self._chunk_left]
+                self._chunk_left = None
+                self._after_chunk_crlf = True
+                continue
+            idx = self._buf.find(b"\r\n")
+            if idx < 0:
+                return None
+            size_line = bytes(self._buf[:idx]).split(b";", 1)[0].strip()
+            del self._buf[: idx + 2]
+            if not size_line:
+                raise ValueError("invalid chunk size")
+            size = int(size_line, 16)
+            if size == 0:
+                self._trailers = True
+                continue
+            self._chunk_left = size
+
+
 class HttpToolsProtocol(asyncio.Protocol):
     def __init__(
         self,
@@ -60,13 +139,8 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.access_logger = logging.getLogger("uvicorn.access")
         self.access_log = self.access_logger.hasHandlers()
         self.parser = httptools.HttpRequestParser(self)
-
-        try:
-            # Enable dangerous leniencies to allow server to a response on the first request from a pipelined request.
-            self.parser.set_dangerous_leniencies(lenient_data_after_close=True)
-        except AttributeError:  # pragma: no cover
-            # httptools < 0.6.3
-            pass
+        self._install_parser_leniencies()
+        self._rejected_upgrade_body: _RejectedUpgradeBody | None = None
 
         self.ws_protocol_class = config.ws_protocol_class
         self.root_path = config.root_path
@@ -131,6 +205,7 @@ class HttpToolsProtocol(asyncio.Protocol):
             self._unset_keepalive_if_required()
 
         self.parser = None  # type: ignore[assignment]
+        self._rejected_upgrade_body = None
 
     def eof_received(self) -> None:
         pass
@@ -167,21 +242,80 @@ class HttpToolsProtocol(asyncio.Protocol):
         upgrade = self._get_upgrade()
         return upgrade == b"websocket" and self._should_upgrade_to_ws()
 
-    def data_received(self, data: bytes) -> None:
-        self._unset_keepalive_if_required()
-
+    def _install_parser_leniencies(self) -> None:
         try:
-            self.parser.feed_data(data)
-        except httptools.HttpParserError:
+            # Allow a response on the first request from a pipelined request.
+            self.parser.set_dangerous_leniencies(lenient_data_after_close=True)
+        except AttributeError:  # pragma: no cover
+            # httptools < 0.6.3
+            pass
+
+    def _install_request_parser(self) -> None:
+        self.parser = httptools.HttpRequestParser(self)
+        self._install_parser_leniencies()
+
+    def _consume_rejected_upgrade_body(self, data: bytes) -> bytes | None:
+        collector = self._rejected_upgrade_body
+        assert collector is not None
+        try:
+            leftover = collector.feed(data)
+        except ValueError:
+            self._rejected_upgrade_body = None
             msg = "Invalid HTTP request received."
             self.logger.warning(msg)
+            if self.cycle is not None:
+                self.cycle.disconnected = True
+                self.cycle.message_event.set()
             self.send_400_response(msg)
-            return
-        except httptools.HttpParserUpgrade:
-            if self._should_upgrade():
-                self.handle_websocket_upgrade()
-            else:
+            return None
+        if leftover is None:
+            return None
+        self._rejected_upgrade_body = None
+        if self.cycle is not None and not self.cycle.response_complete:
+            body = bytes(collector.body)
+            if body:
+                self.cycle.body += body
+                if len(self.cycle.body) > HIGH_WATER_LIMIT:
+                    self.flow.pause_reading()
+            self.cycle.more_body = False
+            self.cycle.message_event.set()
+        self._install_request_parser()
+        return leftover
+
+    def data_received(self, data: bytes) -> None:
+        self._unset_keepalive_if_required()
+        remaining: bytes | None = data
+        while remaining is not None:
+            if self._rejected_upgrade_body is not None:
+                remaining = self._consume_rejected_upgrade_body(remaining)
+                if remaining == b"":
+                    return
+                continue
+            try:
+                self.parser.feed_data(remaining)
+                return
+            except httptools.HttpParserError:
+                msg = "Invalid HTTP request received."
+                self.logger.warning(msg)
+                self.send_400_response(msg)
+                return
+            except httptools.HttpParserUpgrade as exc:
+                if self._should_upgrade():
+                    self.handle_websocket_upgrade()
+                    return
                 self._unsupported_upgrade_warning()
+                header_end = int(exc.args[0]) if exc.args else len(remaining)
+                remaining = remaining[header_end:]
+                try:
+                    self._rejected_upgrade_body = _RejectedUpgradeBody(self.headers)
+                except ValueError:  # pragma: full coverage
+                    msg = "Invalid HTTP request received."
+                    self.logger.warning(msg)
+                    if self.cycle is not None:
+                        self.cycle.disconnected = True
+                        self.cycle.message_event.set()
+                    self.send_400_response(msg)
+                    return
 
     def handle_websocket_upgrade(self) -> None:
         if self.logger.level <= TRACE_LOG_LEVEL:

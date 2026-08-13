@@ -2,6 +2,12 @@
 toc_depth: 2
 ---
 
+## Unreleased
+
+### Fixed
+
+* Deliver the HTTP/1.1 request body after a rejected `Upgrade: h2c` on the httptools protocol, restore the parser for keep-alive/pipelined requests, and return 400 on a malformed recovered body (#2722).
+
 ## 0.52.2 (August 13, 2026)
 
 ### Fixed

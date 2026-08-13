@@ -134,6 +134,68 @@ UPGRADE_HTTP2_REQUEST = b"\r\n".join(
     ]
 )
 
+UPGRADE_HTTP2_CHUNKED_POST_REQUEST = b"".join(
+    [
+        b"POST / HTTP/1.1\r\n",
+        b"Host: example.org\r\n",
+        b"Connection: Upgrade, HTTP2-Settings\r\n",
+        b"Upgrade: h2c\r\n",
+        b"Transfer-Encoding: chunked\r\n",
+        b"Content-Type: application/json\r\n",
+        b"\r\n",
+        b"3\r\nabc\r\n0\r\n\r\n",
+    ]
+)
+
+UPGRADE_HTTP2_CONTENT_LENGTH_POST_REQUEST = b"".join(
+    [
+        b"POST / HTTP/1.1\r\n",
+        b"Host: example.org\r\n",
+        b"Connection: Upgrade, HTTP2-Settings\r\n",
+        b"Upgrade: h2c\r\n",
+        b"Content-Length: 5\r\n",
+        b"Content-Type: application/json\r\n",
+        b"\r\n",
+        b"hello",
+    ]
+)
+
+UPGRADE_HTTP2_MALFORMED_CHUNKED_POST_REQUEST = b"".join(
+    [
+        b"POST / HTTP/1.1\r\n",
+        b"Host: example.org\r\n",
+        b"Connection: Upgrade, HTTP2-Settings\r\n",
+        b"Upgrade: h2c\r\n",
+        b"Transfer-Encoding: chunked\r\n",
+        b"\r\n",
+        b"zzz\r\n",
+    ]
+)
+
+UPGRADE_HTTP2_BAD_CHUNK_CRLF_POST_REQUEST = b"".join(
+    [
+        b"POST / HTTP/1.1\r\n",
+        b"Host: example.org\r\n",
+        b"Connection: Upgrade, HTTP2-Settings\r\n",
+        b"Upgrade: h2c\r\n",
+        b"Transfer-Encoding: chunked\r\n",
+        b"\r\n",
+        b"3\r\nabcXX0\r\n\r\n",
+    ]
+)
+
+UPGRADE_HTTP2_CHUNKED_WITH_TRAILER_POST_REQUEST = b"".join(
+    [
+        b"POST / HTTP/1.1\r\n",
+        b"Host: example.org\r\n",
+        b"Connection: Upgrade, HTTP2-Settings\r\n",
+        b"Upgrade: h2c\r\n",
+        b"Transfer-Encoding: chunked\r\n",
+        b"\r\n",
+        b"3\r\nabc\r\n0\r\nX-Trailer: 1\r\n\r\n",
+    ]
+)
+
 INVALID_REQUEST_TEMPLATE = b"\r\n".join(
     [
         b"%s",
@@ -907,6 +969,104 @@ async def test_http2_upgrade_request(http_protocol_cls: type[HTTPProtocol], ws_p
     assert b"Hello, world" in protocol.transport.buffer
 
 
+async def _echo_body_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+    body = b""
+    more_body = True
+    while more_body:
+        message = await receive()
+        if message["type"] != "http.request":
+            break
+        body += message.get("body", b"")
+        more_body = message.get("more_body", False)
+    response = Response(b"Body: " + body, media_type="text/plain")
+    await response(scope, receive, send)
+
+
+async def test_http2_upgrade_chunked_body_is_preserved(http_protocol_cls: type[HTTPProtocol]) -> None:
+    protocol = get_connected_protocol(_echo_body_app, http_protocol_cls)
+    protocol.data_received(UPGRADE_HTTP2_CHUNKED_POST_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Body: abc" in protocol.transport.buffer
+
+
+async def test_http2_upgrade_content_length_body_is_preserved(http_protocol_cls: type[HTTPProtocol]) -> None:
+    protocol = get_connected_protocol(_echo_body_app, http_protocol_cls)
+    protocol.data_received(UPGRADE_HTTP2_CONTENT_LENGTH_POST_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Body: hello" in protocol.transport.buffer
+
+
+async def test_http2_upgrade_chunked_body_split_across_packets(http_protocol_cls: type[HTTPProtocol]) -> None:
+    protocol = get_connected_protocol(_echo_body_app, http_protocol_cls)
+    split_at = UPGRADE_HTTP2_CHUNKED_POST_REQUEST.index(b"abc") + 1
+    protocol.data_received(UPGRADE_HTTP2_CHUNKED_POST_REQUEST[:split_at])
+    protocol.data_received(UPGRADE_HTTP2_CHUNKED_POST_REQUEST[split_at:])
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Body: abc" in protocol.transport.buffer
+
+
+async def test_keep_alive_after_rejected_http2_upgrade(http_protocol_cls: type[HTTPProtocol]) -> None:
+    protocol = get_connected_protocol(_echo_body_app, http_protocol_cls)
+    protocol.data_received(UPGRADE_HTTP2_CHUNKED_POST_REQUEST)
+    await protocol.loop.run_one()
+    assert b"Body: abc" in protocol.transport.buffer
+    protocol.transport.clear_buffer()
+
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Body: " in protocol.transport.buffer
+
+
+async def test_pipelined_request_after_rejected_http2_upgrade(http_protocol_cls: type[HTTPProtocol]) -> None:
+    protocol = get_connected_protocol(_echo_body_app, http_protocol_cls)
+    protocol.data_received(UPGRADE_HTTP2_CHUNKED_POST_REQUEST + SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    assert b"Body: abc" in protocol.transport.buffer
+    protocol.transport.clear_buffer()
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Body: " in protocol.transport.buffer
+
+
+@skip_if_no_httptools
+async def test_malformed_chunked_body_after_rejected_http2_upgrade() -> None:
+    protocol = get_connected_protocol(_echo_body_app, HttpToolsProtocol)
+    protocol.data_received(UPGRADE_HTTP2_MALFORMED_CHUNKED_POST_REQUEST)
+    assert b"HTTP/1.1 400" in protocol.transport.buffer
+    assert protocol.transport.is_closing()
+    await protocol.loop.run_one()
+
+
+@skip_if_no_httptools
+async def test_invalid_chunk_framing_after_rejected_http2_upgrade() -> None:
+    protocol = get_connected_protocol(_echo_body_app, HttpToolsProtocol)
+    protocol.data_received(UPGRADE_HTTP2_BAD_CHUNK_CRLF_POST_REQUEST)
+    assert b"HTTP/1.1 400" in protocol.transport.buffer
+    assert protocol.transport.is_closing()
+    await protocol.loop.run_one()
+
+
+async def test_chunked_trailer_after_rejected_http2_upgrade(http_protocol_cls: type[HTTPProtocol]) -> None:
+    protocol = get_connected_protocol(_echo_body_app, http_protocol_cls)
+    protocol.data_received(UPGRADE_HTTP2_CHUNKED_WITH_TRAILER_POST_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Body: abc" in protocol.transport.buffer
+
+
+async def test_http2_upgrade_content_length_body_split_across_packets(http_protocol_cls: type[HTTPProtocol]) -> None:
+    protocol = get_connected_protocol(_echo_body_app, http_protocol_cls)
+    protocol.data_received(UPGRADE_HTTP2_CONTENT_LENGTH_POST_REQUEST[:-2])
+    protocol.data_received(UPGRADE_HTTP2_CONTENT_LENGTH_POST_REQUEST[-2:])
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Body: hello" in protocol.transport.buffer
+
+
 async def asgi3app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
     pass
 
@@ -1185,3 +1345,60 @@ async def test_header_upgrade_is_websocket_depend_not_installed(
     assert msg in caplog.text
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
     assert b"Hello, world" in protocol.transport.buffer
+
+
+@skip_if_no_httptools
+def test_rejected_upgrade_body_incomplete_chunk_states() -> None:
+    from uvicorn.protocols.http.httptools_impl import _RejectedUpgradeBody
+
+    collector = _RejectedUpgradeBody([(b"transfer-encoding", b"chunked")])
+    assert collector.feed(b"3") is None
+    assert collector.feed(b"\r\nab") is None
+    assert collector.feed(b"c") is None
+    assert collector.feed(b"\r") is None
+    leftover = collector.feed(b"\n0\r\nX")
+    assert leftover is None
+    leftover = collector.feed(b"-Trailer: 1\r\n\r\nGET")
+    assert leftover == b"GET"
+    assert bytes(collector.body) == b"abc"
+
+
+@skip_if_no_httptools
+def test_rejected_upgrade_body_empty_chunk_size() -> None:
+    from uvicorn.protocols.http.httptools_impl import _RejectedUpgradeBody
+
+    collector = _RejectedUpgradeBody([(b"transfer-encoding", b"chunked")])
+    with pytest.raises(ValueError, match="invalid chunk size"):
+        collector.feed(b"\r\n")
+
+
+@skip_if_no_httptools
+def test_rejected_upgrade_body_invalid_content_length() -> None:
+    from uvicorn.protocols.http.httptools_impl import _RejectedUpgradeBody
+
+    with pytest.raises(ValueError):
+        _RejectedUpgradeBody([(b"content-length", b"nope")])
+
+
+@skip_if_no_httptools
+async def test_http2_upgrade_large_body_pauses_reading() -> None:
+    from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT
+    from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
+
+    payload = b"x" * (HIGH_WATER_LIMIT + 1)
+    request = b"".join(
+        [
+            b"POST / HTTP/1.1\r\n",
+            b"Host: example.org\r\n",
+            b"Connection: Upgrade, HTTP2-Settings\r\n",
+            b"Upgrade: h2c\r\n",
+            b"Content-Length: " + str(len(payload)).encode() + b"\r\n",
+            b"\r\n",
+            payload,
+        ]
+    )
+    protocol = get_connected_protocol(_echo_body_app, HttpToolsProtocol)
+    protocol.data_received(request)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Body: " + payload in protocol.transport.buffer
