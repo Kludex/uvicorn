@@ -283,7 +283,7 @@ class ZttpProtocol(asyncio.Protocol):
             self.conn.start_next_cycle()
             try:
                 self.handle_events(self.conn.next_event())
-            except zttp.RemoteProtocolError:
+            except zttp.RemoteProtocolError:  # pragma: no cover
                 self.handle_remote_protocol_error()
 
     def shutdown(self) -> None:
