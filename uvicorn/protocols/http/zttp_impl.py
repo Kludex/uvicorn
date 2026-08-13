@@ -4,7 +4,7 @@ import asyncio
 import contextvars
 import logging
 import sys
-from collections.abc import Callable, Generator
+from collections.abc import Callable
 from typing import Any, Literal
 from urllib.parse import unquote
 
@@ -137,21 +137,12 @@ class ZttpProtocol(asyncio.Protocol):
 
     def data_received(self, data: bytes) -> None:
         self._unset_keepalive_if_required()
+        self.handle_events(data)
 
-        self.conn.receive_data(data)
-        self.handle_events()
-
-    def events(self) -> Generator[zttp.Event]:
-        """Yield every complete event currently available."""
-        while True:
-            event = self.conn.next_event()
-            if event is zttp.NEED_DATA:
-                return
-            yield event
-
-    def handle_events(self) -> None:
+    def handle_events(self, data: bytes | None = None) -> None:
         try:
-            for event in self.events():
+            event = self.conn.receive_event(data) if data is not None else self.conn.next_event()
+            while event is not zttp.NEED_DATA:
                 if isinstance(event, zttp.Request):
                     assert isinstance(event.headers, zttp.HeaderBlock)
                     self.headers = event.headers.to_list(lowercase_names=True)
@@ -218,20 +209,20 @@ class ZttpProtocol(asyncio.Protocol):
                     self.tasks.add(task)
 
                 elif isinstance(event, zttp.Data):
-                    if self.cycle is None or self.cycle.response_complete:
-                        continue  # pragma: no cover
-                    self.cycle.body += event.data
-                    if len(self.cycle.body) > HIGH_WATER_LIMIT:
-                        self.flow.pause_reading()
-                    self.cycle.message_event.set()
+                    if self.cycle is not None and not self.cycle.response_complete:
+                        self.cycle.body += event.data
+                        if len(self.cycle.body) > HIGH_WATER_LIMIT:
+                            self.flow.pause_reading()
+                        self.cycle.message_event.set()
 
                 elif isinstance(event, zttp.EndOfMessage):
-                    if self.cycle is None:
-                        continue  # pragma: no cover
-                    self.cycle.more_body = False
-                    self.cycle.message_event.set()
-                    if self.cycle.response_complete:
-                        self.conn.start_next_cycle()
+                    if self.cycle is not None:
+                        self.cycle.more_body = False
+                        self.cycle.message_event.set()
+                        if self.cycle.response_complete:
+                            self.conn.start_next_cycle()
+
+                event = self.conn.next_event()
         except zttp.RemoteProtocolError:
             msg = "Invalid HTTP request received."
             self.logger.warning(msg)
