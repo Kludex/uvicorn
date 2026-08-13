@@ -29,6 +29,7 @@ from uvicorn.server import ServerState
 
 HEADER_RE = re.compile(b'[\x00-\x1f\x7f()<>@,;:\\[\\]={} \t\\\\"]')
 HEADER_VALUE_RE = re.compile(b"[\x00-\x08\x0a-\x1f\x7f]")
+CHUNK_SIZE_RE = re.compile(rb"^[0-9a-fA-F]+$")
 
 
 def _get_status_line(status_code: int) -> bytes:
@@ -110,11 +111,15 @@ class _RejectedUpgradeBody:
             idx = self._buf.find(b"\r\n")
             if idx < 0:
                 return None
-            size_line = bytes(self._buf[:idx]).split(b";", 1)[0].strip()
+            line = bytes(self._buf[:idx])
             del self._buf[: idx + 2]
-            if not size_line:
+            if b";" in line:
+                size_token = line.split(b";", 1)[0].rstrip(b" \t")
+            else:
+                size_token = line
+            if CHUNK_SIZE_RE.match(size_token) is None:
                 raise ValueError("invalid chunk size")
-            size = int(size_line, 16)
+            size = int(size_token, 16)
             if size == 0:
                 self._trailers = True
                 continue

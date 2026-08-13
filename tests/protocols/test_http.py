@@ -172,6 +172,18 @@ UPGRADE_HTTP2_MALFORMED_CHUNKED_POST_REQUEST = b"".join(
     ]
 )
 
+UPGRADE_HTTP2_PYTHON_INT_CHUNK_SIZE_POST_REQUEST = b"".join(
+    [
+        b"POST / HTTP/1.1\r\n",
+        b"Host: example.org\r\n",
+        b"Connection: Upgrade, HTTP2-Settings\r\n",
+        b"Upgrade: h2c\r\n",
+        b"Transfer-Encoding: chunked\r\n",
+        b"\r\n",
+        b"+3\r\nabc\r\n0\r\n\r\n",
+    ]
+)
+
 UPGRADE_HTTP2_BAD_CHUNK_CRLF_POST_REQUEST = b"".join(
     [
         b"POST / HTTP/1.1\r\n",
@@ -1042,6 +1054,15 @@ async def test_malformed_chunked_body_after_rejected_http2_upgrade() -> None:
 
 
 @skip_if_no_httptools
+async def test_python_int_hex_chunk_size_after_rejected_http2_upgrade() -> None:
+    protocol = get_connected_protocol(_echo_body_app, HttpToolsProtocol)
+    protocol.data_received(UPGRADE_HTTP2_PYTHON_INT_CHUNK_SIZE_POST_REQUEST)
+    assert b"HTTP/1.1 400" in protocol.transport.buffer
+    assert protocol.transport.is_closing()
+    await protocol.loop.run_one()
+
+
+@skip_if_no_httptools
 async def test_invalid_chunk_framing_after_rejected_http2_upgrade() -> None:
     protocol = get_connected_protocol(_echo_body_app, HttpToolsProtocol)
     protocol.data_received(UPGRADE_HTTP2_BAD_CHUNK_CRLF_POST_REQUEST)
@@ -1370,6 +1391,26 @@ def test_rejected_upgrade_body_empty_chunk_size() -> None:
     collector = _RejectedUpgradeBody([(b"transfer-encoding", b"chunked")])
     with pytest.raises(ValueError, match="invalid chunk size"):
         collector.feed(b"\r\n")
+
+
+@skip_if_no_httptools
+@pytest.mark.parametrize("size_token", [b"+3", b"0x3", b"1_0", b" 3", b"3 "])
+def test_rejected_upgrade_body_rejects_non_hex_chunk_size(size_token: bytes) -> None:
+    from uvicorn.protocols.http.httptools_impl import _RejectedUpgradeBody
+
+    collector = _RejectedUpgradeBody([(b"transfer-encoding", b"chunked")])
+    with pytest.raises(ValueError, match="invalid chunk size"):
+        collector.feed(size_token + b"\r\nabc\r\n0\r\n\r\n")
+
+
+@skip_if_no_httptools
+def test_rejected_upgrade_body_chunk_size_bws_before_extension() -> None:
+    from uvicorn.protocols.http.httptools_impl import _RejectedUpgradeBody
+
+    collector = _RejectedUpgradeBody([(b"transfer-encoding", b"chunked")])
+    leftover = collector.feed(b"3 ;foo\r\nabc\r\n0\r\n\r\nGET")
+    assert leftover == b"GET"
+    assert bytes(collector.body) == b"abc"
 
 
 @skip_if_no_httptools
