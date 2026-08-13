@@ -151,6 +151,21 @@ def test_cli_event_size() -> None:
     assert mock_run.call_args[1]["h11_max_incomplete_event_size"] == 32768
 
 
+def test_cli_asgi_root_path() -> None:
+    runner = CliRunner()
+
+    with mock.patch.object(main, "run") as mock_run:
+        result = runner.invoke(
+            cli,
+            ["tests.test_cli:App", "--asgi-root-path", "/proxy"],
+        )
+
+    assert result.output == ""
+    assert result.exit_code == 0
+    mock_run.assert_called_once()
+    assert mock_run.call_args[1]["asgi_root_path"] == "/proxy"
+
+
 @pytest.mark.parametrize("http_protocol", ["h11", "httptools"])
 def test_env_variables(http_protocol: str):
     with load_env_var("UVICORN_HTTP", http_protocol):

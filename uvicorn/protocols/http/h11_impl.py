@@ -63,6 +63,7 @@ class H11Protocol(asyncio.Protocol):
         )
         self.ws_protocol_class = config.ws_protocol_class
         self.root_path = config.root_path
+        self.asgi_root_path = config.asgi_root_path
         self.asgi_version = config.asgi_version
         self.limit_concurrency = config.limit_concurrency
         self.app_state = app_state
@@ -210,7 +211,7 @@ class H11Protocol(asyncio.Protocol):
                     "client": self.client,
                     "scheme": self.scheme,  # type: ignore[typeddict-item]
                     "method": event.method.decode("ascii"),
-                    "root_path": self.root_path,
+                    "root_path": self.asgi_root_path,
                     "path": full_path,
                     "raw_path": full_raw_path,
                     "query_string": query_string,

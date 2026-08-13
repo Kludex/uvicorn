@@ -252,7 +252,15 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     "--root-path",
     type=str,
     default="",
-    help="Set the ASGI 'root_path' for applications submounted below a given URL path.",
+    help="Serve the application under the provided root path. "
+    "Prefixes incoming request paths and sets the ASGI 'root_path'.",
+)
+@click.option(
+    "--asgi-root-path",
+    type=str,
+    default="",
+    help="Set the ASGI 'root_path' without prefixing incoming request paths. "
+    "Useful when a reverse proxy serves the app on a sub-URL without stripping the prefix.",
 )
 @click.option(
     "--limit-concurrency",
@@ -416,6 +424,7 @@ def main(
     date_header: bool,
     forwarded_allow_ips: str,
     root_path: str,
+    asgi_root_path: str,
     limit_concurrency: int,
     backlog: int,
     limit_max_requests: int,
@@ -468,6 +477,7 @@ def main(
         date_header=date_header,
         forwarded_allow_ips=forwarded_allow_ips,
         root_path=root_path,
+        asgi_root_path=asgi_root_path,
         limit_concurrency=limit_concurrency,
         backlog=backlog,
         limit_max_requests=limit_max_requests,
@@ -523,6 +533,7 @@ def run(
     date_header: bool = True,
     forwarded_allow_ips: list[str] | str | None = None,
     root_path: str = "",
+    asgi_root_path: str = "",
     limit_concurrency: int | None = None,
     backlog: int = 2048,
     limit_max_requests: int | None = None,
@@ -579,6 +590,7 @@ def run(
         date_header=date_header,
         forwarded_allow_ips=forwarded_allow_ips,
         root_path=root_path,
+        asgi_root_path=asgi_root_path,
         limit_concurrency=limit_concurrency,
         backlog=backlog,
         limit_max_requests=limit_max_requests,
@@ -600,6 +612,10 @@ def run(
         h11_max_incomplete_event_size=h11_max_incomplete_event_size,
         reset_contextvars=reset_contextvars,
     )
+    if root_path and asgi_root_path:
+        # Config did already log an error. Just quit before loading the app.
+        sys.exit(STARTUP_FAILURE)
+
     if config.reload or config.workers > 1:
         if not isinstance(app, str):
             logger = logging.getLogger("uvicorn.error")

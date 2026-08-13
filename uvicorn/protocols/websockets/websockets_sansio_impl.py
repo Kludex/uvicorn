@@ -69,6 +69,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.loop = _loop or asyncio.get_event_loop()
         self.logger = logging.getLogger("uvicorn.error")
         self.root_path = config.root_path
+        self.asgi_root_path = config.asgi_root_path
         self.asgi_version = config.asgi_version
         self.app_state = app_state
 
@@ -245,6 +246,9 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 for key, value in event.headers.raw_items()
             ]
         raw_path, _, query_string = event.path.partition("?")
+        path = unquote(raw_path)
+        full_path = self.root_path + path
+        full_raw_path = self.root_path.encode("ascii") + raw_path.encode("ascii")
         subprotocols: list[str] = []
         for header in event.headers.get_all("Sec-WebSocket-Protocol"):
             subprotocols.extend([token.strip() for token in header.split(",")])
@@ -255,9 +259,9 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             "scheme": self.scheme,
             "server": self.server,
             "client": self.client,
-            "root_path": self.root_path,
-            "path": self.root_path + unquote(raw_path),
-            "raw_path": self.root_path.encode("ascii") + raw_path.encode("ascii"),
+            "root_path": self.asgi_root_path,
+            "path": full_path,
+            "raw_path": full_raw_path,
             "query_string": query_string.encode("ascii"),
             "headers": headers,
             "subprotocols": subprotocols,

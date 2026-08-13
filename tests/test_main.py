@@ -88,6 +88,15 @@ def test_run_invalid_app_config_combination(caplog: pytest.LogCaptureFixture) ->
     )
 
 
+def test_run_invalid_root_path_config_combination(caplog: pytest.LogCaptureFixture) -> None:
+    # An invalid app path proves we quit before the app is imported.
+    with pytest.raises(SystemExit) as exit_exception:
+        run("tests.test_main:does_not_exist", root_path="/app", asgi_root_path="/proxy")
+    assert exit_exception.value.code == STARTUP_FAILURE
+    assert caplog.records[-1].name == "uvicorn.error"
+    assert caplog.records[-1].message == "Setting both 'root_path' and 'asgi_root_path' is not supported."
+
+
 def test_run_fails_fast_in_parent_on_bad_app_path(
     caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
