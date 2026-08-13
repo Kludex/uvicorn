@@ -9,7 +9,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, TypeAlias
 
 import pytest
-from h11._util import LocalProtocolError
+from h11 import LocalProtocolError
 
 from tests.response import Response
 from uvicorn import Server
