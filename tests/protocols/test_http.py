@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import logging
 import socket
 import threading
@@ -522,6 +523,18 @@ async def test_pipelined_requests(http_protocol_cls: type[HTTPProtocol]):
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
     assert b"Hello, world" in protocol.transport.buffer
     protocol.transport.clear_buffer()
+
+
+@pytest.mark.skipif(importlib.util.find_spec("zttp") is None, reason="zttp not installed.")
+async def test_zttp_invalid_pipelined_request_after_response():
+    from uvicorn.protocols.http.zttp_impl import ZttpProtocol
+
+    app = Response("Hello, world", media_type="text/plain")
+    protocol = get_connected_protocol(app, ZttpProtocol)
+    protocol.data_received(SIMPLE_GET_REQUEST + b"invalid request\r\n\r\n")
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"HTTP/1.1 400 Bad Request" in protocol.transport.buffer
 
 
 async def test_undersized_request(http_protocol_cls: type[HTTPProtocol]):
