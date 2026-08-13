@@ -2,6 +2,12 @@
 toc_depth: 2
 ---
 
+## 0.52.2 (August 13, 2026)
+
+### Fixed
+
+* Update `zttp` to 0.0.22, fixing bodyless request receives and improving HTTP/1 request parsing performance (#3063)
+
 ## 0.52.1 (August 1, 2026)
 
 ### Fixed
