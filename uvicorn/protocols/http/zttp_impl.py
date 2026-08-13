@@ -5,7 +5,7 @@ import contextvars
 import logging
 import sys
 from collections.abc import Callable, Generator
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from urllib.parse import unquote
 
 import zttp
@@ -153,10 +153,8 @@ class ZttpProtocol(asyncio.Protocol):
         try:
             for event in self.events():
                 if isinstance(event, zttp.Request):
-                    if isinstance(event.headers, zttp.HeaderBlock):
-                        self.headers = event.headers.to_list(lowercase_names=True)
-                    else:
-                        self.headers = [(key.lower(), value) for key, value in event.headers]
+                    headers = cast(zttp.HeaderBlock, event.headers)
+                    self.headers = headers.to_list(lowercase_names=True)
                     path = event.path.decode("ascii")
                     if "%" in path:
                         path = unquote(path)
