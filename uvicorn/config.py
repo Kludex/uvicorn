@@ -582,15 +582,15 @@ class Config:
 
             sock = socket.socket(family=family)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            if family == socket.AF_INET6:
-                # Explicitly enable dual-stack (IPv4-mapped) support instead of
-                # relying on the OS default (e.g. the Linux `net.ipv6.bindv6only`
-                # sysctl), so behaviour is consistent and deterministic across
-                # platforms. This also matches `Server.startup()`'s single-worker
-                # IPv6 path, which binds its own dual-stack socket rather than
-                # letting asyncio's `loop.create_server()` force IPv6-only.
-                sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
             try:
+                if family == socket.AF_INET6:
+                    # Explicitly enable dual-stack (IPv4-mapped) support instead of
+                    # relying on the OS default (e.g. the Linux `net.ipv6.bindv6only`
+                    # sysctl), so behaviour is consistent and deterministic across
+                    # platforms. This also matches `Server.startup()`'s single-worker
+                    # IPv6 path, which binds its own dual-stack socket rather than
+                    # letting asyncio's `loop.create_server()` force IPv6-only.
+                    sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
                 sock.bind((self.host, self.port))
             except OSError as exc:  # pragma: full coverage
                 logger.error(exc)

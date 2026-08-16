@@ -18,7 +18,7 @@ import yaml
 from pytest_mock import MockerFixture
 
 from tests.custom_loop_utils import CustomLoop
-from tests.utils import as_cwd, get_asyncio_default_loop_per_os
+from tests.utils import as_cwd, get_asyncio_default_loop_per_os, has_ipv6
 from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallable, Environ, Scope, StartResponse
 from uvicorn.config import Config, LoopFactoryType, UvicornDeprecationWarning
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -262,6 +262,7 @@ def test_socket_bind() -> None:
     sock.close()
 
 
+@pytest.mark.skipif(not has_ipv6("::"), reason="IPV6 not enabled")
 def test_ipv6_socket_bind_is_dual_stack() -> None:
     # Regression test for https://github.com/encode/uvicorn/issues/2945
     # `bind_socket()` (used by the reload/multiprocess workers) must not rely

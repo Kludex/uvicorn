@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import socket as socket_module
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, contextmanager
@@ -10,6 +11,21 @@ from pathlib import Path
 from socket import socket
 
 from uvicorn import Config, Server
+
+
+def has_ipv6(host: str) -> bool:
+    sock = None
+    ipv6_enabled = False
+    if socket_module.has_ipv6:
+        try:
+            sock = socket_module.socket(socket_module.AF_INET6)
+            sock.bind((host, 0))
+            ipv6_enabled = True
+        except Exception:  # pragma: no cover
+            pass
+    if sock:
+        sock.close()
+    return ipv6_enabled
 
 
 @asynccontextmanager
