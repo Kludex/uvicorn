@@ -139,8 +139,11 @@ async def test_handle_exit_cancels_frozen_lifespan_startup(unused_tcp_port: int)
     config = Config(app=app, port=unused_tcp_port)
     server = Server(config=config)
 
+    def lifespan_not_ready() -> bool:
+        return getattr(server, "lifespan", None) is None or server.lifespan.main_lifespan_task is None
+
     async def interrupt_during_startup() -> None:
-        while getattr(server, "lifespan", None) is None or server.lifespan.main_lifespan_task is None:
+        while lifespan_not_ready():  # pragma: no cover
             await asyncio.sleep(0.01)
         await asyncio.sleep(0.05)
         server.handle_exit(signal.SIGINT, None)

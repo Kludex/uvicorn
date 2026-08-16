@@ -50,6 +50,7 @@ def test_lifespan_off():
 
         await lifespan.startup()
         await lifespan.shutdown()
+        lifespan.cancel()
 
     loop = asyncio.new_event_loop()
     loop.run_until_complete(test())
