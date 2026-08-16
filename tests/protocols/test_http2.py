@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import ssl
 from collections.abc import Callable
 from typing import Any
@@ -822,13 +821,8 @@ async def test_eof_received_is_a_no_op():
 
 async def test_trace_logging(caplog: pytest.LogCaptureFixture, logging_config: dict[str, Any]):
     app = Response("Hello, world", media_type="text/plain")
-    logger = logging.getLogger("uvicorn.error")
-    logger.addHandler(caplog.handler)
-    try:
-        protocol = get_connected_protocol(app, log_level="trace", log_config=logging_config)
-        protocol.connection_lost(None)
-    finally:
-        logger.removeHandler(caplog.handler)
+    protocol = get_connected_protocol(app, log_level="trace", log_config=logging_config)
+    protocol.connection_lost(None)
 
     messages = [record.message for record in caplog.records if record.name == "uvicorn.error"]
     assert any("HTTP/2 connection made" in message for message in messages)
