@@ -3,18 +3,19 @@ from __future__ import annotations
 import asyncio
 import http
 import logging
+import warnings
 from collections.abc import Sequence
 from typing import Any, Literal, cast
 from urllib.parse import unquote
 
 import websockets
 import websockets.legacy.handshake
+from websockets import __version__ as websockets_version
 from websockets.datastructures import Headers
 from websockets.exceptions import ConnectionClosed
 from websockets.extensions.base import ServerExtensionFactory
 from websockets.extensions.permessage_deflate import ServerPerMessageDeflateFactory
-from websockets.legacy.server import HTTPResponse
-from websockets.server import WebSocketServerProtocol
+from websockets.legacy.server import HTTPResponse, WebSocketServerProtocol
 from websockets.typing import Subprotocol
 
 from uvicorn._types import (
@@ -25,7 +26,7 @@ from uvicorn._types import (
     WebSocketReceiveEvent,
     WebSocketScope,
 )
-from uvicorn.config import Config
+from uvicorn.config import Config, UvicornDeprecationWarning
 from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.protocols.utils import (
     ClientDisconnected,
@@ -36,6 +37,13 @@ from uvicorn.protocols.utils import (
     is_ssl,
 )
 from uvicorn.server import ServerState
+
+warnings.warn(
+    "The `websockets` implementation is deprecated, and `--ws websockets` will point at the "
+    "`websockets-sansio` implementation in a future release. "
+    "Use `--ws websockets-sansio` or `--ws auto` to switch now.",
+    UvicornDeprecationWarning,
+)
 
 
 class Server:
@@ -169,10 +177,19 @@ class WebSocketProtocol(WebSocketServerProtocol):
         for header in request_headers.get_all("Sec-WebSocket-Protocol"):
             subprotocols.extend([token.strip() for token in header.split(",")])
 
-        asgi_headers = [
-            (name.encode("ascii"), value.encode("ascii", errors="surrogateescape"))
-            for name, value in request_headers.raw_items()
-        ]
+        # websockets 17.0 documents that non-ASCII header values are encoded
+        # with ISO-8859-1. Earlier versions didn't document the behavior but
+        # we can see in the code that it used surrogate escape encoding.
+        # Move the pragma: no cover to the else: branch when 17.0 is released.
+        if websockets_version >= "17.0":  # pragma: no cover
+            asgi_headers = [
+                (name.encode("ascii"), value.encode("latin-1")) for name, value in request_headers.raw_items()
+            ]
+        else:
+            asgi_headers = [
+                (name.encode("ascii"), value.encode("ascii", errors="surrogateescape"))
+                for name, value in request_headers.raw_items()
+            ]
         path = unquote(path_portion)
         full_path = self.root_path + path
         full_raw_path = self.root_path.encode("ascii") + path_portion.encode("ascii")

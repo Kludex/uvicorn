@@ -78,7 +78,7 @@ The default process manager monitors the status of child processes and automatic
 
 You can also manage child processes by sending specific signals to the main process. (Not supported on Windows.)
 
-- `SIGHUP`: Work processes are graceful restarted one after another. If you update the code, the new worker process will use the new code.
+- `SIGHUP`: Gracefully restart the workers one at a time with no dropped requests. Fresh workers pick up new code on disk.
 - `SIGTTIN`: Increase the number of worker processes by one.
 - `SIGTTOU`: Decrease the number of worker processes by one.
 
@@ -191,7 +191,7 @@ http {
 
 Uvicorn's `--proxy-headers` behavior may not be sufficient for more complex proxy configurations that use different combinations of headers, or where the application is running behind more than one intermediary proxying service.
 
-In those cases, you might want to use an ASGI middleware to set the `client` and `scheme` dependant on the request headers.
+In those cases, you might want to use an ASGI middleware to set the `client` and `scheme` dependent on the request headers.
 
 ## Running behind a CDN
 

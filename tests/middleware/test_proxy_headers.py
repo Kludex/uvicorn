@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 import pytest
-import websockets.client
+from websockets.asyncio.client import connect
 
 from tests.response import Response
 from tests.utils import run_server
@@ -17,7 +17,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware, _TrustedHos
 if TYPE_CHECKING:
     from uvicorn.protocols.http.h11_impl import H11Protocol
     from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
-    from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
+    from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol
 
 
@@ -515,7 +515,7 @@ async def test_proxy_headers_x_forwarded_for_port_shapes(forwarded_for: str, exp
 async def test_proxy_headers_websocket_x_forwarded_proto(
     forwarded_proto: str,
     expected: str,
-    ws_protocol_cls: type[WSProtocol | WebSocketProtocol],
+    ws_protocol_cls: type[WSProtocol | WebSocketsSansIOProtocol],
     http_protocol_cls: type[H11Protocol | HttpToolsProtocol],
     unused_tcp_port: int,
 ) -> None:
@@ -540,7 +540,7 @@ async def test_proxy_headers_websocket_x_forwarded_proto(
     async with run_server(config):
         url = f"ws://127.0.0.1:{unused_tcp_port}"
         headers = {X_FORWARDED_FOR: "1.2.3.4", X_FORWARDED_PROTO: forwarded_proto}
-        async with websockets.client.connect(url, extra_headers=headers) as websocket:
+        async with connect(url, additional_headers=headers) as websocket:
             data = await websocket.recv()
             assert data == expected
 

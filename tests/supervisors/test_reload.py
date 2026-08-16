@@ -17,7 +17,7 @@ from uvicorn.supervisors.basereload import BaseReload, _display_path
 from uvicorn.supervisors.statreload import StatReload
 
 try:
-    from uvicorn.supervisors.watchfilesreload import WatchFilesReload
+    from uvicorn.supervisors.watchfilesreload import FileFilter, WatchFilesReload
 except ImportError:  # pragma: no cover
     WatchFilesReload = None  # type: ignore[misc,assignment]
 
@@ -409,3 +409,25 @@ def test_base_reloader_closes_sockets_on_shutdown():
     assert sock.fileno() != -1
     reloader.shutdown()
     assert sock.fileno() == -1
+
+
+@pytest.mark.skipif(WatchFilesReload is None, reason="watchfiles not available")
+def test_file_filter_excluded_directory(tmp_path: Path) -> None:
+    """A glob include inside an excluded directory is not watched.
+
+    Pins the branch directly: the reload tests that exercise it through real
+    file watching are skipped on Windows and macOS, which left it uncovered
+    on some CI runs (see #2974).
+    """
+    excluded_dir = tmp_path / "vendor"
+    excluded_dir.mkdir()
+
+    config = Config(
+        app="tests.test_config:asgi_app",
+        reload=True,
+        reload_excludes=[str(excluded_dir)],
+    )
+    file_filter = FileFilter(config)
+
+    assert file_filter(tmp_path / "app.py")
+    assert not file_filter(excluded_dir / "app.py")

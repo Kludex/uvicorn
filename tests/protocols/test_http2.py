@@ -206,7 +206,8 @@ class H2Client:
         responses: dict[int, tuple[int, list[tuple[bytes, bytes]], bytes, bool]] = {}
         for event in self.events(data):
             if isinstance(event, zttp.Response):
-                responses[event.stream_id] = (event.status_code, event.headers, b"", False)
+                headers = event.headers.to_list() if isinstance(event.headers, zttp.HeaderBlock) else event.headers
+                responses[event.stream_id] = (event.status_code, headers, b"", False)
             elif isinstance(event, zttp.Data):
                 status, headers, body, ended = responses[event.stream_id]
                 responses[event.stream_id] = (status, headers, body + event.data, ended)

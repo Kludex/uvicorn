@@ -130,7 +130,8 @@ def reload_directory_structure(tmp_path_factory: pytest.TempPathFactory):
     │   └── file.txt
     └── main.py
     """
-    root = tmp_path_factory.mktemp("reload_directory")
+    # Resolve symlinks (e.g. /tmp -> /private/tmp on macOS) so paths match what watchfiles reports.
+    root = tmp_path_factory.mktemp("reload_directory").resolve()
     apps = ["app", "app_first", "app_second", "app_third"]
 
     root_file = root / "main.py"
@@ -233,7 +234,6 @@ def unused_tcp_port() -> int:
             marks=pytest.mark.skipif(not importlib.util.find_spec("wsproto"), reason="wsproto not installed."),
             id="wsproto",
         ),
-        pytest.param("uvicorn.protocols.websockets.websockets_impl:WebSocketProtocol", id="websockets"),
         pytest.param(
             "uvicorn.protocols.websockets.websockets_sansio_impl:WebSocketsSansIOProtocol", id="websockets-sansio"
         ),

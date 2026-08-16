@@ -12,7 +12,7 @@ import pytest
 
 from tests.response import Response
 from uvicorn import Server
-from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallable, Scope
+from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGIReceiveEvent, ASGISendCallable, Scope
 from uvicorn.config import WS_PROTOCOLS, Config
 from uvicorn.lifespan.off import LifespanOff
 from uvicorn.lifespan.on import LifespanOn
@@ -28,10 +28,10 @@ except ModuleNotFoundError:  # pragma: no cover
 
 if TYPE_CHECKING:
     from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
-    from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
+    from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol as _WSProtocol
 
-    WSProtocol: TypeAlias = WebSocketProtocol | _WSProtocol
+    WSProtocol: TypeAlias = WebSocketsSansIOProtocol | _WSProtocol
     HTTPProtocol: TypeAlias = H11Protocol | HttpToolsProtocol
 
 pytestmark = pytest.mark.anyio
@@ -387,6 +387,22 @@ async def test_post_request(http_protocol_cls: type[HTTPProtocol]):
     assert b'Body: {"hello": "world"}' in protocol.transport.buffer
 
 
+async def test_bodyless_request_receive(http_protocol_cls: type[HTTPProtocol]):
+    request_message: ASGIReceiveEvent | None = None
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        nonlocal request_message
+        request_message = await receive()
+        response = Response(b"", status_code=204)
+        await response(scope, receive, send)
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+
+    assert request_message == {"type": "http.request", "body": b"", "more_body": False}
+
+
 async def test_keepalive(http_protocol_cls: type[HTTPProtocol]):
     app = Response(b"", status_code=204)
 
@@ -443,6 +459,16 @@ async def test_close(http_protocol_cls: type[HTTPProtocol]):
     await protocol.loop.run_one()
     assert b"HTTP/1.1 204 No Content" in protocol.transport.buffer
     assert protocol.transport.is_closing()
+
+
+async def test_bodyless_response_with_transfer_encoding(http_protocol_cls: type[HTTPProtocol]):
+    """RFC 9112 §6.1 forbids `Transfer-Encoding` on a 204, which zttp refuses to serialize."""
+    app = Response(b"", status_code=204, headers={"transfer-encoding": "chunked"})
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 204 No Content" in protocol.transport.buffer
 
 
 async def test_chunked_encoding(http_protocol_cls: type[HTTPProtocol]):
@@ -669,6 +695,11 @@ async def test_early_response(http_protocol_cls: type[HTTPProtocol]):
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
     protocol.data_received(FINISH_POST_REQUEST)
     assert not protocol.transport.is_closing()
+
+    protocol.transport.clear_buffer()
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
 
 
 async def test_read_after_response(http_protocol_cls: type[HTTPProtocol]):

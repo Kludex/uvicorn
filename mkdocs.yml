@@ -56,6 +56,7 @@ nav:
       - Lifespan: concepts/lifespan.md
       - HTTP/2: concepts/http2.md
       - Logging: concepts/logging.md
+      - HTTP Protocols: concepts/http-protocols.md
       - WebSockets: concepts/websockets.md
       - Event Loop: concepts/event-loop.md
   - Deployment:

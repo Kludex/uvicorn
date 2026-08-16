@@ -24,7 +24,7 @@ except ImportError:  # pragma: no cover
 
 try:
     importlib.import_module("websockets")
-    expected_websockets = "WebSocketProtocol"
+    expected_websockets = "WebSocketsSansIOProtocol"
 except ImportError:  # pragma: no cover
     expected_websockets = "WSProtocol"
 

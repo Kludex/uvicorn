@@ -2,6 +2,83 @@
 toc_depth: 2
 ---
 
+## 0.52.3 (August 13, 2026)
+
+### Changed
+
+* Update `zttp` to 0.0.24 and use its combined receive path, improving HTTP/1.1 request parsing performance (#3067)
+
+## 0.52.2 (August 13, 2026)
+
+### Fixed
+
+* Update `zttp` to 0.0.22, fixing bodyless request receives and improving HTTP/1 request parsing performance (#3063)
+
+## 0.52.1 (August 1, 2026)
+
+### Fixed
+
+* Complete the closing handshake on server-initiated WebSocket closes in the `websockets-sansio` and `wsproto` implementations, waiting for the client's close reply with a 10 second timeout instead of resetting the connection (#3053)
+* Add missing write flow control to the `websockets-sansio` implementation, preventing data truncation on server-initiated closes with large in-flight payloads (#3048)
+* Handle connection loss while a WebSocket write is waiting on backpressure (#3050)
+* Remove duplicate `Content-Type` and `Content-Length` headers from WebSocket denial responses on the `websockets-sansio` implementation, and deliver non-UTF-8 denial bodies intact (#3041)
+
+## 0.52.0 (July 29, 2026)
+
+This release adds an experimental HTTP/1.1 implementation backed by [zttp](https://zttp.marcelotryle.com/), a sans-IO HTTP parser I've been developing on the side: a core written in Zig, with bindings to Python. It has been running under a fuzzer for some weeks now, and has been through multiple rounds of security auditing.
+
+It is still **experimental**, so don't put it in front of production traffic yet. Try it with `--http zttp`, and please send any feedback to the [issue tracker](https://github.com/Kludex/uvicorn/issues).
+
+### Added
+
+* Add an experimental `zttp` HTTP/1.1 implementation, selectable with `--http zttp` (#2979)
+
+### Fixed
+
+* Keep non-ASCII WebSocket request headers intact with websockets 17.0, which encodes them with ISO-8859-1 (#3036)
+
+## 0.51.0 (July 8, 2026)
+
+### Added
+
+* Restart workers one at a time on `SIGHUP`, bringing each replacement up before retiring the old worker, so reloads no longer drop requests (#3025)
+
+### Removed
+
+* Remove `colorama` from the `standard` extra (#3027)
+
+## 0.50.2 (July 6, 2026)
+
+### Fixed
+
+* Require `websockets>=13.0`, which the default `websockets-sansio` implementation needs (#3021)
+
+## 0.50.1 (July 6, 2026)
+
+### Fixed
+
+* Split comma-separated `Sec-WebSocket-Protocol` values in the `websockets-sansio` implementation (#3019)
+
+## 0.50.0 (July 4, 2026)
+
+If you use WebSockets, note that `--ws auto` now picks the `websockets-sansio` implementation. You shouldn't need it, but you can pin `--ws websockets` to get the deprecated legacy one back.
+
+### Changed
+
+* Exit with the dedicated code 3 on any startup failure: app loading, socket bind and lifespan startup errors previously exited with a mix of 0, 1 and 3 (#3001)
+* Stop the multiprocess supervisor when a worker exits with code 3 instead of restarting it forever (#3001)
+* Default `--ws auto` to `websockets-sansio` when websockets is installed (#2985)
+* Skip the eager app import in the parent process with `--reload` or `--workers`, fixing a memory regression introduced in 0.47.0 (#3012)
+* Build a fresh `asgi` scope dict per request (#2977)
+* Cache the `asgi` scope sub-dict per connection (#2976)
+* Avoid copying single-frame WebSocket payloads in `websockets-sansio` (#2983)
+* Memoize trusted host checks in `ProxyHeadersMiddleware` (#2970)
+* Replace `click.style` with an internal ANSI style helper (#2981)
+
+### Deprecated
+
+* Deprecate the legacy `websockets` implementation; use `websockets-sansio` or `wsproto` instead (#2985)
+
 ## 0.49.0 (June 3, 2026)
 
 ### Changed

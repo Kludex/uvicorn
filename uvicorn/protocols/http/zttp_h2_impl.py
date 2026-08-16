@@ -183,7 +183,7 @@ class ZttpH2Protocol(asyncio.Protocol):
                 cycle.message_event.set()
             elif isinstance(event, zttp.RstStream):
                 self.handle_rst_stream(event)
-            elif isinstance(event, zttp.Goaway):
+            elif isinstance(event, zttp.GoAway):
                 self.shutdown_requested = True
                 if not self.cycles:
                     self.transport.close()
@@ -192,6 +192,11 @@ class ZttpH2Protocol(asyncio.Protocol):
             # the new credit released.
 
     def handle_request(self, event: zttp.Request) -> None:
+        headers = (
+            event.headers.to_list(lowercase_names=True)
+            if isinstance(event.headers, zttp.HeaderBlock)
+            else [(name.lower(), value) for name, value in event.headers]
+        )
         path = event.path.decode("ascii")
         full_path = self.root_path + path
         full_raw_path = self.root_path.encode("ascii") + event.path
@@ -207,7 +212,7 @@ class ZttpH2Protocol(asyncio.Protocol):
             "path": full_path,
             "raw_path": full_raw_path,
             "query_string": event.query,
-            "headers": event.headers,
+            "headers": headers,
             "state": self.app_state.copy(),
         }
 
