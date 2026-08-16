@@ -262,6 +262,22 @@ def test_socket_bind() -> None:
     sock.close()
 
 
+def test_ipv6_socket_bind_is_dual_stack() -> None:
+    # Regression test for https://github.com/encode/uvicorn/issues/2945
+    # `bind_socket()` (used by the reload/multiprocess workers) must not rely
+    # on the OS default for `IPV6_V6ONLY` (e.g. the Linux `net.ipv6.bindv6only`
+    # sysctl), otherwise it ends up dual-stack or IPv6-only depending on the
+    # host. It should always bind dual-stack, matching the fixed single-worker
+    # path (see `test_run_ipv6_dual_stack_single_worker` in `test_main.py`).
+    config = Config(app=asgi_app, host="::", port=0)
+    config.load()
+    sock = config.bind_socket()
+    try:
+        assert sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY) == 0
+    finally:
+        sock.close()
+
+
 def test_ssl_config(
     tls_ca_certificate_pem_path: str,
     tls_ca_certificate_private_key_path: str,

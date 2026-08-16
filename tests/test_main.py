@@ -61,6 +61,18 @@ async def test_run(host, url: str, unused_tcp_port: int):
     assert response.status_code == 204
 
 
+@pytest.mark.skipif(not _has_ipv6("::"), reason="IPV6 not enabled")
+async def test_run_ipv6_dual_stack_single_worker(unused_tcp_port: int):
+    # Regression test for https://github.com/encode/uvicorn/issues/2945
+    # A single-worker server bound to an IPv6 wildcard host must also accept
+    # IPv4 connections (dual-stack), matching multi-worker/reload behavior.
+    config = Config(app=app, host="::", loop="asyncio", limit_max_requests=1, port=unused_tcp_port)
+    async with run_server(config):
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"http://127.0.0.1:{unused_tcp_port}")
+    assert response.status_code == 204
+
+
 async def test_run_multiprocess(unused_tcp_port: int):
     config = Config(app=app, loop="asyncio", workers=2, limit_max_requests=1, port=unused_tcp_port)
     async with run_server(config):

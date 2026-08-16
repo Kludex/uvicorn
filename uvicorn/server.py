@@ -167,6 +167,28 @@ class Server:
             listeners = server.sockets
             self.servers = [server]
 
+        elif config.host and ":" in config.host:  # pragma: full coverage
+            # Standard case for an IPv6 host. Bind the socket ourselves instead of
+            # letting `loop.create_server()` resolve host/port via `getaddrinfo()`,
+            # since asyncio unconditionally sets `IPV6_V6ONLY` on sockets it creates
+            # that way, forcing IPv6-only regardless of the platform default. This
+            # keeps single-worker mode consistent with `Config.bind_socket()`, used
+            # by the reload/multiprocess workers, which binds a dual-stack socket.
+            try:
+                sock = socket.socket(family=socket.AF_INET6)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+                sock.bind((config.host, config.port))
+                server = await loop.create_server(create_protocol, sock=sock, ssl=config.ssl, backlog=config.backlog)
+            except OSError as exc:
+                logger.error(exc)
+                await self.lifespan.shutdown()
+                sys.exit(STARTUP_FAILURE)
+
+            assert server.sockets is not None
+            listeners = server.sockets
+            self.servers = [server]
+
         else:
             # Standard case. Create a socket from a host/port pair.
             try:
