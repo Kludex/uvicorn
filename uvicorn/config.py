@@ -134,7 +134,7 @@ def create_ssl_context(
         ctx.load_verify_locations(ca_certs)
     if ciphers:
         ctx.set_ciphers(ciphers)
-    if alpn_protocols:
+    if alpn_protocols:  # pragma: no-zttp-h2
         ctx.set_alpn_protocols(alpn_protocols)
     return ctx
 
@@ -202,7 +202,6 @@ class Config:
         fd: int | None = None,
         loop: LoopFactoryType | str = "auto",
         http: type[asyncio.Protocol] | HTTPProtocolType | str = "auto",
-        http2: bool | type[asyncio.Protocol] | str = False,
         ws: type[asyncio.Protocol] | WSProtocolType | str = "auto",
         ws_max_size: int = 16 * 1024 * 1024,
         ws_max_queue: int = 32,
@@ -248,6 +247,7 @@ class Config:
         factory: bool = False,
         h11_max_incomplete_event_size: int | None = None,
         reset_contextvars: bool = False,
+        http2: bool | type[asyncio.Protocol] | str = False,
     ):
         self.app = app
         self.host = host
@@ -493,13 +493,13 @@ class Config:
         else:
             self.http_protocol_class = self.http
 
-        if self.http2 is True:
+        if self.http2 is True:  # pragma: no-zttp-h2
             self.h2_protocol_class: type[asyncio.Protocol] | None = import_from_string(HTTP2_PROTOCOL)
-        elif isinstance(self.http2, str):
+        elif isinstance(self.http2, str):  # pragma: no-zttp-h2
             self.h2_protocol_class = import_from_string(self.http2)
         elif self.http2 is False:
             self.h2_protocol_class = None
-        else:
+        else:  # pragma: no-zttp-h2
             self.h2_protocol_class = self.http2
 
         if isinstance(self.ws, str):

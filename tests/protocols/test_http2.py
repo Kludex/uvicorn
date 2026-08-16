@@ -272,7 +272,7 @@ async def test_request_scope():
     protocol = get_connected_protocol(app, root_path="/api")
     client = H2Client()
 
-    client.request(b"GET", b"/path?a=1&b=2")
+    client.request(b"GET", b"/path%2Fitem?a=1&b=2")
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
 
@@ -282,8 +282,8 @@ async def test_request_scope():
     assert received_scope["scheme"] == "https"
     assert received_scope["method"] == "GET"
     assert received_scope["root_path"] == "/api"
-    assert received_scope["path"] == "/api/path"
-    assert received_scope["raw_path"] == b"/api/path"
+    assert received_scope["path"] == "/api/path/item"
+    assert received_scope["raw_path"] == b"/api/path%2Fitem"
     assert received_scope["query_string"] == b"a=1&b=2"
     assert (b"host", b"example.org") in received_scope["headers"]
 

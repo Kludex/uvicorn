@@ -74,7 +74,6 @@ class ZttpProtocol(asyncio.Protocol):
         self.headers: list[tuple[bytes, bytes]] = None  # type: ignore[assignment]
         self.cycle: RequestResponseCycle = None  # type: ignore[assignment]
 
-        self._h2_sniff = False
         self._h2_buffer = b""
 
     # Protocol interface
@@ -96,7 +95,7 @@ class ZttpProtocol(asyncio.Protocol):
                     self._upgrade_to_h2(transport)
                     return
             else:
-                self._h2_sniff = True
+                self.__dict__["data_received"] = self._data_received_with_h2_sniff
 
         if self.logger.level <= TRACE_LOG_LEVEL:
             prefix = "%s:%d - " % self.client if self.client else ""
@@ -164,19 +163,21 @@ class ZttpProtocol(asyncio.Protocol):
         if initial_data:
             protocol.data_received(initial_data)
 
+    def _data_received_with_h2_sniff(self, data: bytes) -> None:  # pragma: no-zttp-h2
+        self._unset_keepalive_if_required()
+        data = self._h2_buffer + data
+        if len(data) < len(HTTP2_PREFACE) and HTTP2_PREFACE.startswith(data):
+            self._h2_buffer = data
+            return
+        self._h2_buffer = b""
+        del self.__dict__["data_received"]
+        if data.startswith(HTTP2_PREFACE):
+            self._upgrade_to_h2(self.transport, initial_data=data)
+            return
+        self.data_received(data)
+
     def data_received(self, data: bytes) -> None:
         self._unset_keepalive_if_required()
-
-        if self._h2_sniff:  # pragma: no-zttp-h2
-            data = self._h2_buffer + data
-            if len(data) < len(HTTP2_PREFACE) and HTTP2_PREFACE.startswith(data):
-                self._h2_buffer = data
-                return
-            self._h2_sniff = False
-            self._h2_buffer = b""
-            if data.startswith(HTTP2_PREFACE):
-                self._upgrade_to_h2(self.transport, initial_data=data)
-                return
 
         try:
             self.handle_events(self.conn.receive_event(data))

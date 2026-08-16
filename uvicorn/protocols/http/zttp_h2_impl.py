@@ -4,9 +4,9 @@ import asyncio
 import contextvars
 import logging
 import sys
-import warnings
 from collections.abc import Callable, Generator
 from typing import Any, Literal
+from urllib.parse import unquote
 
 import zttp
 from zttp import Event
@@ -25,13 +25,6 @@ from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT, FlowControl, service_unavailable
 from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
 from uvicorn.server import ServerState
-
-warnings.warn(
-    "Uvicorn's HTTP/2 support is experimental. I'd really appreciate if you try it out and report back! "
-    "See the docs at https://uvicorn.dev/concepts/http2/.",
-    UserWarning,
-    stacklevel=2,
-)
 
 # RFC 9113 section 8.2.2: connection-specific headers MUST NOT appear in
 # HTTP/2 messages. zttp rejects them with LocalProtocolError, and an ASGI app
@@ -133,6 +126,7 @@ class ZttpH2Protocol(asyncio.Protocol):
         except zttp.RemoteProtocolError as exc:
             msg = "Invalid HTTP/2 frame received: %s"
             self.logger.warning(msg, exc)
+            self.flush()
             self.transport.close()
             return
 
@@ -197,7 +191,7 @@ class ZttpH2Protocol(asyncio.Protocol):
             if isinstance(event.headers, zttp.HeaderBlock)
             else [(name.lower(), value) for name, value in event.headers]
         )
-        path = event.path.decode("ascii")
+        path = unquote(event.path.decode("ascii"))
         full_path = self.root_path + path
         full_raw_path = self.root_path.encode("ascii") + event.path
         scope: HTTPScope = {

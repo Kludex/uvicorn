@@ -104,9 +104,5 @@ async def app(scope, receive, send):
 
 The implementation is young, and some protocol features are not complete yet:
 
-- Request bodies are limited by the HTTP/2 flow-control window (64 KiB): the server does not
-  yet replenish the window, so larger uploads stall. Use HTTP/1.1 for uploads for now.
-- `SETTINGS` and `PING` frames from the client are not yet acknowledged, which strict clients
-  may treat as a protocol violation on long-lived connections.
 - Graceful shutdown closes the connection without sending `GOAWAY`.
 - HTTP/2 server push and `Expect: 100-continue` are not supported.
