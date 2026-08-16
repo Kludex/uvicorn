@@ -345,3 +345,10 @@ class Server:
             self.force_exit = True  # pragma: full coverage
         else:
             self.should_exit = True
+        # If the lifespan is stuck processing the startup event (e.g. the
+        # application never yields control back to uvicorn), cancel it so
+        # that the signal can actually interrupt the process instead of
+        # being silently swallowed while we wait on it forever.
+        lifespan = getattr(self, "lifespan", None)
+        if lifespan is not None:
+            lifespan.cancel()
