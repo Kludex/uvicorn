@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import ssl
 from collections.abc import Callable
 from typing import Any
 
@@ -970,4 +971,46 @@ async def test_config_http2_offers_alpn_protocols(
         ssl_keyfile=tls_ca_certificate_private_key_path,
     )
     config.load()
-    assert config.is_ssl is True
+    assert config.ssl is not None
+
+    client_context = ssl.create_default_context()
+    client_context.check_hostname = False
+    client_context.verify_mode = ssl.CERT_NONE
+    client_context.set_alpn_protocols(["h2"])
+
+    server_incoming = ssl.MemoryBIO()
+    server_outgoing = ssl.MemoryBIO()
+    client_incoming = ssl.MemoryBIO()
+    client_outgoing = ssl.MemoryBIO()
+    server = config.ssl.wrap_bio(server_incoming, server_outgoing, server_side=True)
+    client = client_context.wrap_bio(
+        client_incoming,
+        client_outgoing,
+        server_side=False,
+        server_hostname="localhost",
+    )
+
+    client_done = False
+    server_done = False
+    for _ in range(10):
+        if not client_done:
+            try:
+                client.do_handshake()
+                client_done = True
+            except ssl.SSLWantReadError:
+                pass
+        server_incoming.write(client_outgoing.read())
+
+        if not server_done:
+            try:
+                server.do_handshake()
+                server_done = True
+            except ssl.SSLWantReadError:
+                pass
+        client_incoming.write(server_outgoing.read())
+        if client_done and server_done:
+            break
+
+    assert client_done and server_done
+    assert client.selected_alpn_protocol() == "h2"
+    assert server.selected_alpn_protocol() == "h2"
