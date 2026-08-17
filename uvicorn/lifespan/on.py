@@ -74,8 +74,22 @@ class LifespanOn:
         nothing else would otherwise interrupt the pending
         ``await self.startup_event.wait()``.
         """
-        if not self.startup_event.is_set() and self.main_lifespan_task is not None:
-            self.main_lifespan_task.cancel()
+        if self.startup_event.is_set() or self.main_lifespan_task is None:
+            return
+        self.main_lifespan_task.cancel()
+        # If the task is cancelled before its coroutine ever gets a chance to
+        # run, `main()`'s try/finally never executes, so nothing would set the
+        # events and `startup()` would wait forever. Cover that window here.
+        self.main_lifespan_task.add_done_callback(self._on_cancelled_task_done)
+
+    def _on_cancelled_task_done(self, task: asyncio.Task[None]) -> None:
+        if self.startup_event.is_set():
+            return
+        self.error_occurred = True
+        self.startup_failed = True
+        self.logger.info("Application startup interrupted.")
+        self.startup_event.set()
+        self.shutdown_event.set()
 
     async def shutdown(self) -> None:
         if self.error_occurred:
@@ -100,6 +114,15 @@ class LifespanOn:
                 "state": self.state,
             }
             await app(scope, self.receive, self.send)
+        except asyncio.CancelledError:
+            # The task was cancelled (e.g. Ctrl+C while the app was frozen in
+            # startup). This is a user-initiated abort, not evidence that the
+            # app lacks lifespan support, so report it honestly regardless of
+            # the configured lifespan mode.
+            self.asgi = None
+            self.error_occurred = True
+            self.startup_failed = True
+            self.logger.info("Application startup interrupted.")
         except BaseException as exc:
             self.asgi = None
             self.error_occurred = True

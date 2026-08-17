@@ -153,7 +153,12 @@ async def test_handle_exit_cancels_frozen_lifespan_startup(unused_tcp_port: int)
     # Guard against the process's own re-raise of the captured signal once
     # `capture_signals()` exits normally (see `Server.capture_signals`).
     with capture_signal_sync(signal.SIGINT):
-        await asyncio.wait_for(server.serve(), timeout=3)
+        # The interrupted startup is reported like any other failed startup,
+        # so `Server.startup()` exits the process with `STARTUP_FAILURE`
+        # instead of hanging or silently reporting success.
+        with pytest.raises(SystemExit) as exc_info:
+            await asyncio.wait_for(server.serve(), timeout=3)
+        assert exc_info.value.code == STARTUP_FAILURE
 
     assert server.should_exit
     assert server.lifespan.error_occurred
