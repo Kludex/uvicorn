@@ -21,7 +21,7 @@ def has_ipv6(host: str) -> bool:
             sock = socket_module.socket(socket_module.AF_INET6)
             sock.bind((host, 0))
             ipv6_enabled = True
-        except Exception:  # pragma: no cover
+        except OSError:  # pragma: no cover
             pass
     if sock:
         sock.close()

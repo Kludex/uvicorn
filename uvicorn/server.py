@@ -174,16 +174,18 @@ class Server:
             # that way, forcing IPv6-only regardless of the platform default. This
             # keeps single-worker mode consistent with `Config.bind_socket()`, used
             # by the reload/multiprocess workers, which binds a dual-stack socket.
-            sock: socket.socket | None = None
+            ipv6_sock: socket.socket | None = None
             try:
-                sock = socket.socket(family=socket.AF_INET6)
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
-                sock.bind((config.host, config.port))
-                server = await loop.create_server(create_protocol, sock=sock, ssl=config.ssl, backlog=config.backlog)
+                ipv6_sock = socket.socket(family=socket.AF_INET6)
+                ipv6_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                ipv6_sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+                ipv6_sock.bind((config.host, config.port))
+                server = await loop.create_server(
+                    create_protocol, sock=ipv6_sock, ssl=config.ssl, backlog=config.backlog
+                )
             except OSError as exc:
-                if sock is not None:
-                    sock.close()
+                if ipv6_sock is not None:
+                    ipv6_sock.close()
                 logger.error(exc)
                 await self.lifespan.shutdown()
                 sys.exit(STARTUP_FAILURE)
