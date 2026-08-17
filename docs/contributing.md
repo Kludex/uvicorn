@@ -164,7 +164,7 @@ Before releasing a new version, create a pull request that includes:
         - Keep it concise and to-the-point. 🎯
 - **A version bump**: see `__init__.py`.
 
-For an example, see [#1006](https://github.com/Kludex/uvicorn/pull/1107).
+For an example, see [#1107](https://github.com/Kludex/uvicorn/pull/1107).
 
 Once the release PR is merged, create a
 [new release](https://github.com/Kludex/uvicorn/releases/new) including:
