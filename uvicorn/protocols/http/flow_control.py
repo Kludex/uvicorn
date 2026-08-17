@@ -7,6 +7,21 @@ CLOSE_HEADER = (b"connection", b"close")
 HIGH_WATER_LIMIT = 65536
 
 
+def has_connection_close(headers: list[tuple[bytes, bytes]]) -> bool:
+    """Return True if a Connection header includes a close token.
+
+    Connection option tokens are case-insensitive and comma-separated
+    (RFC 9110 §7.6.1, RFC 9112 §9.6).
+    """
+    for name, value in headers:
+        if name.lower() != b"connection":
+            continue
+        for token in value.split(b","):
+            if token.strip().lower() == b"close":
+                return True
+    return False
+
+
 class FlowControl:
     def __init__(self, transport: asyncio.Transport) -> None:
         self._transport = transport

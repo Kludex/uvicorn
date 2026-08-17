@@ -16,6 +16,7 @@ from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGIReceiveEven
 from uvicorn.config import WS_PROTOCOLS, Config
 from uvicorn.lifespan.off import LifespanOff
 from uvicorn.lifespan.on import LifespanOn
+from uvicorn.protocols.http.flow_control import has_connection_close
 from uvicorn.protocols.http.h11_impl import H11Protocol
 from uvicorn.server import ServerState
 
@@ -55,6 +56,14 @@ SIMPLE_POST_REQUEST = b"\r\n".join(
 )
 
 CONNECTION_CLOSE_REQUEST = b"\r\n".join([b"GET / HTTP/1.1", b"Host: example.org", b"Connection: close", b"", b""])
+
+
+def test_has_connection_close() -> None:
+    assert has_connection_close([(b"host", b"example.org")]) is False
+    assert has_connection_close([(b"connection", b"keep-alive")]) is False
+    assert has_connection_close([(b"connection", b"close,")]) is True
+    assert has_connection_close([(b"Connection", b"keep-alive, Close")]) is True
+
 
 CONNECTION_CLOSE_POST_REQUEST = b"\r\n".join(
     [
@@ -1068,11 +1077,22 @@ async def test_huge_headers_h11_max_incomplete():
     assert b"Hello, world" in protocol.transport.buffer
 
 
-async def test_return_close_header(http_protocol_cls: type[HTTPProtocol]):
+@pytest.mark.parametrize(
+    "connection",
+    [
+        b"close",
+        b"Close",
+        b"CLOSE",
+        b"keep-alive, close",
+        b" close ",
+    ],
+)
+async def test_return_close_header(http_protocol_cls: type[HTTPProtocol], connection: bytes):
     app = Response("Hello, world", media_type="text/plain")
+    request = b"\r\n".join([b"GET / HTTP/1.1", b"Host: example.org", b"Connection: " + connection, b"", b""])
 
     protocol = get_connected_protocol(app, http_protocol_cls)
-    protocol.data_received(CONNECTION_CLOSE_REQUEST)
+    protocol.data_received(request)
     await protocol.loop.run_one()
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
     assert b"content-type: text/plain" in protocol.transport.buffer
@@ -1080,6 +1100,17 @@ async def test_return_close_header(http_protocol_cls: type[HTTPProtocol]):
     # NOTE: We need to use `.lower()` because H11 implementation doesn't allow Uvicorn
     # to lowercase them. See: https://github.com/python-hyper/h11/issues/156
     assert b"connection: close" in protocol.transport.buffer.lower()
+    assert protocol.transport.is_closing()
+
+
+async def test_return_close_header_when_app_already_set_close(http_protocol_cls: type[HTTPProtocol]):
+    app = Response("Hello, world", media_type="text/plain", headers={"connection": "close"})
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(CONNECTION_CLOSE_REQUEST)
+    await protocol.loop.run_one()
+    assert protocol.transport.buffer.lower().count(b"connection: close") == 1
+    assert protocol.transport.is_closing()
 
 
 async def test_close_connection_with_multiple_requests(http_protocol_cls: type[HTTPProtocol]):
