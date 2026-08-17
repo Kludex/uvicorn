@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Iterable
 
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 
@@ -7,7 +8,7 @@ CLOSE_HEADER = (b"connection", b"close")
 HIGH_WATER_LIMIT = 65536
 
 
-def has_connection_close(headers: list[tuple[bytes, bytes]]) -> bool:
+def has_connection_close(headers: Iterable[tuple[bytes, bytes]]) -> bool:
     """Return True if a Connection header includes a close token.
 
     Connection option tokens are case-insensitive and comma-separated
