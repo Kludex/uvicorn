@@ -2,6 +2,12 @@
 toc_depth: 2
 ---
 
+## 0.52.4 (August 18, 2026)
+
+### Fixed
+
+* Remove duplicate `Date` headers from accepted WebSocket handshakes with `websockets-sansio` ([#3078](https://github.com/Kludex/uvicorn/pull/3078))
+
 ## 0.52.3 (August 13, 2026)
 
 ### Changed
