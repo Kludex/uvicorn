@@ -449,6 +449,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 accepted_subprotocol = message.get("subprotocol")
                 if accepted_subprotocol:
                     headers.append(("Sec-WebSocket-Protocol", accepted_subprotocol))
+                del self.response.headers["Date"]
                 self.response.headers.update(headers)
 
                 if not self.transport.is_closing():
