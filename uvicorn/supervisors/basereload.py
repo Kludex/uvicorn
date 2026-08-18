@@ -9,10 +9,14 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from socket import socket
 from types import FrameType
+from typing import TYPE_CHECKING
 
 from uvicorn._ansi import style
 from uvicorn._subprocess import get_subprocess
 from uvicorn.config import Config
+
+if TYPE_CHECKING:
+    from multiprocessing.synchronize import Event
 
 HANDLED_SIGNALS = (
     signal.SIGINT,  # Unix signal 2. Sent by Ctrl+C.
@@ -28,23 +32,25 @@ class BaseReload:
         config: Config,
         target: Callable[[list[socket] | None], None],
         sockets: list[socket],
+        shutdown_event: Event,
     ) -> None:
         self.config = config
         self.target = target
         self.sockets = sockets
         self.should_exit = threading.Event()
         self.pid = os.getpid()
-        self.is_restarting = False
+        self._shutdown_event = shutdown_event
         self.reloader_name: str | None = None
+
+    @property
+    def shutdown_event(self) -> Event:
+        return self._shutdown_event
 
     def signal_handler(self, sig: int, frame: FrameType | None) -> None:  # pragma: full coverage
         """
         A signal handler that is registered with the parent process.
         """
-        if sys.platform == "win32" and self.is_restarting:
-            self.is_restarting = False
-        else:
-            self.should_exit.set()
+        self.should_exit.set()
 
     def run(self) -> None:
         self.startup()
@@ -85,23 +91,19 @@ class BaseReload:
 
     def restart(self) -> None:
         if sys.platform == "win32":  # pragma: py-not-win32
-            self.is_restarting = True
-            assert self.process.pid is not None
-            os.kill(self.process.pid, signal.CTRL_C_EVENT)
-
-            # This is a workaround to ensure the Ctrl+C event is processed
-            sys.stdout.write(" ")  # This has to be a non-empty string
-            sys.stdout.flush()
+            self.shutdown_event.set()
         else:  # pragma: py-win32
             self.process.terminate()
         self.process.join()
 
+        if sys.platform == "win32":  # pragma: py-not-win32
+            self.shutdown_event.clear()
         self.process = get_subprocess(config=self.config, target=self.target, sockets=self.sockets)
         self.process.start()
 
     def shutdown(self) -> None:
         if sys.platform == "win32":
-            self.should_exit.set()  # pragma: py-not-win32
+            self.shutdown_event.set()  # pragma: py-not-win32
         else:
             self.process.terminate()  # pragma: py-win32
         self.process.join()

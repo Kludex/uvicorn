@@ -613,7 +613,7 @@ def run(
     try:
         if config.should_reload:
             sock = config.bind_socket()
-            ChangeReload(config, target=server.run, sockets=[sock]).run()
+            ChangeReload(config, target=server.run, sockets=[sock], shutdown_event=server.shutdown_event).run()
         elif config.workers > 1:
             sock = config.bind_socket()
             Multiprocess(config, sockets=[sock]).run()

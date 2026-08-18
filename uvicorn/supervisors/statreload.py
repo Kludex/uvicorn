@@ -4,9 +4,13 @@ import logging
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from socket import socket
+from typing import TYPE_CHECKING
 
 from uvicorn.config import Config
 from uvicorn.supervisors.basereload import BaseReload
+
+if TYPE_CHECKING:
+    from multiprocessing.synchronize import Event
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -17,8 +21,9 @@ class StatReload(BaseReload):
         config: Config,
         target: Callable[[list[socket] | None], None],
         sockets: list[socket],
+        shutdown_event: Event,
     ) -> None:
-        super().__init__(config, target, sockets)
+        super().__init__(config, target, sockets, shutdown_event)
         self.reloader_name = "StatReload"
         self.mtimes: dict[Path, float] = {}
 

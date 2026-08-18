@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import multiprocessing
 import signal
 import socket
+import subprocess
 import sys
 from collections.abc import Callable, Generator
+from multiprocessing.synchronize import Event
 from pathlib import Path
 from threading import Thread
 from time import monotonic, sleep
@@ -28,6 +31,10 @@ skip_non_linux = pytest.mark.skipif(sys.platform in ("darwin", "win32"), reason=
 
 def run(sockets: list[socket.socket] | None) -> None:
     pass  # pragma: no cover
+
+
+def create_shutdown_event() -> Event:
+    return multiprocessing.get_context("spawn").Event()
 
 
 def sleep_touch(*paths: Path):
@@ -62,8 +69,10 @@ class TestBaseReload:
     def _setup_reloader(self, config: Config) -> BaseReload:
         config.reload_delay = 0  # save time
 
-        reloader = self.reloader_class(config, target=run, sockets=[])
+        shutdown_event = create_shutdown_event()
+        reloader = self.reloader_class(config, target=run, sockets=[], shutdown_event=shutdown_event)
 
+        assert reloader.shutdown_event is shutdown_event
         assert config.should_reload
         reloader.startup()
         return reloader
@@ -319,7 +328,7 @@ def test_should_watch_cwd(mocker: MockerFixture, reload_directory_structure: Pat
     mock_watch = mocker.patch("uvicorn.supervisors.watchfilesreload.watch")
 
     config = Config(app="tests.test_config:asgi_app", reload=True, reload_dirs=[])
-    WatchFilesReload(config, target=run, sockets=[])
+    WatchFilesReload(config, target=run, sockets=[], shutdown_event=create_shutdown_event())
     mock_watch.assert_called_once()
     assert mock_watch.call_args[0] == (Path.cwd(),)
 
@@ -334,7 +343,7 @@ def test_should_watch_multiple_dirs(mocker: MockerFixture, reload_directory_stru
         reload=True,
         reload_dirs=[str(app_dir), str(app_first_dir)],
     )
-    WatchFilesReload(config, target=run, sockets=[])
+    WatchFilesReload(config, target=run, sockets=[], shutdown_event=create_shutdown_event())
     mock_watch.assert_called_once()
     assert set(mock_watch.call_args[0]) == {
         app_dir,
@@ -379,7 +388,7 @@ def test_base_reloader_run(tmp_path: Path):
                 raise StopIteration()
 
     config = Config(app="tests.test_config:asgi_app", reload=True)
-    reloader = CustomReload(config, target=run, sockets=[])
+    reloader = CustomReload(config, target=run, sockets=[], shutdown_event=create_shutdown_event())
     reloader.run()
 
     assert calls == ["startup", "restart", "shutdown"]
@@ -387,7 +396,7 @@ def test_base_reloader_run(tmp_path: Path):
 
 def test_base_reloader_should_exit(tmp_path: Path):
     config = Config(app="tests.test_config:asgi_app", reload=True)
-    reloader = BaseReload(config, target=run, sockets=[])
+    reloader = BaseReload(config, target=run, sockets=[], shutdown_event=create_shutdown_event())
     assert not reloader.should_exit.is_set()
     reloader.pause()
 
@@ -401,10 +410,79 @@ def test_base_reloader_should_exit(tmp_path: Path):
         reloader.pause()
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only process creation mode")
+def test_reload_gracefully_stops_windowless_child(tmp_path: Path, unused_tcp_port: int) -> None:  # pragma: py-not-win32
+    app_path = tmp_path / "app.py"
+    app_path.write_text(
+        """\
+from __future__ import annotations
+
+async def app(scope, receive, send):
+    if scope["type"] != "lifespan":
+        return
+
+    while True:
+        message = await receive()
+        if message["type"] == "lifespan.startup":
+            await send({"type": "lifespan.startup.complete"})
+        elif message["type"] == "lifespan.shutdown":
+            await send({"type": "lifespan.shutdown.complete"})
+            return
+"""
+    )
+    # Use StatReload so watcher behavior does not affect this process-shutdown test.
+    (tmp_path / "watchfiles.py").write_text("raise ImportError\n")
+    log_path = tmp_path / "uvicorn.log"
+
+    with log_path.open("w") as log:
+        process = subprocess.Popen(
+            [sys.executable, "-m", "uvicorn", "app:app", "--reload", "--port", str(unused_tcp_port)],
+            cwd=tmp_path,
+            stdin=subprocess.DEVNULL,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            creationflags=0x08000000,  # CREATE_NO_WINDOW
+        )
+
+        try:
+            deadline = monotonic() + 15
+            while monotonic() < deadline:
+                output = log_path.read_text()
+                if "Application startup complete" in output or process.poll() is not None:
+                    break
+                sleep(0.1)
+
+            assert process.poll() is None, f"Uvicorn exited before startup:\n{output}"
+            assert "Application startup complete" in output, f"Uvicorn did not start:\n{output}"
+
+            sleep(1)
+            app_path.write_text(app_path.read_text() + "\n")
+
+            deadline = monotonic() + 15
+            while monotonic() < deadline:
+                output = log_path.read_text()
+                if output.count("Application startup complete") >= 2 or process.poll() is not None:
+                    break
+                sleep(0.1)
+
+            assert process.poll() is None, f"Uvicorn exited during reload:\n{output}"
+            assert output.count("Application startup complete") >= 2, f"Uvicorn did not reload:\n{output}"
+            assert "Application shutdown complete" in output
+        finally:
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+            process.kill()
+            process.wait()
+
+
 def test_base_reloader_closes_sockets_on_shutdown():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     config = Config(app="tests.test_config:asgi_app", reload=True)
-    reloader = BaseReload(config, target=run, sockets=[sock])
+    reloader = BaseReload(config, target=run, sockets=[sock], shutdown_event=create_shutdown_event())
     reloader.startup()
     assert sock.fileno() != -1
     reloader.shutdown()

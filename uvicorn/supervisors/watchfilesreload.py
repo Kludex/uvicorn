@@ -3,11 +3,15 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 from socket import socket
+from typing import TYPE_CHECKING
 
 from watchfiles import watch
 
 from uvicorn.config import Config
 from uvicorn.supervisors.basereload import BaseReload
+
+if TYPE_CHECKING:
+    from multiprocessing.synchronize import Event
 
 
 class FileFilter:
@@ -58,8 +62,9 @@ class WatchFilesReload(BaseReload):
         config: Config,
         target: Callable[[list[socket] | None], None],
         sockets: list[socket],
+        shutdown_event: Event,
     ) -> None:
-        super().__init__(config, target, sockets)
+        super().__init__(config, target, sockets, shutdown_event)
         self.reloader_name = "WatchFiles"
         self.reload_dirs: list[Path] = []
         for directory in config.reload_dirs:
