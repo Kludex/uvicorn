@@ -23,7 +23,7 @@ from uvicorn._types import (
 )
 from uvicorn.config import Config
 from uvicorn.logging import TRACE_LOG_LEVEL
-from uvicorn.protocols.http.flow_control import CLOSE_HEADER, HIGH_WATER_LIMIT, FlowControl, service_unavailable
+from uvicorn.protocols.http.flow_control import CLOSE_HEADER, HIGH_WATER_LIMIT, FlowControl, has_connection_close, service_unavailable
 from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
 from uvicorn.server import ServerState
 
@@ -478,7 +478,7 @@ class RequestResponseCycle:
             status_code = message["status"]
             headers = self.default_headers + list(message.get("headers", []))
 
-            if CLOSE_HEADER in self.scope["headers"] and CLOSE_HEADER not in headers:
+            if has_connection_close(self.scope["headers"]) and not has_connection_close(headers):
                 headers = headers + [CLOSE_HEADER]
 
             if self.access_log:
@@ -507,7 +507,7 @@ class RequestResponseCycle:
                 elif name == b"transfer-encoding" and value.lower() == b"chunked":
                     self.expected_content_length = 0
                     self.chunked_encoding = True
-                elif name == b"connection" and value.lower() == b"close":
+                elif name == b"connection" and has_connection_close([(name, value)]):
                     self.keep_alive = False
                 content.extend([name, b": ", value, b"\r\n"])
 

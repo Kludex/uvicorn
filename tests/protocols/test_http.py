@@ -1185,3 +1185,22 @@ async def test_header_upgrade_is_websocket_depend_not_installed(
     assert msg in caplog.text
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
     assert b"Hello, world" in protocol.transport.buffer
+
+@pytest.mark.parametrize(
+    "connection_header", [b"close", b"Close", b"keep-alive, close"]
+)
+async def test_connection_close_variants(
+    http_protocol_cls: type[asyncio.Protocol], connection_header: bytes
+) -> None:
+    protocol = get_connected_protocol(
+        Response("Hello, world", media_type="text/plain"),
+        http_protocol_cls,
+        access_log=False,
+    )
+    req = b"GET / HTTP/1.1\r\nHost: example.org\r\nConnection: " + connection_header + b"\r\n\r\n"
+    protocol.data_received(req)
+    await protocol.loop.run_one()
+    buf = protocol.transport.buffer.lower()
+    
+    assert protocol.transport.is_closing()
+    assert b"connection: close" in buf

@@ -4,6 +4,15 @@ from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 
 CLOSE_HEADER = (b"connection", b"close")
 
+
+def has_connection_close(headers: list[tuple[bytes, bytes]]) -> bool:
+    for name, value in headers:
+        if name.lower() == b"connection":
+            for token in value.split(b","):
+                if token.strip().lower() == b"close":
+                    return True
+    return False
+
 HIGH_WATER_LIMIT = 65536
 
 
