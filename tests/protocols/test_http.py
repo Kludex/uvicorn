@@ -705,6 +705,23 @@ async def test_disconnect_on_send(http_protocol_cls: type[HTTPProtocol]) -> None
     assert got_disconnected
 
 
+async def test_uncaught_disconnect_on_send_is_not_an_error(
+    caplog: pytest.LogCaptureFixture, http_protocol_cls: type[HTTPProtocol]
+) -> None:
+    """A disconnect propagating out of the app is discarded, not logged as a server error."""
+    caplog.set_level(logging.ERROR, logger="uvicorn.error")
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send({"type": "http.response.start", "status": 200})
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    protocol.eof_received()
+    protocol.connection_lost(None)
+    await protocol.loop.run_one()
+    assert caplog.records == []
+
+
 async def test_early_response(http_protocol_cls: type[HTTPProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
