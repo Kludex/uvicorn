@@ -153,11 +153,23 @@ async def test_handle_exit_cancels_frozen_lifespan_startup(unused_tcp_port: int)
     # Guard against the process's own re-raise of the captured signal once
     # `capture_signals()` exits normally (see `Server.capture_signals`).
     with capture_signal_sync(signal.SIGINT):
-        # The interrupted startup is reported like any other failed startup,
-        # so `Server.startup()` exits the process with `STARTUP_FAILURE`
-        # instead of hanging or silently reporting success.
-        with pytest.raises(SystemExit) as exc_info:
-            await asyncio.wait_for(server.serve(), timeout=3)
+        # Don't use asyncio.wait_for() here: on Python <3.12 it runs the
+        # coroutine in a child task, and a SystemExit raised there can race
+        # past wait_for's own result handling. Cancel the current task
+        # instead so server.serve() runs on this task directly.
+        # When 3.10 is not supported anymore, use `async with asyncio.timeout(3):`.
+        loop = asyncio.get_running_loop()
+        current_task = asyncio.current_task()
+        assert current_task is not None
+        timeout_handle = loop.call_later(3, current_task.cancel)
+        try:
+            # The interrupted startup is reported like any other failed startup,
+            # so `Server.startup()` exits the process with `STARTUP_FAILURE`
+            # instead of hanging or silently reporting success.
+            with pytest.raises(SystemExit) as exc_info:
+                await server.serve()
+        finally:
+            timeout_handle.cancel()
         assert exc_info.value.code == STARTUP_FAILURE
 
     assert server.should_exit
