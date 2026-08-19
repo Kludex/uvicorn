@@ -4,6 +4,7 @@ import asyncio
 import email.utils
 import logging
 import random
+import re
 import struct
 import sys
 from asyncio import TimerHandle
@@ -41,6 +42,10 @@ if sys.version_info >= (3, 11):  # pragma: no cover
     from typing import assert_never
 else:  # pragma: no cover
     from typing_extensions import assert_never
+
+# Compare version numerically; a lexicographic string compare is wrong
+# (e.g. "9.0" > "17.0" and "17.10" < "17.9").
+WEBSOCKETS_VERSION_INFO = tuple(int(part) for part in re.findall(r"\d+", websockets_version))
 
 
 def _get_status_phrase(status_code: int) -> str:
@@ -236,10 +241,10 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         # websockets 17.0 documents that non-ASCII header values are encoded
         # with ISO-8859-1. Earlier versions didn't document the behavior but
         # we can see in the code that it used surrogate escape encoding.
-        # Move the pragma: no cover to the else: branch when 17.0 is released.
-        if websockets_version >= "17.0":  # pragma: no cover
+        if WEBSOCKETS_VERSION_INFO >= (17,):
             headers = [(key.encode("ascii"), value.encode("latin-1")) for key, value in event.headers.raw_items()]
-        else:
+        else:  # pragma: no cover
+            # websockets < 17.0 only; it rejects these values from 17.0 on.
             headers = [
                 (key.encode("ascii"), value.encode("ascii", errors="surrogateescape"))
                 for key, value in event.headers.raw_items()
