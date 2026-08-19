@@ -114,7 +114,9 @@ async def test_explicit_worker_id_from_env_is_injected(unused_tcp_port: int, mon
         await _record_lifespan_state(scope, receive, send, seen)
 
     config = Config(app=lifespan_app, lifespan="on", port=unused_tcp_port)
-    server = Server(config=config, worker_id=worker_id_from_env())
+    worker_id = worker_id_from_env()
+    assert worker_id is not None
+    server = Server(config=config, worker_id=worker_id)
     await _serve_until_started(server)
     assert seen["worker_id"] == 9
 
