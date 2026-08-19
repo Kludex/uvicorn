@@ -756,7 +756,7 @@ async def test_send_500_response_swallows_disconnect(http_protocol_cls: type[HTT
     # Pause writing so send_500_response() blocks inside flow.drain() rather than
     # completing synchronously, reproducing the flow-control race.
     cycle.flow.pause_writing()
-    send_task = asyncio.ensure_future(cycle.send_500_response())
+    send_task = asyncio.create_task(cycle.send_500_response())
     await asyncio.sleep(0)  # let the task advance into flow.drain()
     assert not send_task.done()
 
