@@ -75,7 +75,7 @@ class ServerState:
 
 
 class Server:
-    def __init__(self, config: Config, *, worker_id: int | None = None) -> None:
+    def __init__(self, config: Config, *, worker_id: int = 1) -> None:
         self.config = config
         self.worker_id = worker_id
         self.server_state = ServerState()
@@ -101,15 +101,9 @@ class Server:
             await self._serve(sockets)
 
     def _apply_worker_id(self) -> None:
-        if self.worker_id is not None:
-            os.environ["UVICORN_WORKER_ID"] = str(self.worker_id)
+        os.environ["UVICORN_WORKER_ID"] = str(self.worker_id)
 
     def _log_server_process(self, action: str, process_id: int) -> None:
-        if self.worker_id is None:
-            message = f"{action} server process [%d]"
-            color_message = f"{action} server process [" + style("%d", fg="cyan") + "]"
-            logger.info(message, process_id, extra={"color_message": color_message})
-            return
         message = f"{action} server process [%d] (worker %d)"
         color_message = (
             f"{action} server process [" + style("%d", fg="cyan") + "] (worker " + style("%d", fg="cyan") + ")"
@@ -136,8 +130,7 @@ class Server:
             self._log_server_process("Finished", process_id)
 
     async def startup(self, sockets: list[socket.socket] | None = None) -> None:
-        if self.worker_id is not None:
-            self.lifespan.state["uvicorn_worker_id"] = self.worker_id
+        self.lifespan.state["uvicorn_worker_id"] = self.worker_id
 
         await self.lifespan.startup()
         if self.lifespan.should_exit:

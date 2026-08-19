@@ -74,7 +74,7 @@ Using Uvicorn with watchfiles will enable the following options (which are other
 
 ## Production
 
-* `--workers <int>` - Number of worker processes. Defaults to the `$WEB_CONCURRENCY` environment variable if available, or 1. Not valid with `--reload`. When greater than 1, each worker gets a stable 1-based `uvicorn_worker_id` in ASGI lifespan state and a `UVICORN_WORKER_ID` environment variable.
+* `--workers <int>` - Number of worker processes. Defaults to the `$WEB_CONCURRENCY` environment variable if available, or 1. Not valid with `--reload`. Each process gets a stable 1-based `uvicorn_worker_id` in ASGI lifespan state and a `UVICORN_WORKER_ID` environment variable (`1` when not using multiple workers).
 * `--env-file <path>` - Environment configuration file for the ASGI application. **Default:** *None*.
 * `--timeout-worker-healthcheck <int>` - Maximum number of seconds to wait for a worker to respond to a healthcheck. **Default:** *5*.
 

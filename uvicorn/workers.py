@@ -94,7 +94,7 @@ class UvicornWorker(Worker):
 
     async def _serve(self) -> None:
         self.config.app = self.wsgi
-        server = Server(config=self.config, worker_id=worker_id_from_env())
+        server = Server(config=self.config, worker_id=worker_id_from_env() or 1)
         self._install_sigquit_handler()
         await server.serve(sockets=self.sockets)
         if not server.started:

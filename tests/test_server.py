@@ -90,9 +90,7 @@ async def _record_lifespan_state(
     await send({"type": "lifespan.shutdown.complete"})
 
 
-async def test_server_does_not_inject_worker_id_by_default(
-    unused_tcp_port: int, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_server_defaults_worker_id_to_one(unused_tcp_port: int, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("UVICORN_WORKER_ID", raising=False)
     seen: dict[str, object] = {}
 
@@ -102,7 +100,8 @@ async def test_server_does_not_inject_worker_id_by_default(
     config = Config(app=lifespan_app, lifespan="on", port=unused_tcp_port)
     async with run_server(config):
         pass
-    assert seen["has_worker_id"] is False
+    assert seen["worker_id"] == 1
+    assert seen["env"] == "1"
 
 
 async def test_server_injects_worker_id_into_lifespan_state(
@@ -133,7 +132,8 @@ async def test_server_does_not_adopt_leftover_worker_id_env(
     config = Config(app=lifespan_app, lifespan="on", port=unused_tcp_port)
     server = Server(config=config)
     await _serve_until_started(server)
-    assert seen["has_worker_id"] is False
+    assert seen["worker_id"] == 1
+    assert seen["env"] == "1"
 
 
 def test_worker_id_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
