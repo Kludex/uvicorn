@@ -17,6 +17,7 @@ from uvicorn.config import WS_PROTOCOLS, Config
 from uvicorn.lifespan.off import LifespanOff
 from uvicorn.lifespan.on import LifespanOn
 from uvicorn.protocols.http.h11_impl import H11Protocol
+from uvicorn.protocols.utils import ClientDisconnected
 from uvicorn.server import ServerState
 
 try:
@@ -684,6 +685,24 @@ async def test_early_disconnect(http_protocol_cls: type[HTTPProtocol]):
     protocol.connection_lost(None)
     await protocol.loop.run_one()
     assert got_disconnect_event
+
+
+async def test_disconnect_on_send(http_protocol_cls: type[HTTPProtocol]) -> None:
+    got_disconnected = False
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        try:
+            await send({"type": "http.response.start", "status": 200})
+        except ClientDisconnected:
+            nonlocal got_disconnected
+            got_disconnected = True
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    protocol.eof_received()
+    protocol.connection_lost(None)
+    await protocol.loop.run_one()
+    assert got_disconnected
 
 
 async def test_early_response(http_protocol_cls: type[HTTPProtocol]):

@@ -24,7 +24,14 @@ from uvicorn._types import (
 from uvicorn.config import Config
 from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.protocols.http.flow_control import CLOSE_HEADER, HIGH_WATER_LIMIT, FlowControl, service_unavailable
-from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
+from uvicorn.protocols.utils import (
+    ClientDisconnected,
+    get_client_addr,
+    get_local_addr,
+    get_path_with_query_string,
+    get_remote_addr,
+    is_ssl,
+)
 from uvicorn.server import ServerState
 
 HEADER_RE = re.compile(b'[\x00-\x1f\x7f()<>@,;:\\[\\]={} \t\\\\"]')
@@ -422,6 +429,8 @@ class RequestResponseCycle:
             result = await app(  # type: ignore[func-returns-value]
                 self.scope, self.receive, self.send
             )
+        except ClientDisconnected:
+            pass
         except BaseException as exc:
             msg = "Exception in ASGI application\n"
             self.logger.error(msg, exc_info=exc)
@@ -465,7 +474,7 @@ class RequestResponseCycle:
             await self.flow.drain()  # pragma: full coverage
 
         if self.disconnected:
-            return  # pragma: full coverage
+            raise ClientDisconnected
 
         if not self.response_started:
             # Sending response status line and headers
