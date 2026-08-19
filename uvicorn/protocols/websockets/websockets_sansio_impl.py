@@ -241,10 +241,9 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         # websockets 17.0 documents that non-ASCII header values are encoded
         # with ISO-8859-1. Earlier versions didn't document the behavior but
         # we can see in the code that it used surrogate escape encoding.
-        if WEBSOCKETS_VERSION_INFO >= (17,):
+        if WEBSOCKETS_VERSION_INFO >= (17,):  # pragma: websockets-lt-17
             headers = [(key.encode("ascii"), value.encode("latin-1")) for key, value in event.headers.raw_items()]
-        else:  # pragma: no cover
-            # websockets < 17.0 only; it rejects these values from 17.0 on.
+        else:  # pragma: websockets-gte-17
             headers = [
                 (key.encode("ascii"), value.encode("ascii", errors="surrogateescape"))
                 for key, value in event.headers.raw_items()

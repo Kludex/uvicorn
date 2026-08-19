@@ -220,7 +220,7 @@ async def test_headers(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProto
         # can see in the code that it used UTF-8 (accidentally!) This affects
         # only the websockets.connect() call in the test, not uvicorn itself.
         username = "abraão"
-        if WEBSOCKETS_VERSION_INFO >= (17,):  # pragma: no cover
+        if WEBSOCKETS_VERSION_INFO >= (17,):  # pragma: websockets-lt-17
             username = username.encode().decode("latin-1")
         async with connect(url, additional_headers=[("username", username)]):
             return True
