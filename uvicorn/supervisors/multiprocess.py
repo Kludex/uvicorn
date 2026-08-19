@@ -161,14 +161,11 @@ class Multiprocess:
     def allocate_worker_id(self) -> int:
         """Return the lowest positive worker ID not currently in use."""
         used = {process.worker_id for process in self.processes}
-        worker_id = 1
-        while worker_id in used:
-            worker_id += 1
-        return worker_id
+        return next(worker_id for worker_id in range(1, len(used) + 2) if worker_id not in used)
 
     def init_processes(self) -> None:
-        for _ in range(self.processes_num):
-            process = Process(self.config, self.sockets, worker_id=self.allocate_worker_id())
+        for worker_id in range(1, self.processes_num + 1):
+            process = Process(self.config, self.sockets, worker_id=worker_id)
             process.start()
             self.processes.append(process)
 
