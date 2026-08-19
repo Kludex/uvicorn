@@ -456,18 +456,23 @@ class RequestResponseCycle:
             self.on_response = lambda: None
 
     async def send_500_response(self) -> None:
-        await self.send(
-            {
-                "type": "http.response.start",
-                "status": 500,
-                "headers": [
-                    (b"content-type", b"text/plain; charset=utf-8"),
-                    (b"content-length", b"21"),
-                    (b"connection", b"close"),
-                ],
-            }
-        )
-        await self.send({"type": "http.response.body", "body": b"Internal Server Error", "more_body": False})
+        try:
+            await self.send(
+                {
+                    "type": "http.response.start",
+                    "status": 500,
+                    "headers": [
+                        (b"content-type", b"text/plain; charset=utf-8"),
+                        (b"content-length", b"21"),
+                        (b"connection", b"close"),
+                    ],
+                }
+            )
+            await self.send({"type": "http.response.body", "body": b"Internal Server Error", "more_body": False})
+        except ClientDisconnected:
+            # The client may disconnect while the response is draining for flow
+            # control; sending the error is best-effort, so give up silently.
+            pass
 
     # ASGI interface
     async def send(self, message: ASGISendEvent) -> None:

@@ -458,13 +458,18 @@ class RequestResponseCycle:
                 (b"connection", b"close"),
             ],
         }
-        await self.send(response_start_event)
         response_body_event: HTTPResponseBodyEvent = {
             "type": "http.response.body",
             "body": b"Internal Server Error",
             "more_body": False,
         }
-        await self.send(response_body_event)
+        try:
+            await self.send(response_start_event)
+            await self.send(response_body_event)
+        except ClientDisconnected:
+            # The client may disconnect while the response is draining for flow
+            # control; sending the error is best-effort, so give up silently.
+            pass
 
     # ASGI interface
     async def send(self, message: ASGISendEvent) -> None:

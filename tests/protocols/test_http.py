@@ -260,6 +260,7 @@ class MockProtocol(asyncio.Protocol):
     timeout_keep_alive_task: asyncio.TimerHandle | None
     ws_protocol_class: type[WSProtocol] | None
     scope: Scope
+    cycle: Any
 
 
 def get_connected_protocol(
@@ -740,6 +741,22 @@ async def test_error_after_disconnect_does_not_raise(
     # The application error is logged, but no unhandled ClientDisconnected escapes.
     assert any("Exception in ASGI application" in record.message for record in caplog.records)
     assert not any(isinstance(record.exc_info and record.exc_info[1], ClientDisconnected) for record in caplog.records)
+
+
+async def test_send_500_response_swallows_disconnect(http_protocol_cls: type[HTTPProtocol]) -> None:
+    """A disconnect that lands while the 500 response is sending is swallowed, not raised."""
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        pass
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    cycle = protocol.cycle
+    # Simulate the client vanishing between the disconnect pre-check and the send:
+    # send() will raise ClientDisconnected, which send_500_response must swallow.
+    cycle.disconnected = True
+    await cycle.send_500_response()
+    await protocol.loop.run_one()
 
 
 async def test_early_response(http_protocol_cls: type[HTTPProtocol]):
