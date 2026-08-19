@@ -250,7 +250,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             subprotocols.extend([token.strip() for token in header.split(",")])
         self.scope: WebSocketScope = {
             "type": "websocket",
-            "asgi": {"version": self.asgi_version, "spec_version": "2.4"},
+            "asgi": {"version": self.asgi_version, "spec_version": "2.5"},
             "http_version": "1.1",
             "scheme": self.scheme,
             "server": self.server,
