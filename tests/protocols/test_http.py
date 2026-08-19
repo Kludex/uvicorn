@@ -744,7 +744,7 @@ async def test_error_after_disconnect_does_not_raise(
 
 
 async def test_send_500_response_swallows_disconnect(http_protocol_cls: type[HTTPProtocol]) -> None:
-    """A disconnect that lands while the 500 response is sending is swallowed, not raised."""
+    """A disconnect that lands while the 500 response drains for flow control is swallowed."""
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         pass
@@ -752,11 +752,21 @@ async def test_send_500_response_swallows_disconnect(http_protocol_cls: type[HTT
     protocol = get_connected_protocol(app, http_protocol_cls)
     protocol.data_received(SIMPLE_GET_REQUEST)
     cycle = protocol.cycle
-    # Simulate the client vanishing between the disconnect pre-check and the send:
-    # send() will raise ClientDisconnected, which send_500_response must swallow.
+
+    # Pause writing so send_500_response() blocks inside flow.drain() rather than
+    # completing synchronously, reproducing the flow-control race.
+    cycle.flow.pause_writing()
+    send_task = asyncio.ensure_future(cycle.send_500_response())
+    await asyncio.sleep(0)  # let the task advance into flow.drain()
+    assert not send_task.done()
+
+    # The client disconnects while the drain is pending; releasing it then makes
+    # the post-drain send() raise ClientDisconnected, which must be swallowed.
     cycle.disconnected = True
-    await cycle.send_500_response()
-    await protocol.loop.run_one()
+    cycle.flow.resume_writing()
+    await send_task  # must not raise
+
+    await protocol.loop.run_one()  # drain the queued app task
 
 
 async def test_early_response(http_protocol_cls: type[HTTPProtocol]):
