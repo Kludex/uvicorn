@@ -376,10 +376,11 @@ class RequestResponseCycle:
         except BaseException as exc:
             msg = "Exception in ASGI application\n"
             self.logger.error(msg, exc_info=exc)
-            if not self.response_started:
-                await self.send_500_response()
-            else:
-                self.transport.close()
+            if not self.disconnected:
+                if not self.response_started:
+                    await self.send_500_response()
+                else:
+                    self.transport.close()
         else:
             if result is not None:
                 msg = "ASGI callable should return None, but returned '%s'."

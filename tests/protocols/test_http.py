@@ -722,6 +722,26 @@ async def test_uncaught_disconnect_on_send_is_not_an_error(
     assert caplog.records == []
 
 
+async def test_error_after_disconnect_does_not_raise(
+    caplog: pytest.LogCaptureFixture, http_protocol_cls: type[HTTPProtocol]
+) -> None:
+    """An app error raised after the client disconnected must not try to send a 500 response."""
+    caplog.set_level(logging.ERROR, logger="uvicorn.error")
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        raise RuntimeError("boom")
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    protocol.eof_received()
+    protocol.connection_lost(None)
+    await protocol.loop.run_one()
+
+    # The application error is logged, but no unhandled ClientDisconnected escapes.
+    assert any("Exception in ASGI application" in record.message for record in caplog.records)
+    assert not any(isinstance(record.exc_info and record.exc_info[1], ClientDisconnected) for record in caplog.records)
+
+
 async def test_early_response(http_protocol_cls: type[HTTPProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
