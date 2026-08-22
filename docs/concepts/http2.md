@@ -196,12 +196,12 @@ Here's the state of proxy support at the time of writing:
 
 | Proxy | HTTP/2 Upstream | Multiplexing | Enabled by | Documentation |
 |-------|-----------------|--------------|------------|---------------|
-| **Envoy** | Yes | Yes | `http2_protocol_options` on the cluster | [Connection Pooling Docs](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/connection_pooling) |
-| **Caddy** | Yes | Yes | `h2c://` upstream, or `versions` in the transport | [reverse_proxy Docs](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy) |
+| **Envoy** | Yes | Yes | HTTP/2 protocol options on the cluster | [Connection Pooling Docs](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/connection_pooling) |
+| **Caddy** | Yes | Yes | `h2c://` upstream (experimental), or `versions 2` in the transport for TLS | [reverse_proxy Docs](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy) |
 | **HAProxy** | Yes | Yes | `proto h2` on the server line | [HTTP/2 Docs](https://www.haproxy.com/documentation/hapee/latest/load-balancing/protocols/http-2/) |
 | **Traefik** | Yes | Yes | `h2c://` service URL | [ServersTransport Docs](https://doc.traefik.io/traefik/routing/services/) |
-| **Apache** | Partial | No | `h2://` / `h2c://` in `ProxyPass` | [mod_proxy_http2 Docs](https://httpd.apache.org/docs/current/mod/mod_proxy_http2.html) |
-| **Nginx** | Yes (1.29.4+) | No | `proxy_http_version 2;` | [ngx_http_proxy_module Docs](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_http_version) |
+| **Apache** | Yes (2.4.19+) | No | `h2://` / `h2c://` in `ProxyPass` (no HTTP/1.1 fallback) | [mod_proxy_http2 Docs](https://httpd.apache.org/docs/current/mod/mod_proxy_http2.html) |
+| **Nginx** | Yes (1.29.4+) | No | `proxy_http_version 2;` (requires `ngx_http_v2_module`) | [ngx_http_proxy_module Docs](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_http_version) |
 
 Uvicorn supports both upstream flavors: cleartext prior-knowledge h2c, and HTTP/2 over TLS
 via ALPN when the proxy-to-Uvicorn hop uses TLS.
