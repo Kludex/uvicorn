@@ -20,7 +20,7 @@ from uvicorn.server import ServerState
 try:
     import zttp
 
-    from uvicorn.protocols.http.h2_negotiator import H2Negotiator
+    from uvicorn.protocols.http.auto_zttp_impl import AutoZttpProtocol
     from uvicorn.protocols.http.zttp_h2_impl import ZttpH2Protocol
     from uvicorn.protocols.http.zttp_impl import ZttpProtocol
 
@@ -841,13 +841,13 @@ def get_negotiator(
     alpn_protocol: str | None = None,
     sslcontext: bool = False,
     **kwargs: Any,
-) -> tuple[H2Negotiator, MockTransport, MockLoop]:
+) -> tuple[AutoZttpProtocol, MockTransport, MockLoop]:
     loop = MockLoop()
     transport = MockTransport(sslcontext=sslcontext, alpn_protocol=alpn_protocol)
     config = Config(app=app, http="zttp", **kwargs)
     lifespan = LifespanOff(config)
     server_state = ServerState()
-    negotiator = H2Negotiator(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)  # type: ignore[arg-type]
+    negotiator = AutoZttpProtocol(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)  # type: ignore[arg-type]
     negotiator.connection_made(transport)  # type: ignore[arg-type]
     return negotiator, transport, loop
 
@@ -947,7 +947,7 @@ async def test_negotiator_shutdown_closes_connection():
 # --- Configuration -------------------------------------------------------------
 
 
-async def test_server_installs_negotiator(unused_tcp_port: int):
+async def test_server_installs_auto_zttp_protocol(unused_tcp_port: int):
     app = Response("Hello, world", media_type="text/plain")
     config = Config(app=app, http="zttp", loop="asyncio", limit_max_requests=1, port=unused_tcp_port)
     async with run_server(config):
@@ -960,7 +960,7 @@ async def test_server_installs_negotiator(unused_tcp_port: int):
 async def test_config_http_zttp_loads_negotiator():
     config = Config(app=Response("ok"), http="zttp")
     config.load()
-    assert config.http_protocol_class is H2Negotiator
+    assert config.http_protocol_class is AutoZttpProtocol
 
 
 async def test_config_http_zttp1_loads_http1_protocol():
@@ -975,13 +975,19 @@ async def test_config_http_zttp2_loads_http2_protocol():
     assert config.http_protocol_class is ZttpH2Protocol
 
 
-async def test_config_http_zttp_offers_alpn_protocols(
+class CustomH2Protocol(asyncio.Protocol):
+    alpn_protocols = ["h2", "http/1.1"]
+
+
+@pytest.mark.parametrize("http", ["zttp", CustomH2Protocol], ids=["zttp", "custom"])
+async def test_config_http_protocol_offers_alpn_protocols(
+    http: str | type[asyncio.Protocol],
     tls_ca_certificate_pem_path: str,
     tls_ca_certificate_private_key_path: str,
 ):
     config = Config(
         app=Response("ok"),
-        http="zttp",
+        http=http,
         ssl_certfile=tls_ca_certificate_pem_path,
         ssl_keyfile=tls_ca_certificate_private_key_path,
     )

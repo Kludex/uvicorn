@@ -22,7 +22,7 @@ from uvicorn._compat import asyncio_run
 from uvicorn.config import STARTUP_FAILURE, Config
 
 if TYPE_CHECKING:
-    from uvicorn.protocols.http.h2_negotiator import H2Negotiator
+    from uvicorn.protocols.http.auto_zttp_impl import AutoZttpProtocol
     from uvicorn.protocols.http.h11_impl import H11Protocol
     from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
     from uvicorn.protocols.http.zttp_h2_impl import ZttpH2Protocol
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
         | HttpToolsProtocol
         | ZttpProtocol
         | ZttpH2Protocol
-        | H2Negotiator
+        | AutoZttpProtocol
         | WSProtocol
         | WebSocketProtocol
         | WebSocketsSansIOProtocol

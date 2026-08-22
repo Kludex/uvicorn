@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, ClassVar
 
 from uvicorn.config import Config
 from uvicorn.protocols.http.zttp_h2_impl import ZttpH2Protocol
@@ -12,13 +12,15 @@ from uvicorn.server import ServerState
 HTTP2_PREFACE = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 
 
-class H2Negotiator(asyncio.Protocol):
+class AutoZttpProtocol(asyncio.Protocol):
     """Dispatches each new connection to the HTTP/1.1 or HTTP/2 zttp protocol.
 
     Over TLS the choice is made from the ALPN result as soon as the connection
     is made. On cleartext connections the first bytes are sniffed for the
     HTTP/2 preface (prior-knowledge h2c); anything else is HTTP/1.1.
     """
+
+    alpn_protocols: ClassVar[list[str]] = ["h2", "http/1.1"]
 
     def __init__(
         self,

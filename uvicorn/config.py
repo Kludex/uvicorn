@@ -53,13 +53,9 @@ HTTP_PROTOCOLS: dict[str, str] = {
     "auto": "uvicorn.protocols.http.auto:AutoHTTPProtocol",
     "h11": "uvicorn.protocols.http.h11_impl:H11Protocol",
     "httptools": "uvicorn.protocols.http.httptools_impl:HttpToolsProtocol",
-    "zttp": "uvicorn.protocols.http.h2_negotiator:H2Negotiator",
+    "zttp": "uvicorn.protocols.http.auto_zttp_impl:AutoZttpProtocol",
     "zttp1": "uvicorn.protocols.http.zttp_impl:ZttpProtocol",
     "zttp2": "uvicorn.protocols.http.zttp_h2_impl:ZttpH2Protocol",
-}
-ALPN_PROTOCOLS: dict[str, list[str]] = {
-    "uvicorn.protocols.http.h2_negotiator:H2Negotiator": ["h2", "http/1.1"],
-    "uvicorn.protocols.http.zttp_h2_impl:ZttpH2Protocol": ["h2"],
 }
 WS_PROTOCOLS: dict[str, str | None] = {
     "auto": "uvicorn.protocols.websockets.auto:AutoWebSocketsProtocol",
@@ -443,11 +439,12 @@ class Config:
         assert not self.loaded
 
         if isinstance(self.http, str):
-            http_import_string = HTTP_PROTOCOLS.get(self.http, self.http)
-            alpn_protocols = ALPN_PROTOCOLS.get(http_import_string)
+            http_protocol_class = import_from_string(HTTP_PROTOCOLS.get(self.http, self.http))
+            self.http_protocol_class: type[asyncio.Protocol] = http_protocol_class
         else:
-            http_import_string = None
-            alpn_protocols = None
+            self.http_protocol_class = self.http
+
+        alpn_protocols: list[str] | None = getattr(self.http_protocol_class, "alpn_protocols", None)
 
         if self.ssl_context_factory is not None:
 
@@ -494,13 +491,6 @@ class Config:
             if b"server" not in dict(encoded_headers) and self.server_header
             else encoded_headers
         )
-
-        if isinstance(self.http, str):
-            assert http_import_string is not None
-            http_protocol_class = import_from_string(http_import_string)
-            self.http_protocol_class: type[asyncio.Protocol] = http_protocol_class
-        else:
-            self.http_protocol_class = self.http
 
         if isinstance(self.ws, str):
             ws_protocol_class = import_from_string(WS_PROTOCOLS.get(self.ws, self.ws))

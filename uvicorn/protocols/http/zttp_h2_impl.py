@@ -5,7 +5,7 @@ import contextvars
 import logging
 import sys
 from collections.abc import Callable, Generator
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 from urllib.parse import unquote
 
 import zttp
@@ -34,6 +34,8 @@ FORBIDDEN_HEADERS = frozenset({b"connection", b"keep-alive", b"proxy-connection"
 
 
 class ZttpH2Protocol(asyncio.Protocol):
+    alpn_protocols: ClassVar[list[str]] = ["h2"]
+
     def __init__(
         self,
         config: Config,
