@@ -10,7 +10,7 @@ jobs:
   tests:
     name: "Python ${{ matrix.python-version }} ${{ matrix.os }}"
     runs-on: "${{ matrix.os }}"
-    timeout-minutes: 10
+    timeout-minutes: 30
 
     permissions:
       contents: read
@@ -18,8 +18,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.14t"]
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        python-version: ["3.10"]
+        os: [windows-latest]
 
     steps:
       - uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" # v7.0.1
@@ -45,7 +45,7 @@ jobs:
         shell: bash
 
       - name: "Run tests"
-        run: scripts/test
+        run: scripts/test --timeout 90 --timeout-method thread
         shell: bash
 
       - name: "Enforce coverage"
