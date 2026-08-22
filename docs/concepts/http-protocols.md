@@ -1,9 +1,9 @@
 # HTTP Protocols
 
-Uvicorn provides three HTTP/1.1 protocol implementations that you can choose from using the [`--http`](../settings.md#implementation) option:
+Uvicorn provides several HTTP protocol implementations that you can choose from using the [`--http`](../settings.md#implementation) option:
 
 ```bash
-uvicorn main:app --http <auto|h11|httptools|zttp>
+uvicorn main:app --http <auto|h11|httptools|zttp|zttp1|zttp2>
 ```
 
 By default, Uvicorn uses `--http auto`, which automatically selects:
@@ -39,6 +39,10 @@ You can run `uvicorn` with `zttp` with the following command:
 ```bash
 uvicorn main:app --http zttp
 ```
+
+zttp is the only implementation with HTTP/2 support. It comes in three variants: `zttp`
+serves both HTTP/1.1 and HTTP/2, `zttp1` serves HTTP/1.1 only, and `zttp2` serves HTTP/2
+only. See the [HTTP/2 documentation](http2.md) for details.
 
 !!! warning "Experimental"
     zttp support is currently **experimental** and **not suited for production usage**. If you try it out, please report any issues or feedback on the [issue tracker](https://github.com/Kludex/uvicorn/issues).

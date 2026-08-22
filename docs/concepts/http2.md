@@ -121,3 +121,5 @@ The implementation is young, and some protocol features are not complete yet:
 
 - Graceful shutdown closes the connection without sending `GOAWAY`.
 - HTTP/2 server push and `Expect: 100-continue` are not supported.
+- WebSockets over HTTP/2 (RFC 8441 extended `CONNECT`) are not supported. With `--http zttp`,
+  WebSocket connections still work - they are served over HTTP/1.1.
