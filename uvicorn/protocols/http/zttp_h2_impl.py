@@ -90,6 +90,9 @@ class ZttpH2Protocol(asyncio.Protocol):
         self.client = get_remote_addr(transport)
         self.scheme = "https" if is_ssl(transport) else "http"
 
+        self.conn.initiate_connection()
+        self.flush()
+
         if self.logger.level <= TRACE_LOG_LEVEL:
             prefix = "%s:%d - " % self.client if self.client else ""
             self.logger.log(TRACE_LOG_LEVEL, "%sHTTP/2 connection made", prefix)
@@ -182,7 +185,7 @@ class ZttpH2Protocol(asyncio.Protocol):
             elif isinstance(event, zttp.GoAway):
                 self.shutdown_requested = True
                 if not self.cycles:
-                    self.transport.close()
+                    self._close_connection()
             # Settings, Ping and WindowUpdate need no action here: zttp tracks
             # the send windows internally, and `flush` writes whatever bytes
             # the new credit released.
@@ -286,11 +289,19 @@ class ZttpH2Protocol(asyncio.Protocol):
 
         if not self.cycles:
             if self.shutdown_requested:
-                self.transport.close()
+                self._close_connection()
                 return
             self.timeout_keep_alive_task = self.loop.call_later(
                 self.timeout_keep_alive, self.timeout_keep_alive_handler
             )
+
+    def _close_connection(self) -> None:
+        """Send GOAWAY and close the transport."""
+        if self.transport.is_closing():
+            return
+        self.conn.close()
+        self.flush()
+        self.transport.close()
 
     def shutdown(self) -> None:
         """
@@ -301,7 +312,7 @@ class ZttpH2Protocol(asyncio.Protocol):
         """
         self.shutdown_requested = True
         if not self.cycles:
-            self.transport.close()
+            self._close_connection()
 
     def pause_writing(self) -> None:
         """
@@ -320,8 +331,7 @@ class ZttpH2Protocol(asyncio.Protocol):
         Called on a keep-alive connection if no new data is received after a short
         delay.
         """
-        if not self.transport.is_closing():
-            self.transport.close()
+        self._close_connection()
 
 
 class RequestResponseCycle:
@@ -378,12 +388,12 @@ class RequestResponseCycle:
             if not self.response_started:
                 await self.send_500_response()
             else:
-                self.transport.close()
+                self.abort_stream()
         else:
             if result is not None:
                 msg = "ASGI callable should return None, but returned '%s'."
                 self.logger.error(msg, result)
-                self.transport.close()
+                self.abort_stream()
             elif not self.response_started and not self.disconnected:
                 msg = "ASGI callable returned without starting response."
                 self.logger.error(msg)
@@ -391,10 +401,18 @@ class RequestResponseCycle:
             elif not self.response_complete and not self.disconnected:
                 msg = "ASGI callable returned without completing response."
                 self.logger.error(msg)
-                self.transport.close()
+                self.abort_stream()
         finally:
             self.on_response(self.stream.stream_id)
             self.on_response = lambda stream_id: None
+
+    def abort_stream(self) -> None:
+        """Reset only this stream so sibling streams on the connection survive."""
+        if self.transport.is_closing():
+            return
+        self.stream.reset()
+        self.transport.write(self.conn.data_to_send())
+        self.disconnected = True
 
     async def send_500_response(self) -> None:
         response_start_event: HTTPResponseStartEvent = {

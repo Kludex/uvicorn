@@ -229,6 +229,8 @@ async def test_get_request():
     protocol = get_connected_protocol(app)
     client = H2Client()
 
+    assert protocol.transport.buffer[3] == 0x04  # server sends SETTINGS first
+
     client.request(b"GET", b"/")
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
@@ -401,9 +403,26 @@ async def test_app_returning_without_response_returns_500():
     assert body == b"Internal Server Error"
 
 
-async def test_partial_response_closes_transport():
+async def test_partial_response_resets_stream():
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         await send({"type": "http.response.start", "status": 200, "headers": []})
+
+    protocol = get_connected_protocol(app)
+    client = H2Client()
+
+    client.request(b"GET", b"/")
+    protocol.data_received(client.data_to_send())
+    await protocol.loop.run_one()
+
+    assert not protocol.transport.is_closing()
+    events = client.events(protocol.transport.buffer)
+    assert any(isinstance(event, zttp.RstStream) for event in events)
+
+
+async def test_partial_response_after_transport_close_is_dropped():
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        protocol.transport.close()
 
     protocol = get_connected_protocol(app)
     client = H2Client()
@@ -464,7 +483,7 @@ async def test_connection_specific_response_headers_are_stripped():
     assert (b"x-custom", b"kept") in headers
 
 
-async def test_response_shorter_than_content_length_closes_transport():
+async def test_response_shorter_than_content_length_resets_stream():
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         await send({"type": "http.response.start", "status": 200, "headers": [(b"content-length", b"10")]})
         await send({"type": "http.response.body", "body": b"short", "more_body": False})
@@ -476,10 +495,12 @@ async def test_response_shorter_than_content_length_closes_transport():
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
 
-    assert protocol.transport.is_closing()
+    assert not protocol.transport.is_closing()
+    events = client.events(protocol.transport.buffer)
+    assert any(isinstance(event, zttp.RstStream) for event in events)
 
 
-async def test_response_longer_than_content_length_closes_transport():
+async def test_response_longer_than_content_length_resets_stream():
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         await send({"type": "http.response.start", "status": 200, "headers": [(b"content-length", b"2")]})
         await send({"type": "http.response.body", "body": b"too long", "more_body": False})
@@ -491,7 +512,9 @@ async def test_response_longer_than_content_length_closes_transport():
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
 
-    assert protocol.transport.is_closing()
+    assert not protocol.transport.is_closing()
+    events = client.events(protocol.transport.buffer)
+    assert any(isinstance(event, zttp.RstStream) for event in events)
 
 
 async def test_rst_stream_disconnects_the_app():
@@ -576,6 +599,18 @@ async def test_shutdown_when_idle_closes_connection():
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
 
+    protocol.shutdown()
+    assert protocol.transport.is_closing()
+    events = client.events(protocol.transport.buffer)
+    assert any(isinstance(event, zttp.GoAway) for event in events)
+
+
+async def test_shutdown_twice_is_a_no_op():
+    app = Response("Hello, world", media_type="text/plain")
+    protocol = get_connected_protocol(app)
+
+    protocol.shutdown()
+    assert protocol.transport.is_closing()
     protocol.shutdown()
     assert protocol.transport.is_closing()
 
@@ -721,7 +756,7 @@ async def test_window_update_flushes_pending_response_data():
     assert ended
 
 
-async def test_app_returning_value_closes_transport():
+async def test_app_returning_value_resets_stream():
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         response = Response("Hello, world", media_type="text/plain")
         await response(scope, receive, send)
@@ -734,7 +769,9 @@ async def test_app_returning_value_closes_transport():
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
 
-    assert protocol.transport.is_closing()
+    assert not protocol.transport.is_closing()
+    events = client.events(protocol.transport.buffer)
+    assert any(isinstance(event, zttp.RstStream) for event in events)
 
 
 async def test_send_after_rst_stream_is_dropped():
@@ -772,7 +809,7 @@ async def test_response_body_before_start_returns_500():
     assert body == b"Internal Server Error"
 
 
-async def test_unexpected_message_after_start_closes_transport():
+async def test_unexpected_message_after_start_resets_stream():
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         await send({"type": "http.response.start", "status": 200, "headers": []})
         await send({"type": "http.response.start", "status": 200, "headers": []})
@@ -784,10 +821,12 @@ async def test_unexpected_message_after_start_closes_transport():
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
 
-    assert protocol.transport.is_closing()
+    assert not protocol.transport.is_closing()
+    events = client.events(protocol.transport.buffer)
+    assert any(isinstance(event, zttp.RstStream) for event in events)
 
 
-async def test_unexpected_message_after_completion_closes_transport():
+async def test_unexpected_message_after_completion_resets_stream():
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         response = Response("Hello, world", media_type="text/plain")
         await response(scope, receive, send)
@@ -800,7 +839,9 @@ async def test_unexpected_message_after_completion_closes_transport():
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
 
-    assert protocol.transport.is_closing()
+    assert not protocol.transport.is_closing()
+    events = client.events(protocol.transport.buffer)
+    assert any(isinstance(event, zttp.RstStream) for event in events)
 
 
 async def test_reset_contextvars_runs_each_stream_in_a_fresh_context():
