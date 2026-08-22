@@ -207,3 +207,46 @@ async def test_server_start_with_port_zero(caplog: pytest.LogCaptureFixture):
         host, port = sock.getsockname()
     messages = [record.message for record in caplog.records if "uvicorn" in record.name]
     assert f"Uvicorn running on http://{host}:{port} (Press CTRL+C to quit)" in messages
+
+
+async def test_gunicorn_access_log_format(unused_tcp_port: int, capsys: pytest.CaptureFixture[str]) -> None:
+    """Test access logging with Gunicorn format."""
+    config = Config(
+        app=app,
+        access_log_format='%(h)s "%(r)s" %(s)s %(b)s',
+        http="h11",
+        port=unused_tcp_port,
+    )
+    async with run_server(config):
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"http://127.0.0.1:{unused_tcp_port}")
+
+    assert response.status_code == 204
+    captured = capsys.readouterr()
+    # Check Gunicorn format is used in stdout
+    assert "127.0.0.1" in captured.out
+    assert '"GET / HTTP/1.1"' in captured.out
+    assert " 204 " in captured.out
+    assert " -" in captured.out  # This is the %(b)s part (response size is None -> "-")
+
+
+@pytest.mark.anyio
+async def test_gunicorn_access_log_format_httptools(unused_tcp_port: int, capsys: pytest.CaptureFixture[str]) -> None:
+    """Test access logging with Gunicorn format using httptools."""
+    config = Config(
+        app=app,
+        access_log_format='%(h)s "%(r)s" %(s)s %(b)s',
+        http="httptools",
+        port=unused_tcp_port,
+    )
+    async with run_server(config):
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"http://127.0.0.1:{unused_tcp_port}")
+
+    assert response.status_code == 204
+    captured = capsys.readouterr()
+    # Check Gunicorn format is used in stdout
+    assert "127.0.0.1" in captured.out
+    assert '"GET / HTTP/1.1"' in captured.out
+    assert " 204 " in captured.out
+    assert " -" in captured.out  # This is the %(b)s part (response size is None -> "-")
