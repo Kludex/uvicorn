@@ -874,7 +874,7 @@ async def test_prior_knowledge_preface_selects_http2():
 
     h2_protocol = transport.get_protocol()
     assert isinstance(h2_protocol, ZttpH2Protocol)
-    await h2_protocol.loop.run_one()  # type: ignore[attr-defined]
+    await h2_protocol.loop.run_one()
 
     status, _, body, _ = client.parse_response(transport.buffer)
     assert status == 200
@@ -894,7 +894,7 @@ async def test_prior_knowledge_preface_split_across_packets():
 
     h2_protocol = transport.get_protocol()
     assert isinstance(h2_protocol, ZttpH2Protocol)
-    await h2_protocol.loop.run_one()  # type: ignore[attr-defined]
+    await h2_protocol.loop.run_one()
 
     status, _, body, _ = client.parse_response(transport.buffer)
     assert status == 200
