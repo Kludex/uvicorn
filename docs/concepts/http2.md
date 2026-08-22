@@ -57,6 +57,30 @@ When using HTTPS, HTTP/2 is negotiated via **ALPN** (Application-Layer Protocol 
 during the TLS handshake. This is the most common way to use HTTP/2, and the only one web
 browsers support.
 
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Server
+
+    Note over Client,Server: TLS Handshake with ALPN
+
+    Client->>Server: ClientHello
+    Note right of Client: ALPN: h2, http/1.1
+
+    Server->>Client: ServerHello
+    Note right of Server: ALPN: h2
+
+    Note over Client,Server: TLS Handshake Complete
+
+    Client->>Server: HTTP/2 Connection Preface
+    Server->>Client: HTTP/2 SETTINGS Frame
+
+    Note over Client,Server: HTTP/2 Connection Established
+
+    Client->>Server: HEADERS (Stream 1)
+    Server->>Client: HEADERS + DATA (Stream 1)
+```
+
 For testing it locally, you can generate a self-signed certificate:
 
 ```bash
@@ -87,7 +111,28 @@ curl -v --http2 -k https://localhost:8000/
 
 On cleartext connections, Uvicorn accepts clients that speak HTTP/2 directly - known as
 "prior knowledge" h2c. The client opens the connection with the HTTP/2 preface instead of an
-HTTP/1.1 request, and Uvicorn switches protocols on the spot. Using the same `main.py`:
+HTTP/1.1 request, and Uvicorn switches protocols on the spot.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Server
+
+    Note over Client,Server: Cleartext TCP Connection
+
+    Client->>Server: HTTP/2 Connection Preface
+    Note right of Client: PRI * HTTP/2.0
+
+    Server->>Client: HTTP/2 SETTINGS Frame
+    Client->>Server: HTTP/2 SETTINGS Frame
+
+    Note over Client,Server: HTTP/2 Connection Established
+
+    Client->>Server: HEADERS + DATA (Stream 1)
+    Server->>Client: HEADERS + DATA (Stream 1)
+```
+
+Using the same `main.py`:
 
 ```bash
 uvicorn main:app --http zttp
@@ -114,6 +159,57 @@ async def app(scope, receive, send):
     assert scope["type"] == "http"
     print(f"HTTP Version: {scope['http_version']}")  # "2" for HTTP/2
 ```
+
+## Using with Reverse Proxies
+
+In production, Uvicorn is typically deployed behind a reverse proxy like Nginx, Caddy, or HAProxy.
+The proxy can terminate TLS and serve HTTP/2 to clients, while talking either HTTP/1.1 or
+HTTP/2 to Uvicorn.
+
+```mermaid
+flowchart LR
+    Client <-->|HTTP/2 over TLS| Proxy
+    Proxy <-->|HTTP/1.1 or HTTP/2| Uvicorn
+
+    style Client fill:#e1f5fe
+    style Proxy fill:#fff3e0
+    style Uvicorn fill:#e8f5e9
+```
+
+### Proxy HTTP/2 Upstream Support
+
+**HTTP/2 upstream** refers to the protocol used between the proxy and Uvicorn. While all modern
+proxies support HTTP/2 for client connections, support for HTTP/2 to backend servers varies.
+
+**Multiplexing** is HTTP/2's ability to send multiple requests simultaneously over a single TCP
+connection. Some proxies support HTTP/2 upstream but open a new connection per request, which
+means they don't truly multiplex.
+
+Here's the current state of proxy support:
+
+| Proxy | HTTP/2 Upstream | Multiplexing | Documentation |
+|-------|-----------------|--------------|---------------|
+| **Envoy** | Yes | Yes | [Connection Pooling Docs](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/connection_pooling) |
+| **Caddy** | Yes | Yes | [reverse_proxy Docs](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy) |
+| **HAProxy** | Yes | Yes | [HTTP/2 Docs](https://www.haproxy.com/documentation/hapee/latest/load-balancing/protocols/http-2/) |
+| **Traefik** | Yes | Yes | [ServersTransport Docs](https://doc.traefik.io/traefik/routing/services/) |
+| **Apache** | Partial | No | [mod_proxy_http2 Docs](https://httpd.apache.org/docs/trunk/mod/mod_proxy_http2.html) |
+| **Nginx** | Limited | No | [Trac Ticket #923](https://trac.nginx.org/nginx/ticket/923) |
+
+Proxies that speak HTTP/2 upstream use prior-knowledge h2c (`h2c://` URLs), which Uvicorn
+supports - no TLS needed between the proxy and Uvicorn.
+
+### Performance Considerations
+
+HTTP/2 provides the most benefit when:
+
+- **High latency connections**: Multiplexing reduces round-trip overhead
+- **Many concurrent requests**: Multiple streams share a single connection
+- **Large headers**: HPACK compression reduces header overhead
+
+For internal, low-latency connections (like proxy to backend), HTTP/1.1 with keepalive often
+performs comparably to HTTP/2. It is simpler to configure and debug, which is why it remains the
+recommended default for most deployments.
 
 ## Current Limitations
 
