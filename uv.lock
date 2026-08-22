@@ -1817,7 +1817,7 @@ dev = [
     { name = "types-pyyaml" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "wsproto" },
-    { name = "zttp" },
+    { name = "zttp", marker = "python_full_version >= '3.12' or sys_platform != 'win32'" },
 ]
 docs = [
     { name = "mkdocstrings-python" },
@@ -1858,7 +1858,7 @@ dev = [
     { name = "types-pyyaml", specifier = ">=6.0.12.20260518" },
     { name = "uvicorn", extras = ["standard"] },
     { name = "wsproto", specifier = "==1.3.2" },
-    { name = "zttp", specifier = "==0.0.24" },
+    { name = "zttp", marker = "python_full_version >= '3.12' or sys_platform != 'win32'", specifier = "==0.0.24" },
 ]
 docs = [
     { name = "mkdocstrings-python", specifier = ">=2.0.3" },

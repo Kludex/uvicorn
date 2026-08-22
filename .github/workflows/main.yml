@@ -10,7 +10,7 @@ jobs:
   tests:
     name: "Python ${{ matrix.python-version }} ${{ matrix.os }}"
     runs-on: "${{ matrix.os }}"
-    timeout-minutes: 20
+    timeout-minutes: 10
 
     permissions:
       contents: read
