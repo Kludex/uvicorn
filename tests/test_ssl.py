@@ -4,7 +4,7 @@ import ssl
 from collections.abc import Callable
 from typing import TypeAlias
 
-import httpx
+import httpx2
 import pytest
 
 from tests.utils import run_server
@@ -37,7 +37,7 @@ async def test_run(
         port=unused_tcp_port,
     )
     async with run_server(config):
-        async with httpx.AsyncClient(verify=tls_ca_ssl_context) as client:
+        async with httpx2.AsyncClient(verify=tls_ca_ssl_context) as client:
             response = await client.get(f"https://127.0.0.1:{unused_tcp_port}")
     assert response.status_code == 204
 
@@ -58,7 +58,7 @@ async def test_run_chain(
         port=unused_tcp_port,
     )
     async with run_server(config):
-        async with httpx.AsyncClient(verify=tls_ca_ssl_context) as client:
+        async with httpx2.AsyncClient(verify=tls_ca_ssl_context) as client:
             response = await client.get(f"https://127.0.0.1:{unused_tcp_port}")
     assert response.status_code == 204
 
@@ -73,7 +73,7 @@ async def test_run_chain_only(tls_ca_ssl_context, tls_certificate_key_and_chain_
         port=unused_tcp_port,
     )
     async with run_server(config):
-        async with httpx.AsyncClient(verify=tls_ca_ssl_context) as client:
+        async with httpx2.AsyncClient(verify=tls_ca_ssl_context) as client:
             response = await client.get(f"https://127.0.0.1:{unused_tcp_port}")
     assert response.status_code == 204
 
@@ -97,7 +97,7 @@ async def test_run_password(
         port=unused_tcp_port,
     )
     async with run_server(config):
-        async with httpx.AsyncClient(verify=tls_ca_ssl_context) as client:
+        async with httpx2.AsyncClient(verify=tls_ca_ssl_context) as client:
             response = await client.get(f"https://127.0.0.1:{unused_tcp_port}")
     assert response.status_code == 204
 
@@ -124,7 +124,7 @@ async def test_run_ssl_context_factory_default(
         port=unused_tcp_port,
     )
     async with run_server(config):
-        async with httpx.AsyncClient(verify=tls_ca_ssl_context) as client:
+        async with httpx2.AsyncClient(verify=tls_ca_ssl_context) as client:
             response = await client.get(f"https://127.0.0.1:{unused_tcp_port}")
     assert response.status_code == 204
 
@@ -151,7 +151,7 @@ async def test_run_ssl_context_factory_custom(
         port=unused_tcp_port,
     )
     async with run_server(config):
-        async with httpx.AsyncClient(verify=tls_ca_ssl_context) as client:
+        async with httpx2.AsyncClient(verify=tls_ca_ssl_context) as client:
             response = await client.get(f"https://127.0.0.1:{unused_tcp_port}")
     assert response.status_code == 204
 

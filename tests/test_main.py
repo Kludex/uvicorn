@@ -5,7 +5,7 @@ import sys
 from logging import WARNING
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 
 import uvicorn.server
@@ -56,7 +56,7 @@ def _has_ipv6(host: str):
 async def test_run(host, url: str, unused_tcp_port: int):
     config = Config(app=app, host=host, loop="asyncio", limit_max_requests=1, port=unused_tcp_port)
     async with run_server(config):
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.get(f"{url}:{unused_tcp_port}")
     assert response.status_code == 204
 
@@ -64,7 +64,7 @@ async def test_run(host, url: str, unused_tcp_port: int):
 async def test_run_multiprocess(unused_tcp_port: int):
     config = Config(app=app, loop="asyncio", workers=2, limit_max_requests=1, port=unused_tcp_port)
     async with run_server(config):
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.get(f"http://127.0.0.1:{unused_tcp_port}")
     assert response.status_code == 204
 
@@ -72,7 +72,7 @@ async def test_run_multiprocess(unused_tcp_port: int):
 async def test_run_reload(unused_tcp_port: int):
     config = Config(app=app, loop="asyncio", reload=True, limit_max_requests=1, port=unused_tcp_port)
     async with run_server(config):
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.get(f"http://127.0.0.1:{unused_tcp_port}")
     assert response.status_code == 204
 

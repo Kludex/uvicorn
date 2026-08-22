@@ -1,4 +1,4 @@
-import httpx
+import httpx2
 import pytest
 
 from tests.middleware.test_logging import caplog_for_logger
@@ -18,8 +18,8 @@ async def test_message_logger(caplog: pytest.LogCaptureFixture) -> None:
         caplog.set_level(TRACE_LOG_LEVEL, logger="uvicorn.asgi")
         caplog.set_level(TRACE_LOG_LEVEL)
 
-        transport = httpx.ASGITransport(MessageLoggerMiddleware(app))  # type: ignore
-        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        transport = httpx2.ASGITransport(MessageLoggerMiddleware(app))  # type: ignore
+        async with httpx2.AsyncClient(transport=transport, base_url="http://testserver") as client:
             response = await client.get("/")
         assert response.status_code == 200
         messages = [record.msg % record.args for record in caplog.records]
@@ -38,8 +38,8 @@ async def test_message_logger_exc(caplog: pytest.LogCaptureFixture) -> None:
     with caplog_for_logger(caplog, "uvicorn.asgi"):
         caplog.set_level(TRACE_LOG_LEVEL, logger="uvicorn.asgi")
         caplog.set_level(TRACE_LOG_LEVEL)
-        transport = httpx.ASGITransport(MessageLoggerMiddleware(app))  # type: ignore
-        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        transport = httpx2.ASGITransport(MessageLoggerMiddleware(app))  # type: ignore
+        async with httpx2.AsyncClient(transport=transport, base_url="http://testserver") as client:
             with pytest.raises(RuntimeError):
                 await client.get("/")
         messages = [record.msg % record.args for record in caplog.records]

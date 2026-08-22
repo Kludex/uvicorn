@@ -5,7 +5,7 @@ import ssl
 from collections.abc import Callable
 from typing import Any, ClassVar
 
-import httpx
+import httpx2
 import pytest
 
 from tests.response import Response
@@ -992,7 +992,7 @@ async def test_server_installs_auto_zttp_protocol(unused_tcp_port: int):
     app = Response("Hello, world", media_type="text/plain")
     config = Config(app=app, http="zttp", loop="asyncio", limit_max_requests=1, port=unused_tcp_port)
     async with run_server(config):
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.get(f"http://127.0.0.1:{unused_tcp_port}")
     assert response.status_code == 200
     assert response.text == "Hello, world"
