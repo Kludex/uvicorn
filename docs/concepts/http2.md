@@ -46,8 +46,8 @@ version:
 
 `zttp2` is useful when every client is known to speak HTTP/2, e.g. gRPC backends or
 services behind a proxy configured for `h2c://` upstreams. Over TLS it advertises only
-`h2` via ALPN, so clients that cannot speak HTTP/2 fail the handshake instead of
-falling back.
+`h2` via ALPN, so clients that cannot speak HTTP/2 get no negotiated protocol and the
+connection fails instead of falling back to HTTP/1.1.
 
 ## Connection Methods
 

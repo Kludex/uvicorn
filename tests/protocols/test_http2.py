@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import ssl
 from collections.abc import Callable
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 import pytest
@@ -956,7 +956,7 @@ async def test_http1_request_selects_http1():
 
 async def test_tls_without_alpn_selects_http1():
     app = Response("Hello, world", media_type="text/plain")
-    negotiator, transport, loop = get_negotiator(app, sslcontext=True)
+    _, transport, loop = get_negotiator(app, sslcontext=True)
 
     protocol = transport.get_protocol()
     assert isinstance(protocol, ZttpProtocol)
@@ -1017,7 +1017,7 @@ async def test_config_http_zttp2_loads_http2_protocol():
 
 
 class CustomH2Protocol(asyncio.Protocol):
-    alpn_protocols = ["h2", "http/1.1"]
+    alpn_protocols: ClassVar[list[str]] = ["h2", "http/1.1"]
 
 
 @pytest.mark.parametrize("http", ["zttp", CustomH2Protocol], ids=["zttp", "custom"])
