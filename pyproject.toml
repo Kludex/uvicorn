@@ -167,6 +167,7 @@ exclude_lines = [
 "not is_installed('zttp')" = ["uvicorn/protocols/http/zttp_impl.py"]
 "not is_installed('zttp') or package_version('zttp') < (0, 0, 13)" = [
     "tests/protocols/test_http2.py",
+    "uvicorn/protocols/http/h2_negotiator.py",
     "uvicorn/protocols/http/zttp_h2_impl.py",
 ]
 

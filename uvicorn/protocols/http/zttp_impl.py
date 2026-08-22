@@ -25,8 +25,6 @@ from uvicorn.protocols.http.flow_control import CLOSE_HEADER, HIGH_WATER_LIMIT, 
 from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
 from uvicorn.server import ServerState
 
-HTTP2_PREFACE = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
-
 
 class ZttpProtocol(asyncio.Protocol):
     def __init__(
@@ -47,7 +45,6 @@ class ZttpProtocol(asyncio.Protocol):
         self.access_log = self.access_logger.hasHandlers()
         self.conn = zttp.Connection(zttp.SERVER)
         self.ws_protocol_class = config.ws_protocol_class
-        self.h2_protocol_class = config.h2_protocol_class
         self.root_path = config.root_path
         self.asgi_version = config.asgi_version
         self.limit_concurrency = config.limit_concurrency
@@ -74,8 +71,6 @@ class ZttpProtocol(asyncio.Protocol):
         self.headers: list[tuple[bytes, bytes]] = None  # type: ignore[assignment]
         self.cycle: RequestResponseCycle = None  # type: ignore[assignment]
 
-        self._h2_buffer = b""
-
     # Protocol interface
     def connection_made(  # type: ignore[override]
         self, transport: asyncio.Transport
@@ -87,15 +82,6 @@ class ZttpProtocol(asyncio.Protocol):
         self.server = get_local_addr(transport)
         self.client = get_remote_addr(transport)
         self.scheme = "https" if is_ssl(transport) else "http"
-
-        if self.h2_protocol_class is not None:  # pragma: no-zttp-h2
-            if self.scheme == "https":
-                ssl_object = transport.get_extra_info("ssl_object")
-                if ssl_object is not None and ssl_object.selected_alpn_protocol() == "h2":
-                    self._upgrade_to_h2(transport)
-                    return
-            else:
-                self.__dict__["data_received"] = self._data_received_with_h2_sniff
 
         if self.logger.level <= TRACE_LOG_LEVEL:
             prefix = "%s:%d - " % self.client if self.client else ""
@@ -149,36 +135,8 @@ class ZttpProtocol(asyncio.Protocol):
             self._unsupported_upgrade_warning()
         return False
 
-    def _upgrade_to_h2(self, transport: asyncio.Transport, initial_data: bytes = b"") -> None:  # pragma: no-zttp-h2
-        assert self.h2_protocol_class is not None
-        self.connections.discard(self)
-        protocol = self.h2_protocol_class(  # type: ignore[call-arg]
-            config=self.config,
-            server_state=self.server_state,
-            app_state=self.app_state,
-            _loop=self.loop,
-        )
-        transport.set_protocol(protocol)
-        protocol.connection_made(transport)
-        if initial_data:
-            protocol.data_received(initial_data)
-
-    def _data_received_with_h2_sniff(self, data: bytes) -> None:  # pragma: no-zttp-h2
-        self._unset_keepalive_if_required()
-        data = self._h2_buffer + data
-        if len(data) < len(HTTP2_PREFACE) and HTTP2_PREFACE.startswith(data):
-            self._h2_buffer = data
-            return
-        self._h2_buffer = b""
-        del self.__dict__["data_received"]
-        if data.startswith(HTTP2_PREFACE):
-            self._upgrade_to_h2(self.transport, initial_data=data)
-            return
-        self.data_received(data)
-
     def data_received(self, data: bytes) -> None:
         self._unset_keepalive_if_required()
-
         try:
             self.handle_events(self.conn.receive_event(data))
         except zttp.RemoteProtocolError:
