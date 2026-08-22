@@ -21,11 +21,13 @@ async def test_sigint_finish_req(unused_tcp_port: int):
     Result: Request should go through, even though the server was cancelled.
     """
 
+    request_started = Event()
     server_event = Event()
 
     async def wait_app(scope, receive, send):
         await send({"type": "http.response.start", "status": 200, "headers": []})
         await send({"type": "http.response.body", "body": b"start", "more_body": True})
+        request_started.set()
         await server_event.wait()
         await send({"type": "http.response.body", "body": b"end", "more_body": False})
 
@@ -34,7 +36,7 @@ async def test_sigint_finish_req(unused_tcp_port: int):
     with assert_signal(signal.SIGINT):
         async with run_server(config) as server, httpx.AsyncClient() as client:
             req = asyncio.create_task(client.get(f"http://127.0.0.1:{unused_tcp_port}"))
-            await asyncio.sleep(0.1)  # ensure next tick
+            await request_started.wait()
             server.handle_exit(sig=signal.SIGINT, frame=None)  # exit
             server_event.set()  # continue request
             # ensure httpx has processed the response and result is complete
@@ -55,10 +57,13 @@ async def test_sigint_abort_req(unused_tcp_port: int, caplog):
         `RemoteProtocolError`.
     """
 
+    request_started = Event()
+
     async def forever_app(scope, receive, send):
         server_event = Event()
         await send({"type": "http.response.start", "status": 200, "headers": []})
         await send({"type": "http.response.body", "body": b"start", "more_body": True})
+        request_started.set()
         # we never continue this one, so this request will time out
         await server_event.wait()
         await send({"type": "http.response.body", "body": b"end", "more_body": False})  # pragma: full coverage
@@ -68,7 +73,7 @@ async def test_sigint_abort_req(unused_tcp_port: int, caplog):
     with assert_signal(signal.SIGINT):
         async with run_server(config) as server, httpx.AsyncClient() as client:
             req = asyncio.create_task(client.get(f"http://127.0.0.1:{unused_tcp_port}"))
-            await asyncio.sleep(0.1)  # next tick
+            await request_started.wait()
             # trigger exit, this request should time out in ~1 sec
             server.handle_exit(sig=signal.SIGINT, frame=None)
             with pytest.raises(httpx.RemoteProtocolError):
