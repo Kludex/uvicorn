@@ -20,19 +20,34 @@ HTTP/2 support requires the `zttp` package:
 pip install zttp
 ```
 
-To enable it, use the `--http2` flag:
+To enable it, select the `zttp` HTTP implementation:
 
 === "Command Line"
     ```bash
-    uvicorn main:app --http2
+    uvicorn main:app --http zttp
     ```
 
 === "Programmatic"
     ```python
     import uvicorn
 
-    uvicorn.run("main:app", http2=True)
+    uvicorn.run("main:app", http="zttp")
     ```
+
+The `zttp` implementation serves both HTTP versions: each connection is dispatched to
+HTTP/1.1 or HTTP/2 depending on what the client speaks. Two more variants pin a single
+version:
+
+| `--http` | Serves |
+| --- | --- |
+| `zttp` | HTTP/1.1 and HTTP/2 |
+| `zttp1` | HTTP/1.1 only |
+| `zttp2` | HTTP/2 only |
+
+`zttp2` is useful when every client is known to speak HTTP/2, e.g. gRPC backends or
+services behind a proxy configured for `h2c://` upstreams. Over TLS it advertises only
+`h2` via ALPN, so clients that cannot speak HTTP/2 fail the handshake instead of
+falling back.
 
 ## Connection Methods
 
@@ -56,10 +71,10 @@ async def app(scope, receive, send):
     await send({"type": "http.response.body", "body": b"ok"})
 ```
 
-Run Uvicorn with the `--http2` flag and the SSL certificate files:
+Run Uvicorn with `--http zttp` and the SSL certificate files:
 
 ```bash
-uvicorn main:app --http2 --ssl-keyfile key.pem --ssl-certfile cert.pem
+uvicorn main:app --http zttp --ssl-keyfile key.pem --ssl-certfile cert.pem
 ```
 
 You can test the connection using curl (`-k` skips certificate verification for self-signed certs):
@@ -75,7 +90,7 @@ On cleartext connections, Uvicorn accepts clients that speak HTTP/2 directly - k
 HTTP/1.1 request, and Uvicorn switches protocols on the spot. Using the same `main.py`:
 
 ```bash
-uvicorn main:app --http2
+uvicorn main:app --http zttp
 ```
 
 ```bash

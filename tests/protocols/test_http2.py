@@ -22,6 +22,7 @@ try:
 
     from uvicorn.protocols.http.h2_negotiator import H2Negotiator
     from uvicorn.protocols.http.zttp_h2_impl import ZttpH2Protocol
+    from uvicorn.protocols.http.zttp_impl import ZttpProtocol
 
     skip_if_no_zttp_h2 = pytest.mark.skipif(
         not hasattr(zttp, "HTTP2"), reason="zttp with HTTP/2 support is not installed"
@@ -160,7 +161,7 @@ def get_connected_protocol(
 ) -> MockProtocol:
     loop = MockLoop()
     transport = MockTransport(sslcontext=True)
-    config = Config(app=app, http2=True, **kwargs)
+    config = Config(app=app, http="zttp2", **kwargs)
     lifespan = lifespan or LifespanOff(config)
     server_state = ServerState()
     protocol = ZttpH2Protocol(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)  # type: ignore[arg-type]
@@ -837,14 +838,13 @@ async def test_trace_logging(caplog: pytest.LogCaptureFixture, logging_config: d
 
 def get_negotiator(
     app: Callable[..., Any],
-    http_protocol_cls: type[asyncio.Protocol],
     alpn_protocol: str | None = None,
     sslcontext: bool = False,
     **kwargs: Any,
 ) -> tuple[H2Negotiator, MockTransport, MockLoop]:
     loop = MockLoop()
     transport = MockTransport(sslcontext=sslcontext, alpn_protocol=alpn_protocol)
-    config = Config(app=app, http=http_protocol_cls, http2=True, **kwargs)  # type: ignore[arg-type]
+    config = Config(app=app, http="zttp", **kwargs)
     lifespan = LifespanOff(config)
     server_state = ServerState()
     negotiator = H2Negotiator(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)  # type: ignore[arg-type]
@@ -852,21 +852,21 @@ def get_negotiator(
     return negotiator, transport, loop
 
 
-async def test_alpn_h2_selects_http2(http_protocol_cls: type[asyncio.Protocol]):
+async def test_alpn_h2_selects_http2():
     app = Response("Hello, world", media_type="text/plain")
-    _, transport, _ = get_negotiator(app, http_protocol_cls, alpn_protocol="h2", sslcontext=True)
+    _, transport, _ = get_negotiator(app, alpn_protocol="h2", sslcontext=True)
     assert isinstance(transport.get_protocol(), ZttpH2Protocol)
 
 
-async def test_alpn_http11_selects_http1(http_protocol_cls: type[asyncio.Protocol]):
+async def test_alpn_http11_selects_http1():
     app = Response("Hello, world", media_type="text/plain")
-    _, transport, _ = get_negotiator(app, http_protocol_cls, alpn_protocol="http/1.1", sslcontext=True)
-    assert isinstance(transport.get_protocol(), http_protocol_cls)
+    _, transport, _ = get_negotiator(app, alpn_protocol="http/1.1", sslcontext=True)
+    assert isinstance(transport.get_protocol(), ZttpProtocol)
 
 
-async def test_prior_knowledge_preface_selects_http2(http_protocol_cls: type[asyncio.Protocol]):
+async def test_prior_knowledge_preface_selects_http2():
     app = Response("Hello, world", media_type="text/plain")
-    negotiator, transport, _ = get_negotiator(app, http_protocol_cls)
+    negotiator, transport, _ = get_negotiator(app)
     client = H2Client()
 
     client.request(b"GET", b"/")
@@ -881,9 +881,9 @@ async def test_prior_knowledge_preface_selects_http2(http_protocol_cls: type[asy
     assert body == b"Hello, world"
 
 
-async def test_prior_knowledge_preface_split_across_packets(http_protocol_cls: type[asyncio.Protocol]):
+async def test_prior_knowledge_preface_split_across_packets():
     app = Response("Hello, world", media_type="text/plain")
-    negotiator, transport, _ = get_negotiator(app, http_protocol_cls)
+    negotiator, transport, _ = get_negotiator(app)
     client = H2Client()
 
     client.request(b"GET", b"/")
@@ -901,42 +901,42 @@ async def test_prior_knowledge_preface_split_across_packets(http_protocol_cls: t
     assert body == b"Hello, world"
 
 
-async def test_http1_request_selects_http1(http_protocol_cls: type[asyncio.Protocol]):
+async def test_http1_request_selects_http1():
     app = Response("Hello, world", media_type="text/plain")
-    negotiator, transport, loop = get_negotiator(app, http_protocol_cls)
+    negotiator, transport, loop = get_negotiator(app)
 
     negotiator.data_received(b"GET / HTTP/1.1\r\nHost: example.org\r\n\r\n")
     await loop.run_one()
 
-    assert isinstance(transport.get_protocol(), http_protocol_cls)
+    assert isinstance(transport.get_protocol(), ZttpProtocol)
     assert b"HTTP/1.1 200 OK" in transport.buffer
     assert b"Hello, world" in transport.buffer
 
 
-async def test_tls_without_alpn_selects_http1(http_protocol_cls: type[asyncio.Protocol]):
+async def test_tls_without_alpn_selects_http1():
     app = Response("Hello, world", media_type="text/plain")
-    negotiator, transport, loop = get_negotiator(app, http_protocol_cls, sslcontext=True)
+    negotiator, transport, loop = get_negotiator(app, sslcontext=True)
 
     protocol = transport.get_protocol()
-    assert isinstance(protocol, http_protocol_cls)
+    assert isinstance(protocol, ZttpProtocol)
     protocol.data_received(b"GET / HTTP/1.1\r\nHost: example.org\r\n\r\n")
     await loop.run_one()
 
     assert b"HTTP/1.1 200 OK" in transport.buffer
 
 
-async def test_negotiator_times_out_silent_connection(http_protocol_cls: type[asyncio.Protocol]):
+async def test_negotiator_times_out_silent_connection():
     app = Response("Hello, world", media_type="text/plain")
-    negotiator, transport, loop = get_negotiator(app, http_protocol_cls)
+    negotiator, transport, loop = get_negotiator(app)
 
     loop.run_later(with_delay=5)
     assert transport.closed
     negotiator.connection_lost(None)
 
 
-async def test_negotiator_shutdown_closes_connection(http_protocol_cls: type[asyncio.Protocol]):
+async def test_negotiator_shutdown_closes_connection():
     app = Response("Hello, world", media_type="text/plain")
-    negotiator, transport, _ = get_negotiator(app, http_protocol_cls)
+    negotiator, transport, _ = get_negotiator(app)
 
     negotiator.shutdown()
     assert transport.closed
@@ -949,7 +949,7 @@ async def test_negotiator_shutdown_closes_connection(http_protocol_cls: type[asy
 
 async def test_server_installs_negotiator(unused_tcp_port: int):
     app = Response("Hello, world", media_type="text/plain")
-    config = Config(app=app, http2=True, loop="asyncio", limit_max_requests=1, port=unused_tcp_port)
+    config = Config(app=app, http="zttp", loop="asyncio", limit_max_requests=1, port=unused_tcp_port)
     async with run_server(config):
         async with httpx.AsyncClient() as client:
             response = await client.get(f"http://127.0.0.1:{unused_tcp_port}")
@@ -957,37 +957,31 @@ async def test_server_installs_negotiator(unused_tcp_port: int):
     assert response.text == "Hello, world"
 
 
-async def test_config_http2_true_loads_zttp_h2_protocol():
-    config = Config(app=Response("ok"), http2=True)
+async def test_config_http_zttp_loads_negotiator():
+    config = Config(app=Response("ok"), http="zttp")
     config.load()
-    assert config.h2_protocol_class is ZttpH2Protocol
+    assert config.http_protocol_class is H2Negotiator
 
 
-async def test_config_http2_false_loads_no_h2_protocol():
-    config = Config(app=Response("ok"))
+async def test_config_http_zttp1_loads_http1_protocol():
+    config = Config(app=Response("ok"), http="zttp1")
     config.load()
-    assert config.h2_protocol_class is None
+    assert config.http_protocol_class is ZttpProtocol
 
 
-async def test_config_http2_import_string():
-    config = Config(app=Response("ok"), http2="uvicorn.protocols.http.zttp_h2_impl:ZttpH2Protocol")
+async def test_config_http_zttp2_loads_http2_protocol():
+    config = Config(app=Response("ok"), http="zttp2")
     config.load()
-    assert config.h2_protocol_class is ZttpH2Protocol
+    assert config.http_protocol_class is ZttpH2Protocol
 
 
-async def test_config_http2_protocol_class():
-    config = Config(app=Response("ok"), http2=ZttpH2Protocol)
-    config.load()
-    assert config.h2_protocol_class is ZttpH2Protocol
-
-
-async def test_config_http2_offers_alpn_protocols(
+async def test_config_http_zttp_offers_alpn_protocols(
     tls_ca_certificate_pem_path: str,
     tls_ca_certificate_private_key_path: str,
 ):
     config = Config(
         app=Response("ok"),
-        http2=True,
+        http="zttp",
         ssl_certfile=tls_ca_certificate_pem_path,
         ssl_keyfile=tls_ca_certificate_private_key_path,
     )

@@ -4,6 +4,8 @@ import asyncio
 from typing import Any
 
 from uvicorn.config import Config
+from uvicorn.protocols.http.zttp_h2_impl import ZttpH2Protocol
+from uvicorn.protocols.http.zttp_impl import ZttpProtocol
 from uvicorn.protocols.utils import is_ssl
 from uvicorn.server import ServerState
 
@@ -11,7 +13,7 @@ HTTP2_PREFACE = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 
 
 class H2Negotiator(asyncio.Protocol):
-    """Dispatches each new connection to the HTTP/1.1 or HTTP/2 protocol.
+    """Dispatches each new connection to the HTTP/1.1 or HTTP/2 zttp protocol.
 
     Over TLS the choice is made from the ALPN result as soon as the connection
     is made. On cleartext connections the first bytes are sniffed for the
@@ -28,7 +30,6 @@ class H2Negotiator(asyncio.Protocol):
         if not config.loaded:
             config.load()
 
-        assert config.h2_protocol_class is not None
         self.config = config
         self.server_state = server_state
         self.app_state = app_state
@@ -73,8 +74,7 @@ class H2Negotiator(asyncio.Protocol):
         self._switch(http2=self.buffer.startswith(HTTP2_PREFACE), initial_data=self.buffer)
 
     def _switch(self, http2: bool, initial_data: bytes = b"") -> None:
-        protocol_class = self.config.h2_protocol_class if http2 else self.config.http_protocol_class
-        assert protocol_class is not None
+        protocol_class: type[asyncio.Protocol] = ZttpH2Protocol if http2 else ZttpProtocol
         protocol = protocol_class(  # type: ignore[call-arg]
             config=self.config,
             server_state=self.server_state,

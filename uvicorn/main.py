@@ -132,12 +132,6 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     show_default=True,
 )
 @click.option(
-    "--http2",
-    is_flag=True,
-    default=False,
-    help="Enable HTTP/2 support. Requires the 'zttp' package.",
-)
-@click.option(
     "--ws",
     type=str,
     metavar=_metavar_from_type(WSProtocolType),
@@ -399,7 +393,6 @@ def main(
     fd: int,
     loop: LoopFactoryType | str,
     http: HTTPProtocolType | str,
-    http2: bool,
     ws: WSProtocolType | str,
     ws_max_size: int,
     ws_max_queue: int,
@@ -452,7 +445,6 @@ def main(
         fd=fd,
         loop=loop,
         http=http,
-        http2=http2,
         ws=ws,
         ws_max_size=ws_max_size,
         ws_max_queue=ws_max_queue,
@@ -508,7 +500,6 @@ def run(
     fd: int | None = None,
     loop: LoopFactoryType | str = "auto",
     http: type[asyncio.Protocol] | HTTPProtocolType | str = "auto",
-    http2: bool | type[asyncio.Protocol] | str = False,
     ws: type[asyncio.Protocol] | WSProtocolType | str = "auto",
     ws_max_size: int = 16777216,
     ws_max_queue: int = 32,
@@ -565,7 +556,6 @@ def run(
         fd=fd,
         loop=loop,
         http=http,
-        http2=http2,
         ws=ws,
         ws_max_size=ws_max_size,
         ws_max_queue=ws_max_queue,

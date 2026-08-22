@@ -119,17 +119,10 @@ class Server:
 
         config = self.config
 
-        if config.h2_protocol_class is not None:  # pragma: no-zttp-h2
-            from uvicorn.protocols.http.h2_negotiator import H2Negotiator
-
-            entry_protocol_class: type[asyncio.Protocol] = H2Negotiator
-        else:
-            entry_protocol_class = config.http_protocol_class
-
         def create_protocol(
             _loop: asyncio.AbstractEventLoop | None = None,
         ) -> asyncio.Protocol:
-            return entry_protocol_class(  # type: ignore[call-arg]
+            return config.http_protocol_class(  # type: ignore[call-arg]
                 config=config,
                 server_state=self.server_state,
                 app_state=self.lifespan.state,
