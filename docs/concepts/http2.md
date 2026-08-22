@@ -72,8 +72,10 @@ sequenceDiagram
 
     Note over Client,Server: TLS Handshake Complete
 
-    Client->>Server: HTTP/2 Connection Preface
-    Server->>Client: HTTP/2 SETTINGS Frame
+    Client->>Server: Connection Preface
+    Note right of Client: PRI * HTTP/2.0
+    Client->>Server: Client SETTINGS Frame
+    Server->>Client: Server SETTINGS Frame
 
     Note over Client,Server: HTTP/2 Connection Established
 
@@ -120,11 +122,10 @@ sequenceDiagram
 
     Note over Client,Server: Cleartext TCP Connection
 
-    Client->>Server: HTTP/2 Connection Preface
+    Client->>Server: Connection Preface
     Note right of Client: PRI * HTTP/2.0
-
-    Server->>Client: HTTP/2 SETTINGS Frame
-    Client->>Server: HTTP/2 SETTINGS Frame
+    Client->>Server: Client SETTINGS Frame
+    Server->>Client: Server SETTINGS Frame
 
     Note over Client,Server: HTTP/2 Connection Established
 
@@ -142,8 +143,14 @@ uvicorn main:app --http zttp
 curl -v --http2-prior-knowledge http://localhost:8000/
 ```
 
-This is the mechanism proxies use for `h2c://` upstreams (e.g. Traefik and Envoy), so HTTP/2
-between a proxy and Uvicorn works without TLS.
+This is the mechanism proxies use for cleartext HTTP/2 upstreams, so HTTP/2 between a proxy
+and Uvicorn works without TLS. How you enable it is proxy-specific: Traefik and Caddy use
+`h2c://` upstream URLs, while Envoy configures HTTP/2 on the cluster.
+
+!!! warning "h2c is cleartext"
+    Prior-knowledge h2c provides no transport encryption or peer authentication. Limit it to
+    trusted private networks (e.g. the proxy-to-Uvicorn hop); use HTTP/2 over TLS for any
+    untrusted hop.
 
 !!! warning
     The HTTP/1.1 `Upgrade: h2c` mechanism is **not** supported: an upgrade request is served
@@ -185,19 +192,19 @@ proxies support HTTP/2 for client connections, support for HTTP/2 to backend ser
 connection. Some proxies support HTTP/2 upstream but open a new connection per request, which
 means they don't truly multiplex.
 
-Here's the current state of proxy support:
+Here's the state of proxy support at the time of writing:
 
-| Proxy | HTTP/2 Upstream | Multiplexing | Documentation |
-|-------|-----------------|--------------|---------------|
-| **Envoy** | Yes | Yes | [Connection Pooling Docs](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/connection_pooling) |
-| **Caddy** | Yes | Yes | [reverse_proxy Docs](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy) |
-| **HAProxy** | Yes | Yes | [HTTP/2 Docs](https://www.haproxy.com/documentation/hapee/latest/load-balancing/protocols/http-2/) |
-| **Traefik** | Yes | Yes | [ServersTransport Docs](https://doc.traefik.io/traefik/routing/services/) |
-| **Apache** | Partial | No | [mod_proxy_http2 Docs](https://httpd.apache.org/docs/trunk/mod/mod_proxy_http2.html) |
-| **Nginx** | Limited | No | [Trac Ticket #923](https://trac.nginx.org/nginx/ticket/923) |
+| Proxy | HTTP/2 Upstream | Multiplexing | Enabled by | Documentation |
+|-------|-----------------|--------------|------------|---------------|
+| **Envoy** | Yes | Yes | `http2_protocol_options` on the cluster | [Connection Pooling Docs](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/connection_pooling) |
+| **Caddy** | Yes | Yes | `h2c://` upstream, or `versions` in the transport | [reverse_proxy Docs](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy) |
+| **HAProxy** | Yes | Yes | `proto h2` on the server line | [HTTP/2 Docs](https://www.haproxy.com/documentation/hapee/latest/load-balancing/protocols/http-2/) |
+| **Traefik** | Yes | Yes | `h2c://` service URL | [ServersTransport Docs](https://doc.traefik.io/traefik/routing/services/) |
+| **Apache** | Partial | No | `h2://` / `h2c://` in `ProxyPass` | [mod_proxy_http2 Docs](https://httpd.apache.org/docs/current/mod/mod_proxy_http2.html) |
+| **Nginx** | Yes (1.29.4+) | No | `proxy_http_version 2;` | [ngx_http_proxy_module Docs](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_http_version) |
 
-Proxies that speak HTTP/2 upstream use prior-knowledge h2c (`h2c://` URLs), which Uvicorn
-supports - no TLS needed between the proxy and Uvicorn.
+Uvicorn supports both upstream flavors: cleartext prior-knowledge h2c, and HTTP/2 over TLS
+via ALPN when the proxy-to-Uvicorn hop uses TLS.
 
 ### Performance Considerations
 
