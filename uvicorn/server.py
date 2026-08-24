@@ -15,7 +15,7 @@ import time
 from collections.abc import Generator, Sequence
 from email.utils import formatdate
 from types import FrameType
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, TypeAlias, cast
 
 from uvicorn._ansi import style
 from uvicorn._compat import asyncio_run
@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from uvicorn.protocols.http.h11_impl import H11Protocol
     from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
     from uvicorn.protocols.http.zttp_h2_impl import ZttpH2Protocol
+    from uvicorn.protocols.http.zttp_h3_impl import QuicConnectionState, ZttpH3Protocol
     from uvicorn.protocols.http.zttp_impl import ZttpProtocol
     from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
     from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
@@ -37,10 +38,13 @@ if TYPE_CHECKING:
         | ZttpProtocol
         | ZttpH2Protocol
         | AutoZttpProtocol
+        | ZttpH3Protocol
         | WSProtocol
         | WebSocketProtocol
         | WebSocketsSansIOProtocol
     )
+
+DatagramAddress: TypeAlias = tuple[str, int] | tuple[str, int, int, int]
 
 HANDLED_SIGNALS = (
     signal.SIGINT,  # Unix signal 2. Sent by Ctrl+C.
@@ -60,6 +64,7 @@ class ServerState:
     def __init__(self) -> None:
         self.total_requests = 0
         self.connections: set[Protocols] = set()
+        self.h3_connections: set[QuicConnectionState] = set()
         self.tasks: set[asyncio.Task[None]] = set()
         self.default_headers: list[tuple[bytes, bytes]] = []
 
@@ -73,6 +78,7 @@ class Server:
         self.should_exit = False
         self.force_exit = False
         self.last_notified = 0.0
+        self.h3_transports: list[asyncio.DatagramTransport] = []
 
         self._captured_signals: list[int] = []
 
@@ -81,6 +87,10 @@ class Server:
         if self.config.limit_max_requests is None:
             return None
         return self.config.limit_max_requests + random.randint(0, self.config.limit_max_requests_jitter)
+
+    @property
+    def h3_transport(self) -> asyncio.DatagramTransport | None:  # pragma: no-zttp-h3
+        return self.h3_transports[0] if self.h3_transports else None
 
     def run(self, sockets: list[socket.socket] | None = None) -> None:
         return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
@@ -195,6 +205,13 @@ class Server:
             listeners = server.sockets
             self.servers = [server]
 
+        if config.h3_protocol_class is not None:  # pragma: no-zttp-h3
+            if sockets is not None or config.fd is not None or config.uds is not None:
+                logger.warning("HTTP/3 is not supported with pre-bound sockets, file descriptors, or Unix sockets.")
+            else:
+                for listener in listeners:
+                    await self._serve_http3(loop, cast(DatagramAddress, listener.getsockname()))
+
         if sockets is None:
             self._log_started_message(listeners)
         else:
@@ -203,6 +220,35 @@ class Server:
             pass  # pragma: full coverage
 
         self.started = True
+
+    async def _serve_http3(  # pragma: no-zttp-h3
+        self, loop: asyncio.AbstractEventLoop, local_addr: DatagramAddress
+    ) -> None:
+        config = self.config
+
+        def create_h3_protocol() -> asyncio.DatagramProtocol:
+            assert config.h3_protocol_class is not None
+            return config.h3_protocol_class(  # type: ignore[call-arg]
+                config=config,
+                server_state=self.server_state,
+                app_state=self.lifespan.state,
+            )
+
+        family = socket.AF_INET6 if len(local_addr) == 4 else socket.AF_INET
+        udp_socket = socket.socket(family, socket.SOCK_DGRAM)
+        transport: asyncio.DatagramTransport | None = None
+        try:
+            udp_socket.bind(local_addr)
+            transport, _protocol = await loop.create_datagram_endpoint(create_h3_protocol, sock=udp_socket)
+        except OSError as exc:  # pragma: no cover - mirrors the TCP bind-failure path above
+            logger.error(exc)
+            await self.lifespan.shutdown()
+            sys.exit(STARTUP_FAILURE)
+        finally:
+            if transport is None:
+                udp_socket.close()
+        self.h3_transports.append(transport)
+        logger.info("HTTP/3 (QUIC) available on udp://%s:%d", local_addr[0], local_addr[1])
 
     def _log_started_message(self, listeners: Sequence[socket.SocketType]) -> None:
         config = self.config

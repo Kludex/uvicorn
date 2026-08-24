@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
-from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict
+from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, cast
 
 import httpx2
 import pytest
@@ -47,6 +47,7 @@ if TYPE_CHECKING:
 
     HTTPProtocol: TypeAlias = "type[H11Protocol | HttpToolsProtocol]"
     WSProtocol: TypeAlias = "type[_WSProtocol | WebSocketsSansIOProtocol]"
+    WebSocketProtocolInstance: TypeAlias = "_WSProtocol | WebSocketsSansIOProtocol"
 
 pytestmark = pytest.mark.anyio
 
@@ -1231,7 +1232,7 @@ async def test_frame_after_close_handshake_is_ignored(
     config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
     async with run_server(config) as server:
         async with connect(f"ws://127.0.0.1:{unused_tcp_port}"):
-            protocol = next(iter(server.server_state.connections))
+            protocol = cast("WebSocketProtocolInstance", next(iter(server.server_state.connections)))
         masked_pong = b"\x8a\x80\x00\x00\x00\x00"
         protocol.data_received(masked_pong)
         assert protocol.transport.is_closing()

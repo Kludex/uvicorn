@@ -12,7 +12,7 @@ import sys
 from collections.abc import Awaitable, Callable
 from configparser import RawConfigParser
 from pathlib import Path
-from typing import IO, Any, Literal
+from typing import IO, TYPE_CHECKING, Any, Literal
 
 from uvicorn._ansi import style
 from uvicorn._compat import iscoroutinefunction
@@ -23,6 +23,9 @@ from uvicorn.middleware.asgi2 import ASGI2Middleware
 from uvicorn.middleware.message_logger import MessageLoggerMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from uvicorn.middleware.wsgi import WSGIMiddleware
+
+if TYPE_CHECKING:
+    import zttp
 
 
 class UvicornDeprecationWarning(UserWarning):
@@ -57,6 +60,7 @@ HTTP_PROTOCOLS: dict[str, str] = {
     "zttp1": "uvicorn.protocols.http.zttp_impl:ZttpProtocol",
     "zttp2": "uvicorn.protocols.http.zttp_h2_impl:ZttpH2Protocol",
 }
+HTTP3_PROTOCOL = "uvicorn.protocols.http.zttp_h3_impl:ZttpH3Protocol"
 WS_PROTOCOLS: dict[str, str | None] = {
     "auto": "uvicorn.protocols.websockets.auto:AutoWebSocketsProtocol",
     "none": None,
@@ -138,6 +142,42 @@ def create_ssl_context(
     if alpn_protocols:  # pragma: no-zttp-h2
         ctx.set_alpn_protocols(alpn_protocols)
     return ctx
+
+
+def _load_h3_credentials(
+    certfile: str | os.PathLike[str],
+    keyfile: str | os.PathLike[str] | None,
+    password: str | None,
+) -> zttp.TlsCredentials:  # pragma: no-zttp-h3
+    """Convert the PEM certificate/key into the DER-plus-raw-scalar pair zttp wants.
+
+    zttp's from-scratch QUIC/TLS stack signs the handshake with a raw SECP256R1
+    (P-256) scalar and presents the certificate as DER, so RSA and non-P-256 EC
+    keys are not supported yet.
+    """
+    try:
+        import zttp
+        from cryptography import x509
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.hazmat.primitives.serialization import Encoding, load_pem_private_key
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError(
+            "HTTP/3 support requires the 'zttp' and 'cryptography' packages. "
+            "Install them with `pip install 'uvicorn[http3]'`."
+        ) from exc
+
+    certificates = x509.load_pem_x509_certificates(Path(certfile).read_bytes())
+    key = load_pem_private_key(Path(keyfile or certfile).read_bytes(), password.encode() if password else None)
+    if not isinstance(key, ec.EllipticCurvePrivateKey) or not isinstance(key.curve, ec.SECP256R1):
+        raise RuntimeError(
+            "HTTP/3 currently only supports a P-256 (SECP256R1) EC private key; "
+            f"got {type(key).__name__}. Generate one with `openssl ecparam -name prime256v1 -genkey`."
+        )
+    scalar = key.private_numbers().private_value.to_bytes(32, "big")
+    return zttp.TlsCredentials(
+        certificates=tuple(certificate.public_bytes(Encoding.DER) for certificate in certificates),
+        private_key_scalar=scalar,
+    )
 
 
 def is_dir(path: Path) -> bool:
@@ -248,6 +288,7 @@ class Config:
         factory: bool = False,
         h11_max_incomplete_event_size: int | None = None,
         reset_contextvars: bool = False,
+        http3: bool | type[asyncio.DatagramProtocol] | str = False,
     ):
         self.app = app
         self.host = host
@@ -256,6 +297,7 @@ class Config:
         self.fd = fd
         self.loop = loop
         self.http = http
+        self.http3 = http3
         self.ws = ws
         self.ws_max_size = ws_max_size
         self.ws_max_queue = ws_max_queue
@@ -491,6 +533,32 @@ class Config:
             if b"server" not in dict(encoded_headers) and self.server_header
             else encoded_headers
         )
+
+        self.h3_protocol_class: type[asyncio.DatagramProtocol] | None
+        if self.http3 is True:
+            self.h3_protocol_class = import_from_string(HTTP3_PROTOCOL)  # pragma: no-zttp-h3
+        elif isinstance(self.http3, str):
+            self.h3_protocol_class = import_from_string(self.http3)  # pragma: no-zttp-h3
+        elif self.http3 is False:
+            self.h3_protocol_class = None
+        else:
+            self.h3_protocol_class = self.http3  # pragma: no-zttp-h3
+
+        # HTTP/3 rides QUIC, which mandates TLS 1.3. zttp wants a DER certificate
+        # and the raw private scalar, not the PEM files uvicorn is configured with,
+        # so convert them here. Without a certificate zttp falls back to an
+        # ephemeral identity (fine for local testing, not for real clients).
+        self.h3_credentials = None
+        if self.h3_protocol_class is not None:  # pragma: no-zttp-h3
+            if self.ssl_context_factory is not None:
+                raise RuntimeError(
+                    "HTTP/3 cannot use `ssl_context_factory`; pass PEM credentials without "
+                    "`ssl_context_factory` or disable HTTP/3."
+                )
+            if self.ssl_certfile is not None:
+                self.h3_credentials = _load_h3_credentials(
+                    self.ssl_certfile, self.ssl_keyfile, self.ssl_keyfile_password
+                )
 
         if isinstance(self.ws, str):
             ws_protocol_class = import_from_string(WS_PROTOCOLS.get(self.ws, self.ws))

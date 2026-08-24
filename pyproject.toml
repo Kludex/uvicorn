@@ -46,11 +46,15 @@ standard = [
     "watchfiles>=0.20",
     "websockets>=13.0",
 ]
+http3 = [
+    "cryptography>=39.0",
+    "zttp>=0.0.26",
+]
 
 [dependency-groups]
 dev = [
-    # We add uvicorn[standard] so `uv sync` considers the extras.
-    "uvicorn[standard]",
+    # We add uvicorn[standard,http3] so `uv sync` considers the extras.
+    "uvicorn[http3,standard]",
     "ruff>=0.15.15",
     "pytest==9.0.3",
     "pytest-mock==3.15.1",
@@ -60,7 +64,6 @@ dev = [
     "types-click==7.1.8",
     "types-pyyaml>=6.0.12.20260518",
     "trustme==1.2.1",
-    "cryptography>=44.0.3",
     "coverage>=7.14.1",
     "coverage-conditional-plugin==0.9.0",
     "coverage-enable-subprocess==1.0",
@@ -70,7 +73,6 @@ dev = [
     # Explicit optionals,
     "a2wsgi==1.10.10",
     "wsproto==1.3.2",
-    "zttp==0.0.24; sys_platform != 'win32' or python_version >= '3.12'",
 ]
 docs = [
     "zensical==0.0.53",
@@ -84,7 +86,7 @@ exclude-newer = "7 days"
 
 [tool.uv.exclude-newer-package]
 httptools = "2026-05-26"
-zttp = "2026-08-14"
+zttp = "2026-08-25"
 
 [project.scripts]
 uvicorn = "uvicorn.main:main"
@@ -128,6 +130,7 @@ filterwarnings = [
     "ignore: 'cgi' is deprecated and slated for removal in Python 3.13:DeprecationWarning",
     # httptools in Python 3.14t needs the `PYTHON_GIL=0` environment variable, or raises a RuntimeWarning.
     "ignore: The global interpreter lock (GIL)*:RuntimeWarning",
+    "ignore:Uvicorn's HTTP/3 support is experimental.*:UserWarning",
 ]
 
 [tool.coverage.run]
@@ -170,9 +173,14 @@ exclude_lines = [
     "uvicorn/protocols/http/auto_zttp_impl.py",
     "uvicorn/protocols/http/zttp_h2_impl.py",
 ]
+"not is_installed('zttp') or package_version('zttp') < (0, 0, 26)" = [
+    "tests/protocols/test_http3.py",
+    "uvicorn/protocols/http/zttp_h3_impl.py",
+]
 
 [tool.coverage.coverage_conditional_plugin.rules]
 no-zttp-h2 = "not is_installed('zttp') or package_version('zttp') < (0, 0, 13)"
+no-zttp-h3 = "not is_installed('zttp') or package_version('zttp') < (0, 0, 26)"
 py-win32 = "sys_platform == 'win32'"
 py-not-win32 = "sys_platform != 'win32'"
 py-linux = "sys_platform == 'linux'"
