@@ -67,6 +67,17 @@ def test_cli_headers() -> None:
     ]
 
 
+def test_cli_rejects_negative_limit_max_requests_jitter() -> None:
+    runner = CliRunner()
+
+    with mock.patch.object(main, "run") as mock_run:
+        result = runner.invoke(cli, ["tests.test_cli:App", "--limit-max-requests-jitter", "-1"])
+
+    assert result.exit_code == 2
+    assert "Invalid value for '--limit-max-requests-jitter'" in result.output
+    mock_run.assert_not_called()
+
+
 def test_cli_call_server_run() -> None:
     runner = CliRunner()
 
