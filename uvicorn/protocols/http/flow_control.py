@@ -1,8 +1,26 @@
+from __future__ import annotations
+
 import asyncio
+from collections.abc import Iterable
 
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 
 CLOSE_HEADER = (b"connection", b"close")
+
+
+def request_wants_close(headers: Iterable[tuple[bytes, bytes]]) -> bool:
+    """Whether the request asked for the connection to be closed.
+
+    Connection carries a comma separated list of case insensitive tokens
+    (RFC 9110 7.6.1), so `Close` and `keep-alive, close` both ask for a close.
+    """
+    for name, value in headers:
+        if name.lower() != b"connection":
+            continue
+        if any(token.strip().lower() == b"close" for token in value.split(b",")):
+            return True
+    return False
+
 
 HIGH_WATER_LIMIT = 65536
 

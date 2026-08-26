@@ -1082,6 +1082,36 @@ async def test_return_close_header(http_protocol_cls: type[HTTPProtocol]):
     assert b"connection: close" in protocol.transport.buffer.lower()
 
 
+@pytest.mark.parametrize(
+    "connection_value",
+    [
+        pytest.param(b"Close", id="mixed-case"),
+        pytest.param(b"CLOSE", id="upper-case"),
+        pytest.param(b"keep-alive, close", id="token-list"),
+        pytest.param(b"keep-alive, Close", id="token-list-mixed-case"),
+        pytest.param(b"close ", id="trailing-space"),
+    ],
+)
+async def test_return_close_header_is_case_and_token_insensitive(
+    http_protocol_cls: type[HTTPProtocol], connection_value: bytes
+):
+    """Connection is a comma separated list of case insensitive tokens.
+
+    RFC 9110 7.6.1 for the tokens, RFC 9112 9.6 for the close semantics.
+    """
+    request = b"\r\n".join([b"GET / HTTP/1.1", b"Host: example.org", b"Connection: " + connection_value, b"", b""])
+    app = Response("Hello, world", media_type="text/plain")
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(request)
+    await protocol.loop.run_one()
+
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    # NOTE: `.lower()` because H11 does not let Uvicorn lowercase these.
+    assert b"connection: close" in protocol.transport.buffer.lower()
+    assert protocol.transport.is_closing()
+
+
 async def test_close_connection_with_multiple_requests(http_protocol_cls: type[HTTPProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
