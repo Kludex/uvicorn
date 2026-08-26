@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import logging
 import os
 
@@ -24,16 +22,6 @@ async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
 def factory_reads_worker_id() -> ASGIApplication:
     factory_env.append(os.environ.get("UVICORN_WORKER_ID"))
     return app
-
-
-async def _serve_until_started(server: Server) -> None:
-    task = asyncio.create_task(server.serve())
-    while not server.started:
-        await asyncio.sleep(0.05)
-    await server.shutdown()
-    task.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await task
 
 
 async def _record_lifespan_state(
@@ -75,8 +63,8 @@ async def test_server_injects_worker_id_into_lifespan_state(
         await _record_lifespan_state(scope, receive, send, seen)
 
     config = Config(app=lifespan_app, lifespan="on", port=unused_tcp_port)
-    server = Server(config=config, worker_id=5)
-    await _serve_until_started(server)
+    async with run_server(config, worker_id=5):
+        pass
     assert seen["worker_id"] == 5
     assert seen["env"] == "5"
 
@@ -91,8 +79,8 @@ async def test_server_does_not_adopt_leftover_worker_id_env(
         await _record_lifespan_state(scope, receive, send, seen)
 
     config = Config(app=lifespan_app, lifespan="on", port=unused_tcp_port)
-    server = Server(config=config)
-    await _serve_until_started(server)
+    async with run_server(config):
+        pass
     assert seen["worker_id"] == 1
     assert seen["env"] == "1"
 
@@ -116,8 +104,8 @@ async def test_explicit_worker_id_from_env_is_injected(unused_tcp_port: int, mon
     config = Config(app=lifespan_app, lifespan="on", port=unused_tcp_port)
     worker_id = worker_id_from_env()
     assert worker_id is not None
-    server = Server(config=config, worker_id=worker_id)
-    await _serve_until_started(server)
+    async with run_server(config, worker_id=worker_id):
+        pass
     assert seen["worker_id"] == 9
 
 
@@ -130,8 +118,8 @@ async def test_worker_id_env_is_set_before_app_load(unused_tcp_port: int, monkey
         lifespan="off",
         port=unused_tcp_port,
     )
-    server = Server(config=config, worker_id=3)
-    await _serve_until_started(server)
+    async with run_server(config, worker_id=3):
+        pass
     assert factory_env == ["3"]
 
 
@@ -141,8 +129,8 @@ async def test_server_logs_worker_id(
     monkeypatch.delenv("UVICORN_WORKER_ID", raising=False)
     caplog.set_level(logging.INFO, logger="uvicorn.error")
     config = Config(app=app, lifespan="off", port=unused_tcp_port)
-    server = Server(config=config, worker_id=2)
-    await _serve_until_started(server)
+    async with run_server(config, worker_id=2):
+        pass
     assert "Started server process [" in caplog.text
     assert "(worker 2)" in caplog.text
 
@@ -157,5 +145,5 @@ async def test_server_startup_override_without_worker_id_kwarg(unused_tcp_port: 
 
     config = Config(app=app, lifespan="off", port=unused_tcp_port)
     server = CustomServer(config=config, worker_id=4)
-    await _serve_until_started(server)
-    assert server.custom_startup is True
+    async with run_server(config, server=server):
+        assert server.custom_startup is True
