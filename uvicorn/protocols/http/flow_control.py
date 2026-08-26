@@ -13,6 +13,7 @@ def has_connection_close(headers: list[tuple[bytes, bytes]]) -> bool:
                     return True
     return False
 
+
 HIGH_WATER_LIMIT = 65536
 
 
