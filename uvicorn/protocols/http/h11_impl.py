@@ -24,7 +24,14 @@ from uvicorn._types import (
 from uvicorn.config import Config
 from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.protocols.http.flow_control import CLOSE_HEADER, HIGH_WATER_LIMIT, FlowControl, service_unavailable
-from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
+from uvicorn.protocols.utils import (
+    get_client_addr,
+    get_local_addr,
+    get_origin_form_path,
+    get_path_with_query_string,
+    get_remote_addr,
+    is_ssl,
+)
 from uvicorn.server import ServerState
 
 
@@ -199,6 +206,7 @@ class H11Protocol(asyncio.Protocol):
             elif isinstance(event, h11.Request):
                 self.headers = [(key.lower(), value) for key, value in event.headers]
                 raw_path, _, query_string = event.target.partition(b"?")
+                raw_path = get_origin_form_path(raw_path)
                 path = unquote(raw_path.decode("ascii"))
                 full_path = self.root_path + path
                 full_raw_path = self.root_path.encode("ascii") + raw_path

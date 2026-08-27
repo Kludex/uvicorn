@@ -254,7 +254,8 @@ class HttpToolsProtocol(asyncio.Protocol):
         if self.parser.should_upgrade() and self._should_upgrade():
             return
         parsed_url = httptools.parse_url(self.url)
-        raw_path = parsed_url.path
+        # An absolute-form target with an empty path parses to `None`, and means `/`.
+        raw_path = parsed_url.path or b"/"
         path = raw_path.decode("ascii")
         if "%" in path:
             path = urllib.parse.unquote(path)

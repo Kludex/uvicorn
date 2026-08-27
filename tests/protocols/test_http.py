@@ -110,6 +110,12 @@ HTTP10_GET_REQUEST = b"\r\n".join([b"GET / HTTP/1.0", b"Host: example.org", b"",
 
 GET_REQUEST_WITH_RAW_PATH = b"\r\n".join([b"GET /one%2Ftwo HTTP/1.1", b"Host: example.org", b"", b""])
 
+ABSOLUTE_FORM_REQUEST = b"\r\n".join([b"GET http://example.org/one/two?a=1 HTTP/1.1", b"Host: example.org", b"", b""])
+
+ABSOLUTE_FORM_EMPTY_PATH_REQUEST = b"\r\n".join(
+    [b"GET http://example.org?a=1 HTTP/1.1", b"Host: example.org", b"", b""]
+)
+
 UPGRADE_REQUEST = b"\r\n".join(
     [
         b"GET / HTTP/1.1",
@@ -762,6 +768,44 @@ async def test_raw_path(http_protocol_cls: type[HTTPProtocol]):
     protocol = get_connected_protocol(app, http_protocol_cls, root_path="/app")
     protocol.data_received(GET_REQUEST_WITH_RAW_PATH)
     await protocol.loop.run_one()
+    assert b"Done" in protocol.transport.buffer
+
+
+async def test_absolute_form_request_target(http_protocol_cls: type[HTTPProtocol]):
+    """RFC 9112, section 3.2.2: a server must accept the absolute-form request target."""
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert scope["type"] == "http"
+        assert scope["path"] == "/one/two"
+        assert scope["raw_path"] == b"/one/two"
+        assert scope["query_string"] == b"a=1"
+
+        response = Response("Done", media_type="text/plain")
+        await response(scope, receive, send)
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(ABSOLUTE_FORM_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Done" in protocol.transport.buffer
+
+
+async def test_absolute_form_request_target_with_empty_path(http_protocol_cls: type[HTTPProtocol]):
+    """RFC 9112, section 3.2.1: an absolute-form target with an empty path means `/`."""
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert scope["type"] == "http"
+        assert scope["path"] == "/"
+        assert scope["raw_path"] == b"/"
+        assert scope["query_string"] == b"a=1"
+
+        response = Response("Done", media_type="text/plain")
+        await response(scope, receive, send)
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(ABSOLUTE_FORM_EMPTY_PATH_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
     assert b"Done" in protocol.transport.buffer
 
 
