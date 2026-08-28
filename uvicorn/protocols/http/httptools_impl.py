@@ -42,6 +42,10 @@ def _get_status_line(status_code: int) -> bytes:
 STATUS_LINE = {status_code: _get_status_line(status_code) for status_code in range(100, 600)}
 
 
+def _has_close_token(value: bytes) -> bool:
+    return b"close" in (token.strip().lower() for token in value.split(b","))
+
+
 class HttpToolsProtocol(asyncio.Protocol):
     def __init__(
         self,
@@ -478,7 +482,13 @@ class RequestResponseCycle:
             status_code = message["status"]
             headers = self.default_headers + list(message.get("headers", []))
 
-            if CLOSE_HEADER in self.scope["headers"] and CLOSE_HEADER not in headers:
+            request_has_close = any(
+                name == b"connection" and _has_close_token(value) for name, value in self.scope["headers"]
+            )
+            response_has_close = any(
+                name.lower() == b"connection" and _has_close_token(value) for name, value in headers
+            )
+            if request_has_close and not response_has_close:
                 headers = headers + [CLOSE_HEADER]
 
             if self.access_log:
@@ -507,7 +517,7 @@ class RequestResponseCycle:
                 elif name == b"transfer-encoding" and value.lower() == b"chunked":
                     self.expected_content_length = 0
                     self.chunked_encoding = True
-                elif name == b"connection" and value.lower() == b"close":
+                elif name == b"connection" and _has_close_token(value):
                     self.keep_alive = False
                 content.extend([name, b": ", value, b"\r\n"])
 

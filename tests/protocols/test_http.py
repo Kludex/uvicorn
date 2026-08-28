@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, TypeAlias
 import pytest
 
 from tests.response import Response
+from tests.utils import run_server
 from uvicorn import Server
 from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGIReceiveEvent, ASGISendCallable, Scope
 from uvicorn.config import WS_PROTOCOLS, Config
@@ -1080,6 +1081,52 @@ async def test_return_close_header(http_protocol_cls: type[HTTPProtocol]):
     # NOTE: We need to use `.lower()` because H11 implementation doesn't allow Uvicorn
     # to lowercase them. See: https://github.com/python-hyper/h11/issues/156
     assert b"connection: close" in protocol.transport.buffer.lower()
+
+
+@pytest.mark.parametrize(
+    ("request_connection", "response_connection"),
+    [
+        pytest.param(b"Close", None, id="request-case-insensitive"),
+        pytest.param(b"keep-alive, close", None, id="request-multiple-tokens"),
+        pytest.param(b" keep-alive , CLOSE ", None, id="request-whitespace"),
+        pytest.param(b"close", "Close", id="response-deduplicated"),
+        pytest.param(b"keep-alive", "keep-alive, Close", id="response-multiple-tokens"),
+    ],
+)
+@skip_if_no_httptools
+async def test_httptools_connection_close_tokens(
+    request_connection: bytes, response_connection: str | None, unused_tcp_port: int
+) -> None:
+    response_headers = {} if response_connection is None else {"connection": response_connection}
+    app = Response("Hello, world", headers=response_headers, media_type="text/plain")
+    config = Config(
+        app=app,
+        host="127.0.0.1",
+        http="httptools",
+        port=unused_tcp_port,
+        timeout_keep_alive=30,
+    )
+
+    async with run_server(config):
+        reader, writer = await asyncio.open_connection("127.0.0.1", unused_tcp_port)
+        try:
+            request = b"GET / HTTP/1.1\r\nHost: example.org\r\nConnection: " + request_connection + b"\r\n\r\n"
+            writer.write(request)
+            await writer.drain()
+            response = await asyncio.wait_for(reader.read(), timeout=1)
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    header_block = response.split(b"\r\n\r\n", 1)[0]
+    connection_headers = [
+        header for header in header_block.split(b"\r\n")[1:] if header.lower().startswith(b"connection:")
+    ]
+    connection_tokens = [
+        token.strip().lower() for header in connection_headers for token in header.split(b":", 1)[1].split(b",")
+    ]
+    assert len(connection_headers) == 1
+    assert b"close" in connection_tokens
 
 
 async def test_close_connection_with_multiple_requests(http_protocol_cls: type[HTTPProtocol]):
