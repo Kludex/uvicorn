@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_remote_addr
+from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_origin_form_path, get_remote_addr
 
 
 class MockSocket:
@@ -90,3 +90,27 @@ def test_get_remote_addr():
 )
 def test_get_client_addr(scope: Any, expected_client: str):
     assert get_client_addr(scope) == expected_client
+
+
+@pytest.mark.parametrize(
+    "raw_path, expected",
+    [
+        # origin-form is already what the scope wants
+        (b"/", b"/"),
+        (b"/one/two", b"/one/two"),
+        (b"/one%2Ftwo", b"/one%2Ftwo"),
+        # absolute-form, which servers must accept (RFC 9112, section 3.2.2)
+        (b"http://example.org/one/two", b"/one/two"),
+        (b"https://example.org:8443/one/two", b"/one/two"),
+        (b"https://user:pass@example.org:8443/one/two", b"/one/two"),
+        (b"HTTP://EXAMPLE.ORG/One", b"/One"),
+        (b"http://example.org/", b"/"),
+        # an absolute-form target with an empty path means "/"
+        (b"http://example.org", b"/"),
+        # asterisk-form and authority-form are left alone
+        (b"*", b"*"),
+        (b"example.org:443", b"example.org:443"),
+    ],
+)
+def test_get_origin_form_path(raw_path: bytes, expected: bytes) -> None:
+    assert get_origin_form_path(raw_path) == expected

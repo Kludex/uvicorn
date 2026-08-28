@@ -22,7 +22,14 @@ from uvicorn._types import (
 from uvicorn.config import Config
 from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.protocols.http.flow_control import CLOSE_HEADER, HIGH_WATER_LIMIT, FlowControl, service_unavailable
-from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
+from uvicorn.protocols.utils import (
+    get_client_addr,
+    get_local_addr,
+    get_origin_form_path,
+    get_path_with_query_string,
+    get_remote_addr,
+    is_ssl,
+)
 from uvicorn.server import ServerState
 
 
@@ -147,11 +154,12 @@ class ZttpProtocol(asyncio.Protocol):
             if isinstance(event, zttp.Request):
                 assert isinstance(event.headers, zttp.HeaderBlock)
                 self.headers = event.headers.to_list(lowercase_names=True)
-                path = event.path.decode("ascii")
+                raw_path = get_origin_form_path(event.path)
+                path = raw_path.decode("ascii")
                 if "%" in path:
                     path = unquote(path)
                 full_path = self.root_path + path
-                full_raw_path = self.root_path.encode("ascii") + event.path
+                full_raw_path = self.root_path.encode("ascii") + raw_path
                 self.scope = {
                     "type": "http",
                     "asgi": {"version": self.asgi_version, "spec_version": "2.3"},

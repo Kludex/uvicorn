@@ -48,6 +48,29 @@ def is_ssl(transport: asyncio.Transport) -> bool:
     return bool(transport.get_extra_info("sslcontext"))
 
 
+def get_origin_form_path(raw_path: bytes) -> bytes:
+    """Reduce a request target to the origin-form path expected in the ASGI scope.
+
+    HTTP/1.1 servers are required to accept the absolute-form request target
+    (RFC 9112, section 3.2.2), e.g. ``GET http://example.org/foo HTTP/1.1``.
+    Only the path is meaningful to the application, so strip the scheme and
+    authority. An absolute-form target with an empty path means ``/``
+    (RFC 9112, section 3.2.1).
+
+    The origin-form (``/foo``), asterisk-form (``*``) and authority-form
+    (``example.org:443``, used by CONNECT) targets are returned unchanged.
+    """
+    if raw_path.startswith(b"/") or raw_path == b"*":
+        return raw_path
+
+    _, separator, rest = raw_path.partition(b"://")
+    if not separator:
+        return raw_path
+
+    _, slash, remainder = rest.partition(b"/")
+    return slash + remainder if slash else b"/"
+
+
 def get_client_addr(scope: WWWScope) -> str:
     client = scope.get("client")
     if not client:
