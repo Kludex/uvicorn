@@ -255,7 +255,7 @@ def test_concrete_http_class() -> None:
 
 
 def test_http2_requires_zttp_protocol() -> None:
-    with pytest.raises(ValueError, match="HTTP/2 requires `http='zttp'`."):
+    with pytest.raises(ValueError, match="HTTP/2 requires the `zttp` HTTP protocol"):
         Config(app=asgi_app, http="h11", http2=True)
 
 

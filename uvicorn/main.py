@@ -16,7 +16,7 @@ import click
 import uvicorn
 from uvicorn._types import ASGIApplication
 from uvicorn.config import (
-    HTTP_PROTOCOLS,
+    HTTP2_REQUIREMENTS,
     INTERFACES,
     LIFESPAN,
     LOG_LEVELS,
@@ -446,8 +446,8 @@ def main(
     reset_contextvars: bool,
     factory: bool,
 ) -> None:
-    if http2 and http in HTTP_PROTOCOLS and http != "zttp":
-        raise click.BadParameter("requires --http zttp", param_hint="--http2")
+    if http2 and http != "zttp":
+        raise click.BadParameter(HTTP2_REQUIREMENTS, param_hint="--http2")
 
     run(
         app,

@@ -170,7 +170,9 @@ def test_cli_http2_requires_zttp_protocol() -> None:
     result = runner.invoke(cli, ["tests.test_cli:App", "--http", "h11", "--http2"])
 
     assert result.exit_code == 2
-    assert "Invalid value for --http2: requires --http zttp" in result.output
+    assert "Invalid value for --http2: HTTP/2 requires the `zttp` HTTP protocol" in result.output
+    assert "pip install zttp" in result.output
+    assert "https://uvicorn.dev/concepts/http2/" in result.output
 
 
 @pytest.mark.parametrize("http_protocol", ["h11", "httptools"])

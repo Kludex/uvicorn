@@ -41,6 +41,11 @@ LifespanType = Literal["auto", "on", "off"]
 LoopFactoryType = Literal["none", "auto", "asyncio", "uvloop"]
 InterfaceType = Literal["auto", "asgi3", "asgi2", "wsgi"]
 
+HTTP2_REQUIREMENTS = (
+    "HTTP/2 requires the `zttp` HTTP protocol. Install it with `pip install zttp`, then select it with "
+    "`--http zttp` or `http='zttp'`. See https://uvicorn.dev/concepts/http2/ for more information."
+)
+
 LOG_LEVELS: dict[str, int] = {
     "critical": logging.CRITICAL,
     "error": logging.ERROR,
@@ -248,8 +253,8 @@ class Config:
         h11_max_incomplete_event_size: int | None = None,
         reset_contextvars: bool = False,
     ):
-        if http2 and isinstance(http, str) and http in HTTP_PROTOCOLS and http != "zttp":
-            raise ValueError("HTTP/2 requires `http='zttp'`.")
+        if http2 and http != "zttp":
+            raise ValueError(HTTP2_REQUIREMENTS)
 
         self.app = app
         self.host = host
