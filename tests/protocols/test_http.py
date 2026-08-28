@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any, TypeAlias
 import pytest
 
 from tests.response import Response
-from tests.utils import run_server
 from uvicorn import Server
 from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGIReceiveEvent, ASGISendCallable, Scope
 from uvicorn.config import WS_PROTOCOLS, Config
@@ -1094,30 +1093,15 @@ async def test_return_close_header(http_protocol_cls: type[HTTPProtocol]):
     ],
 )
 @skip_if_no_httptools
-async def test_httptools_connection_close_tokens(
-    request_connection: bytes, response_connection: str | None, unused_tcp_port: int
-) -> None:
+async def test_httptools_connection_close_tokens(request_connection: bytes, response_connection: str | None) -> None:
     response_headers = {} if response_connection is None else {"connection": response_connection}
     app = Response("Hello, world", headers=response_headers, media_type="text/plain")
-    config = Config(
-        app=app,
-        host="127.0.0.1",
-        http="httptools",
-        port=unused_tcp_port,
-        timeout_keep_alive=30,
-    )
+    protocol = get_connected_protocol(app, HttpToolsProtocol, access_log=False)
+    request = b"GET / HTTP/1.1\r\nHost: example.org\r\nConnection: " + request_connection + b"\r\n\r\n"
+    protocol.data_received(request)
+    await protocol.loop.run_one()
 
-    async with run_server(config):
-        reader, writer = await asyncio.open_connection("127.0.0.1", unused_tcp_port)
-        try:
-            request = b"GET / HTTP/1.1\r\nHost: example.org\r\nConnection: " + request_connection + b"\r\n\r\n"
-            writer.write(request)
-            await writer.drain()
-            response = await asyncio.wait_for(reader.read(), timeout=1)
-        finally:
-            writer.close()
-            await writer.wait_closed()
-
+    response = protocol.transport.buffer
     header_block = response.split(b"\r\n\r\n", 1)[0]
     connection_headers = [
         header for header in header_block.split(b"\r\n")[1:] if header.lower().startswith(b"connection:")
@@ -1125,6 +1109,7 @@ async def test_httptools_connection_close_tokens(
     connection_tokens = [
         token.strip().lower() for header in connection_headers for token in header.split(b":", 1)[1].split(b",")
     ]
+    assert protocol.transport.is_closing()
     assert len(connection_headers) == 1
     assert b"close" in connection_tokens
 

@@ -23,7 +23,7 @@ from uvicorn._types import (
 )
 from uvicorn.config import Config
 from uvicorn.logging import TRACE_LOG_LEVEL
-from uvicorn.protocols.http.flow_control import CLOSE_HEADER, HIGH_WATER_LIMIT, FlowControl, service_unavailable
+from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT, FlowControl, service_unavailable
 from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
 from uvicorn.server import ServerState
 
@@ -40,10 +40,6 @@ def _get_status_line(status_code: int) -> bytes:
 
 
 STATUS_LINE = {status_code: _get_status_line(status_code) for status_code in range(100, 600)}
-
-
-def _has_close_token(value: bytes) -> bool:
-    return b"close" in (token.strip().lower() for token in value.split(b","))
 
 
 class HttpToolsProtocol(asyncio.Protocol):
@@ -289,7 +285,7 @@ class HttpToolsProtocol(asyncio.Protocol):
             default_headers=self.server_state.default_headers,
             message_event=asyncio.Event(),
             expect_100_continue=self.expect_100_continue,
-            keep_alive=http_version != "1.0",
+            keep_alive=self.parser.should_keep_alive(),
             on_response=self.on_response_complete,
         )
         if existing_cycle is None or existing_cycle.response_complete:
@@ -482,15 +478,6 @@ class RequestResponseCycle:
             status_code = message["status"]
             headers = self.default_headers + list(message.get("headers", []))
 
-            request_has_close = any(
-                name == b"connection" and _has_close_token(value) for name, value in self.scope["headers"]
-            )
-            response_has_close = any(
-                name.lower() == b"connection" and _has_close_token(value) for name, value in headers
-            )
-            if request_has_close and not response_has_close:
-                headers = headers + [CLOSE_HEADER]
-
             if self.access_log:
                 self.access_logger.info(
                     '%s - "%s %s HTTP/%s" %d',
@@ -503,6 +490,7 @@ class RequestResponseCycle:
 
             # Write response status line and headers
             content = [STATUS_LINE[status_code]]
+            has_connection_close = False
 
             for name, value in headers:
                 if HEADER_RE.search(name):
@@ -517,9 +505,15 @@ class RequestResponseCycle:
                 elif name == b"transfer-encoding" and value.lower() == b"chunked":
                     self.expected_content_length = 0
                     self.chunked_encoding = True
-                elif name == b"connection" and _has_close_token(value):
-                    self.keep_alive = False
+                elif name == b"connection":
+                    connection = [token.lower().strip() for token in value.split(b",")]
+                    if b"close" in connection:
+                        self.keep_alive = False
+                        has_connection_close = True
                 content.extend([name, b": ", value, b"\r\n"])
+
+            if not self.keep_alive and not has_connection_close:
+                content.append(b"connection: close\r\n")
 
             if self.chunked_encoding is None and self.scope["method"] != "HEAD" and status_code not in (204, 304):
                 # Neither content-length nor transfer-encoding specified
