@@ -30,7 +30,7 @@ jobs:
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           python-version: ${{ matrix.python-version }}
-          enable-cache: ${{ matrix.os != 'windows-latest' }}
+          enable-cache: true
 
       - name: Install dependencies
         run: scripts/install
