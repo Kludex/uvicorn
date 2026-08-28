@@ -285,7 +285,7 @@ class HttpToolsProtocol(asyncio.Protocol):
             default_headers=self.server_state.default_headers,
             message_event=asyncio.Event(),
             expect_100_continue=self.expect_100_continue,
-            keep_alive=self.parser.should_keep_alive(),
+            keep_alive=http_version != "1.0" and self.parser.should_keep_alive(),
             on_response=self.on_response_complete,
         )
         if existing_cycle is None or existing_cycle.response_complete:

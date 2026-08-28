@@ -1083,21 +1083,26 @@ async def test_return_close_header(http_protocol_cls: type[HTTPProtocol]):
 
 
 @pytest.mark.parametrize(
-    ("request_connection", "response_connection"),
+    ("http_version", "request_connection", "response_connection"),
     [
-        pytest.param(b"Close", None, id="request-case-insensitive"),
-        pytest.param(b"keep-alive, close", None, id="request-multiple-tokens"),
-        pytest.param(b" keep-alive , CLOSE ", None, id="request-whitespace"),
-        pytest.param(b"close", "Close", id="response-deduplicated"),
-        pytest.param(b"keep-alive", "keep-alive, Close", id="response-multiple-tokens"),
+        pytest.param(b"1.1", b"Close", None, id="request-case-insensitive"),
+        pytest.param(b"1.1", b"keep-alive, close", None, id="request-multiple-tokens"),
+        pytest.param(b"1.1", b" keep-alive , CLOSE ", None, id="request-whitespace"),
+        pytest.param(b"1.1", b"close", "Close", id="response-deduplicated"),
+        pytest.param(b"1.1", b"keep-alive", "keep-alive, Close", id="response-multiple-tokens"),
+        pytest.param(b"1.0", b"keep-alive", None, id="http10-keep-alive-disabled"),
     ],
 )
 @skip_if_no_httptools
-async def test_httptools_connection_close_tokens(request_connection: bytes, response_connection: str | None) -> None:
+async def test_httptools_connection_close_tokens(
+    http_version: bytes, request_connection: bytes, response_connection: str | None
+) -> None:
     response_headers = {} if response_connection is None else {"connection": response_connection}
     app = Response("Hello, world", headers=response_headers, media_type="text/plain")
     protocol = get_connected_protocol(app, HttpToolsProtocol, access_log=False)
-    request = b"GET / HTTP/1.1\r\nHost: example.org\r\nConnection: " + request_connection + b"\r\n\r\n"
+    request = (
+        b"GET / HTTP/" + http_version + b"\r\nHost: example.org\r\nConnection: " + request_connection + b"\r\n\r\n"
+    )
     protocol.data_received(request)
     await protocol.loop.run_one()
 
