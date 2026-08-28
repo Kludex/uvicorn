@@ -254,6 +254,11 @@ def test_concrete_http_class() -> None:
     assert config.http_protocol_class is H11Protocol
 
 
+def test_http2_requires_zttp_protocol() -> None:
+    with pytest.raises(ValueError, match="HTTP/2 requires `http='zttp'`."):
+        Config(app=asgi_app, http="h11", http2=True)
+
+
 def test_socket_bind() -> None:
     config = Config(app=asgi_app)
     config.load()

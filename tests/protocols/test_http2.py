@@ -161,7 +161,7 @@ def get_connected_protocol(
 ) -> MockProtocol:
     loop = MockLoop()
     transport = MockTransport(sslcontext=True)
-    config = Config(app=app, http="zttp2", **kwargs)
+    config = Config(app=app, http="zttp", http2=True, **kwargs)
     lifespan = lifespan or LifespanOff(config)
     server_state = ServerState()
     protocol = ZttpH2Protocol(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)  # type: ignore[arg-type]
@@ -885,7 +885,7 @@ def get_negotiator(
 ) -> tuple[AutoZttpProtocol, MockTransport, MockLoop]:
     loop = MockLoop()
     transport = MockTransport(sslcontext=sslcontext, alpn_protocol=alpn_protocol)
-    config = Config(app=app, http="zttp", **kwargs)
+    config = Config(app=app, http="zttp", http2=True, **kwargs)
     lifespan = LifespanOff(config)
     server_state = ServerState()
     negotiator = AutoZttpProtocol(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)  # type: ignore[arg-type]
@@ -990,7 +990,7 @@ async def test_negotiator_shutdown_closes_connection():
 
 async def test_server_installs_auto_zttp_protocol(unused_tcp_port: int):
     app = Response("Hello, world", media_type="text/plain")
-    config = Config(app=app, http="zttp", loop="asyncio", limit_max_requests=1, port=unused_tcp_port)
+    config = Config(app=app, http="zttp", http2=True, loop="asyncio", limit_max_requests=1, port=unused_tcp_port)
     async with run_server(config):
         async with httpx2.AsyncClient() as client:
             response = await client.get(f"http://127.0.0.1:{unused_tcp_port}")
@@ -998,37 +998,37 @@ async def test_server_installs_auto_zttp_protocol(unused_tcp_port: int):
     assert response.text == "Hello, world"
 
 
-async def test_config_http_zttp_loads_negotiator():
+async def test_config_http_zttp_loads_http1_protocol():
     config = Config(app=Response("ok"), http="zttp")
-    config.load()
-    assert config.http_protocol_class is AutoZttpProtocol
-
-
-async def test_config_http_zttp1_loads_http1_protocol():
-    config = Config(app=Response("ok"), http="zttp1")
     config.load()
     assert config.http_protocol_class is ZttpProtocol
 
 
-async def test_config_http_zttp2_loads_http2_protocol():
-    config = Config(app=Response("ok"), http="zttp2")
+async def test_config_http2_loads_negotiator():
+    config = Config(app=Response("ok"), http="zttp", http2=True)
     config.load()
-    assert config.http_protocol_class is ZttpH2Protocol
+    assert config.http_protocol_class is AutoZttpProtocol
 
 
 class CustomH2Protocol(asyncio.Protocol):
     alpn_protocols: ClassVar[list[str]] = ["h2", "http/1.1"]
 
 
-@pytest.mark.parametrize("http", ["zttp", CustomH2Protocol], ids=["zttp", "custom"])
+@pytest.mark.parametrize(
+    ("http", "http2"),
+    [("zttp", True), (CustomH2Protocol, False)],
+    ids=["zttp", "custom"],
+)
 async def test_config_http_protocol_offers_alpn_protocols(
     http: str | type[asyncio.Protocol],
+    http2: bool,
     tls_ca_certificate_pem_path: str,
     tls_ca_certificate_private_key_path: str,
 ):
     config = Config(
         app=Response("ok"),
         http=http,
+        http2=http2,
         ssl_certfile=tls_ca_certificate_pem_path,
         ssl_keyfile=tls_ca_certificate_private_key_path,
     )

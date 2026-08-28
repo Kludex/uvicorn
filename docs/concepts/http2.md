@@ -20,34 +20,23 @@ HTTP/2 support requires the `zttp` package:
 pip install zttp
 ```
 
-To enable it, select the `zttp` HTTP implementation:
+To enable it, select the `zttp` HTTP implementation and pass `--http2`:
 
 === "Command Line"
     ```bash
-    uvicorn main:app --http zttp
+    uvicorn main:app --http zttp --http2
     ```
 
 === "Programmatic"
     ```python
     import uvicorn
 
-    uvicorn.run("main:app", http="zttp")
+    uvicorn.run("main:app", http="zttp", http2=True)
     ```
 
-The `zttp` implementation serves both HTTP versions: each connection is dispatched to
-HTTP/1.1 or HTTP/2 depending on what the client speaks. Two more variants pin a single
-version:
-
-| `--http` | Serves |
-| --- | --- |
-| `zttp` | HTTP/1.1 and HTTP/2 |
-| `zttp1` | HTTP/1.1 only |
-| `zttp2` | HTTP/2 only |
-
-`zttp2` is useful when every client is known to speak HTTP/2, e.g. gRPC backends or
-services behind a proxy configured for `h2c://` upstreams. Over TLS it advertises only
-`h2` via ALPN, so clients that cannot speak HTTP/2 get no negotiated protocol and the
-connection fails instead of falling back to HTTP/1.1.
+The `--http2` option makes `zttp` serve both HTTP versions. Each connection is dispatched
+to HTTP/1.1 or HTTP/2 depending on what the client speaks. Without this option, `zttp`
+serves HTTP/1.1 only. This default keeps experimental HTTP/2 support opt-in.
 
 ## Connection Methods
 
@@ -97,10 +86,10 @@ async def app(scope, receive, send):
     await send({"type": "http.response.body", "body": b"ok"})
 ```
 
-Run Uvicorn with `--http zttp` and the SSL certificate files:
+Run Uvicorn with `--http zttp --http2` and the SSL certificate files:
 
 ```bash
-uvicorn main:app --http zttp --ssl-keyfile key.pem --ssl-certfile cert.pem
+uvicorn main:app --http zttp --http2 --ssl-keyfile key.pem --ssl-certfile cert.pem
 ```
 
 You can test the connection using curl (`-k` skips certificate verification for self-signed certs):
@@ -136,7 +125,7 @@ sequenceDiagram
 Using the same `main.py`:
 
 ```bash
-uvicorn main:app --http zttp
+uvicorn main:app --http zttp --http2
 ```
 
 ```bash
@@ -223,5 +212,5 @@ recommended default for most deployments.
 The implementation is young, and some protocol features are not complete yet:
 
 - HTTP/2 server push and `Expect: 100-continue` are not supported.
-- WebSockets over HTTP/2 (RFC 8441 extended `CONNECT`) are not supported. With `--http zttp`,
+- WebSockets over HTTP/2 (RFC 8441 extended `CONNECT`) are not supported. With `--http zttp --http2`,
   WebSocket connections still work - they are served over HTTP/1.1.
