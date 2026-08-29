@@ -451,6 +451,30 @@ async def test_keepalive_timeout_with_pipelined_requests(http_protocol_cls: type
     assert protocol.timeout_keep_alive_task is not None
 
 
+async def test_keepalive_timeout_with_pipelined_websocket_upgrade(
+    http_protocol_cls: type[HTTPProtocol], ws_protocol_cls: type[WSProtocol]
+):
+    if http_protocol_cls.__name__ == "HttpToolsProtocol":
+        # httptools upgrades only from within data_received(), which always
+        # unsets the timer first, and it arms the timer only when its pipeline
+        # is empty. The state under test is unreachable there.
+        pytest.skip("httptools never upgrades with the keep-alive timer armed")
+
+    app = Response("Hello, world", media_type="text/plain")
+
+    protocol = get_connected_protocol(app, http_protocol_cls, ws=ws_protocol_cls)
+    # The upgrade request is pipelined behind a plain request, so it is still
+    # buffered when the first response completes and is picked up by the
+    # handle_events() call made from on_response_complete().
+    protocol.data_received(SIMPLE_GET_REQUEST + UPGRADE_REQUEST)
+    await protocol.loop.run_one()
+
+    # The connection now belongs to the WebSocket protocol. A keep-alive timer
+    # left armed on it fires against a request cycle that never completes, and
+    # closing the transport from there would drop a live WebSocket.
+    assert protocol.timeout_keep_alive_task is None
+
+
 async def test_close(http_protocol_cls: type[HTTPProtocol]):
     app = Response(b"", status_code=204, headers={"connection": "close"})
 
