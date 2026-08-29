@@ -179,8 +179,8 @@ def frame(ftype: int, flags: int, stream_id: int, payload: bytes) -> bytes:
 class H2Response:
     status: int
     headers: tuple[tuple[bytes, bytes], ...]
-    body: bytes
-    ended: bool
+    body: bytes = b""
+    ended: bool = False
 
 
 class H2Client:
@@ -220,12 +220,7 @@ class H2Client:
         for event in self.events(data):
             if isinstance(event, zttp.Response):
                 headers = event.headers.to_list() if isinstance(event.headers, zttp.HeaderBlock) else event.headers
-                responses[event.stream_id] = H2Response(
-                    status=event.status_code,
-                    headers=tuple(headers),
-                    body=b"",
-                    ended=False,
-                )
+                responses[event.stream_id] = H2Response(status=event.status_code, headers=tuple(headers))
             elif isinstance(event, zttp.Data):
                 response = responses[event.stream_id]
                 responses[event.stream_id] = replace(response, body=response.body + event.data)
