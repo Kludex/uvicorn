@@ -138,7 +138,7 @@ class TestBaseReload:
             config = Config(
                 app="tests.test_config:asgi_app",
                 reload=True,
-                reload_excludes=[str(sub_dir)],
+                reload_excludes=[str(sub_dir.relative_to(self.reload_path))],  # make it relative to current working dir
             )
             reloader = self._setup_reloader(config)
 
@@ -293,7 +293,7 @@ class TestBaseReload:
             config = Config(
                 app="tests.test_config:asgi_app",
                 reload=True,
-                reload_excludes=[str(sub_dir)],
+                reload_excludes=[str(sub_dir.relative_to(self.reload_path))],  # make it relative to current working dir
             )
             reloader = self._setup_reloader(config)
 
