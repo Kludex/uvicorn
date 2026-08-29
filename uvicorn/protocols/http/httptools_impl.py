@@ -23,7 +23,7 @@ from uvicorn._types import (
 )
 from uvicorn.config import Config
 from uvicorn.logging import TRACE_LOG_LEVEL
-from uvicorn.protocols.http.flow_control import CLOSE_HEADER, HIGH_WATER_LIMIT, FlowControl, service_unavailable
+from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT, FlowControl, service_unavailable
 from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
 from uvicorn.server import ServerState
 
@@ -285,7 +285,7 @@ class HttpToolsProtocol(asyncio.Protocol):
             default_headers=self.server_state.default_headers,
             message_event=asyncio.Event(),
             expect_100_continue=self.expect_100_continue,
-            keep_alive=http_version != "1.0",
+            keep_alive=http_version != "1.0" and self.parser.should_keep_alive(),
             on_response=self.on_response_complete,
         )
         if existing_cycle is None or existing_cycle.response_complete:
@@ -478,9 +478,6 @@ class RequestResponseCycle:
             status_code = message["status"]
             headers = self.default_headers + list(message.get("headers", []))
 
-            if CLOSE_HEADER in self.scope["headers"] and CLOSE_HEADER not in headers:
-                headers = headers + [CLOSE_HEADER]
-
             if self.access_log:
                 self.access_logger.info(
                     '%s - "%s %s HTTP/%s" %d',
@@ -493,6 +490,7 @@ class RequestResponseCycle:
 
             # Write response status line and headers
             content = [STATUS_LINE[status_code]]
+            has_connection_close = False
 
             for name, value in headers:
                 if HEADER_RE.search(name):
@@ -507,9 +505,15 @@ class RequestResponseCycle:
                 elif name == b"transfer-encoding" and value.lower() == b"chunked":
                     self.expected_content_length = 0
                     self.chunked_encoding = True
-                elif name == b"connection" and value.lower() == b"close":
-                    self.keep_alive = False
+                elif name == b"connection":
+                    connection = [token.lower().strip() for token in value.split(b",")]
+                    if b"close" in connection:
+                        self.keep_alive = False
+                        has_connection_close = True
                 content.extend([name, b": ", value, b"\r\n"])
+
+            if not self.keep_alive and not has_connection_close:
+                content.append(b"connection: close\r\n")
 
             if self.chunked_encoding is None and self.scope["method"] != "HEAD" and status_code not in (204, 304):
                 # Neither content-length nor transfer-encoding specified
