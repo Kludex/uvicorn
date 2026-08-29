@@ -138,6 +138,8 @@ omit = [
     "uvicorn/workers.py",
     "uvicorn/__main__.py",
     "uvicorn/_compat.py",
+    # Optional integration covered by zuvloop's Uvicorn compatibility suite.
+    "uvicorn/loops/zuvloop.py",
     # Deprecated legacy websockets implementation, no longer tested.
     "uvicorn/protocols/websockets/websockets_impl.py",
     "tests/benchmarks/*",

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import configparser
 import io
 import json
@@ -635,18 +634,6 @@ def test_get_loop_factory(loop_type: LoopFactoryType, expected_loop_factory: Any
         with closing(loop):
             assert loop is not None
             assert isinstance(loop, expected_loop_factory)
-
-
-def test_get_zuvloop_factory(monkeypatch: pytest.MonkeyPatch) -> None:
-    zuvloop = MagicMock(new_event_loop=asyncio.new_event_loop)
-    monkeypatch.setitem(sys.modules, "zuvloop", zuvloop)
-    sys.modules.pop("uvicorn.loops.zuvloop", None)
-
-    try:
-        config = Config(app=asgi_app, loop="zuvloop")
-        assert config.get_loop_factory() is asyncio.new_event_loop
-    finally:
-        sys.modules.pop("uvicorn.loops.zuvloop", None)
 
 
 def test_custom_loop__importable_custom_loop_setup_function() -> None:
