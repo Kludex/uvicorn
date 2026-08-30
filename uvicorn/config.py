@@ -38,7 +38,7 @@ class UvicornDeprecationWarning(UserWarning):
 HTTPProtocolType = Literal["auto", "h11", "httptools", "zttp", "zttp1", "zttp2"]
 WSProtocolType = Literal["auto", "none", "websockets", "websockets-sansio", "wsproto"]
 LifespanType = Literal["auto", "on", "off"]
-LoopFactoryType = Literal["none", "auto", "asyncio", "uvloop"]
+LoopFactoryType = Literal["none", "auto", "asyncio", "uvloop", "zuvloop"]
 InterfaceType = Literal["auto", "asgi3", "asgi2", "wsgi"]
 
 LOG_LEVELS: dict[str, int] = {
@@ -74,6 +74,7 @@ LOOP_FACTORIES: dict[str, str | None] = {
     "auto": "uvicorn.loops.auto:auto_loop_factory",
     "asyncio": "uvicorn.loops.asyncio:asyncio_loop_factory",
     "uvloop": "uvicorn.loops.uvloop:uvloop_loop_factory",
+    "zuvloop": "uvicorn.loops.zuvloop:zuvloop_loop_factory",
 }
 INTERFACES: list[InterfaceType] = ["auto", "asgi3", "asgi2", "wsgi"]
 
