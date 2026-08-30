@@ -58,6 +58,27 @@ def test_process_ping_broken_pipe() -> None:
     assert not process.ping(0.1)
 
 
+def test_process_ping_pipe_closed_between_poll_and_recv() -> None:
+    """A worker being replaced can have its pipe closed after poll() reported data.
+
+    CPython's Connection._recv() has cleared its handle by then and calls
+    os.read(None, size), which raises TypeError rather than OSError.
+    """
+    process = Process(Config(app=app), sockets=[])
+
+    class ClosedDuringRecv:
+        def send(self, data: bytes) -> None: ...
+
+        def poll(self, timeout: float) -> bool:
+            return True
+
+        def recv(self) -> bool:
+            raise TypeError("'NoneType' object cannot be interpreted as an integer")
+
+    process.parent_conn = ClosedDuringRecv()  # type: ignore[assignment]
+    assert not process.ping(0.1)
+
+
 def test_process_ready() -> None:
     """`is_ready()` reflects whether the worker's server has finished startup."""
     process = Process(Config(app=app), sockets=[])
