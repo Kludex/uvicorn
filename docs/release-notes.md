@@ -2,6 +2,12 @@
 toc_depth: 2
 ---
 
+## Unreleased
+
+### Added
+
+* Add a stable `uvicorn_worker_id` in ASGI lifespan state (and `UVICORN_WORKER_ID`). Single-process mode uses `1`; `--workers` assigns a unique ID per worker.
+
 ## 0.52.4 (August 18, 2026)
 
 ### Fixed
