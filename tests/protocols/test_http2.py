@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import ssl
 from collections.abc import Callable
+from dataclasses import dataclass, replace
 from typing import Any, ClassVar
 
 import httpx2
@@ -174,6 +175,14 @@ def frame(ftype: int, flags: int, stream_id: int, payload: bytes) -> bytes:
     return header + payload
 
 
+@dataclass(frozen=True)
+class H2Response:
+    status: int
+    headers: tuple[tuple[bytes, bytes], ...]
+    body: bytes = b""
+    ended: bool = False
+
+
 class H2Client:
     """Drives the client half of the wire with zttp's own client connection."""
 
@@ -206,21 +215,21 @@ class H2Client:
             events.append(event)
         return events
 
-    def parse_responses(self, data: bytes) -> dict[int, tuple[int, list[tuple[bytes, bytes]], bytes, bool]]:
-        responses: dict[int, tuple[int, list[tuple[bytes, bytes]], bytes, bool]] = {}
+    def parse_responses(self, data: bytes) -> dict[int, H2Response]:
+        responses: dict[int, H2Response] = {}
         for event in self.events(data):
             if isinstance(event, zttp.Response):
                 headers = event.headers.to_list() if isinstance(event.headers, zttp.HeaderBlock) else event.headers
-                responses[event.stream_id] = (event.status_code, headers, b"", False)
+                responses[event.stream_id] = H2Response(status=event.status_code, headers=tuple(headers))
             elif isinstance(event, zttp.Data):
-                status, headers, body, ended = responses[event.stream_id]
-                responses[event.stream_id] = (status, headers, body + event.data, ended)
+                response = responses[event.stream_id]
+                responses[event.stream_id] = replace(response, body=response.body + event.data)
             elif isinstance(event, zttp.EndOfMessage):
-                status, headers, body, _ = responses[event.stream_id]
-                responses[event.stream_id] = (status, headers, body, True)
+                response = responses[event.stream_id]
+                responses[event.stream_id] = replace(response, ended=True)
         return responses
 
-    def parse_response(self, data: bytes, stream_id: int = 1) -> tuple[int, list[tuple[bytes, bytes]], bytes, bool]:
+    def parse_response(self, data: bytes, stream_id: int = 1) -> H2Response:
         return self.parse_responses(data)[stream_id]
 
 
@@ -235,11 +244,11 @@ async def test_get_request():
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
 
-    status, headers, body, ended = client.parse_response(protocol.transport.buffer)
-    assert status == 200
-    assert (b"content-type", b"text/plain; charset=utf-8") in headers
-    assert body == b"Hello, world"
-    assert ended
+    response = client.parse_response(protocol.transport.buffer)
+    assert response.status == 200
+    assert (b"content-type", b"text/plain; charset=utf-8") in response.headers
+    assert response.body == b"Hello, world"
+    assert response.ended
 
 
 async def test_post_request():
@@ -261,9 +270,9 @@ async def test_post_request():
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
 
-    status, _, body, _ = client.parse_response(protocol.transport.buffer)
-    assert status == 200
-    assert body == b'Body: {"hello": "world"}'
+    response = client.parse_response(protocol.transport.buffer)
+    assert response.status == 200
+    assert response.body == b'Body: {"hello": "world"}'
 
 
 async def test_request_scope():
@@ -309,12 +318,12 @@ async def test_multiplexed_requests():
     await protocol.loop.run_one()
 
     responses = client.parse_responses(protocol.transport.buffer)
-    status, _, body, _ = responses[first.stream_id]
-    assert status == 200
-    assert body == b"Served /first"
-    status, _, body, _ = responses[second.stream_id]
-    assert status == 200
-    assert body == b"Served /second"
+    first_response = responses[first.stream_id]
+    assert first_response.status == 200
+    assert first_response.body == b"Served /first"
+    second_response = responses[second.stream_id]
+    assert second_response.status == 200
+    assert second_response.body == b"Served /second"
 
 
 async def test_streaming_response():
@@ -331,10 +340,10 @@ async def test_streaming_response():
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
 
-    status, _, body, ended = client.parse_response(protocol.transport.buffer)
-    assert status == 200
-    assert body == b"123"
-    assert ended
+    response = client.parse_response(protocol.transport.buffer)
+    assert response.status == 200
+    assert response.body == b"123"
+    assert response.ended
 
 
 async def test_head_request_has_no_body():
@@ -349,11 +358,11 @@ async def test_head_request_has_no_body():
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
 
-    status, headers, body, ended = client.parse_response(protocol.transport.buffer)
-    assert status == 200
-    assert (b"content-type", b"text/plain") in headers
-    assert body == b""
-    assert ended
+    response = client.parse_response(protocol.transport.buffer)
+    assert response.status == 200
+    assert (b"content-type", b"text/plain") in response.headers
+    assert response.body == b""
+    assert response.ended
 
 
 async def test_204_response_has_no_body():
@@ -365,10 +374,10 @@ async def test_204_response_has_no_body():
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
 
-    status, _, body, ended = client.parse_response(protocol.transport.buffer)
-    assert status == 204
-    assert body == b""
-    assert ended
+    response = client.parse_response(protocol.transport.buffer)
+    assert response.status == 204
+    assert response.body == b""
+    assert response.ended
 
 
 async def test_app_exception_returns_500():
@@ -382,9 +391,9 @@ async def test_app_exception_returns_500():
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
 
-    status, _, body, _ = client.parse_response(protocol.transport.buffer)
-    assert status == 500
-    assert body == b"Internal Server Error"
+    response = client.parse_response(protocol.transport.buffer)
+    assert response.status == 500
+    assert response.body == b"Internal Server Error"
 
 
 async def test_app_returning_without_response_returns_500():
@@ -398,9 +407,9 @@ async def test_app_returning_without_response_returns_500():
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
 
-    status, _, body, _ = client.parse_response(protocol.transport.buffer)
-    assert status == 500
-    assert body == b"Internal Server Error"
+    response = client.parse_response(protocol.transport.buffer)
+    assert response.status == 500
+    assert response.body == b"Internal Server Error"
 
 
 async def test_partial_response_resets_stream():
@@ -443,9 +452,9 @@ async def test_limit_concurrency_returns_503():
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
 
-    status, _, body, _ = client.parse_response(protocol.transport.buffer)
-    assert status == 503
-    assert body == b"Service Unavailable"
+    response = client.parse_response(protocol.transport.buffer)
+    assert response.status == 503
+    assert response.body == b"Service Unavailable"
 
 
 async def test_connection_specific_response_headers_are_stripped():
@@ -473,14 +482,14 @@ async def test_connection_specific_response_headers_are_stripped():
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
 
-    status, headers, _, _ = client.parse_response(protocol.transport.buffer)
-    assert status == 200
-    names = [name for name, _ in headers]
+    response = client.parse_response(protocol.transport.buffer)
+    assert response.status == 200
+    names = [name for name, _ in response.headers]
     assert b"connection" not in names
     assert b"keep-alive" not in names
     assert b"transfer-encoding" not in names
-    assert (b"te", b"trailers") in headers
-    assert (b"x-custom", b"kept") in headers
+    assert (b"te", b"trailers") in response.headers
+    assert (b"x-custom", b"kept") in response.headers
 
 
 async def test_response_shorter_than_content_length_resets_stream():
@@ -639,16 +648,16 @@ async def test_shutdown_refuses_new_streams_and_closes_after_last_response():
     second = client.request(b"GET", b"/")
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
-    status, _, body, _ = client.parse_response(protocol.transport.buffer, stream_id=second.stream_id)
-    assert status == 503
-    assert body == b"Service Unavailable"
+    response = client.parse_response(protocol.transport.buffer, stream_id=second.stream_id)
+    assert response.status == 503
+    assert response.body == b"Service Unavailable"
 
     protocol.transport.clear_buffer()
     release.set()
     await task
-    status, _, body, _ = client.parse_response(protocol.transport.buffer, stream_id=first.stream_id)
-    assert status == 200
-    assert body == b"done"
+    response = client.parse_response(protocol.transport.buffer, stream_id=first.stream_id)
+    assert response.status == 200
+    assert response.body == b"done"
     assert protocol.transport.is_closing()
 
 
@@ -711,8 +720,8 @@ async def test_early_response_ignores_late_request_frames():
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
 
-    status, _, _, _ = client.parse_response(protocol.transport.buffer)
-    assert status == 200
+    response = client.parse_response(protocol.transport.buffer)
+    assert response.status == 200
 
     protocol.data_received(frame(0x00, 0, stream.stream_id, b"late data"))
     protocol.data_received(frame(0x00, 0x01, stream.stream_id, b"the end"))
@@ -804,9 +813,9 @@ async def test_response_body_before_start_returns_500():
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
 
-    status, _, body, _ = client.parse_response(protocol.transport.buffer)
-    assert status == 500
-    assert body == b"Internal Server Error"
+    response = client.parse_response(protocol.transport.buffer)
+    assert response.status == 500
+    assert response.body == b"Internal Server Error"
 
 
 async def test_unexpected_message_after_start_resets_stream():
@@ -853,9 +862,9 @@ async def test_reset_contextvars_runs_each_stream_in_a_fresh_context():
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
 
-    status, _, body, _ = client.parse_response(protocol.transport.buffer)
-    assert status == 200
-    assert body == b"Hello, world"
+    response = client.parse_response(protocol.transport.buffer)
+    assert response.status == 200
+    assert response.body == b"Hello, world"
 
 
 async def test_eof_received_is_a_no_op():
@@ -917,9 +926,9 @@ async def test_prior_knowledge_preface_selects_http2():
     assert isinstance(h2_protocol, ZttpH2Protocol)
     await h2_protocol.loop.run_one()
 
-    status, _, body, _ = client.parse_response(transport.buffer)
-    assert status == 200
-    assert body == b"Hello, world"
+    response = client.parse_response(transport.buffer)
+    assert response.status == 200
+    assert response.body == b"Hello, world"
 
 
 async def test_prior_knowledge_preface_split_across_packets():
@@ -937,9 +946,9 @@ async def test_prior_knowledge_preface_split_across_packets():
     assert isinstance(h2_protocol, ZttpH2Protocol)
     await h2_protocol.loop.run_one()
 
-    status, _, body, _ = client.parse_response(transport.buffer)
-    assert status == 200
-    assert body == b"Hello, world"
+    response = client.parse_response(transport.buffer)
+    assert response.status == 200
+    assert response.body == b"Hello, world"
 
 
 async def test_http1_request_selects_http1():
