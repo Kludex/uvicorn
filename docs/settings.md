@@ -91,7 +91,7 @@ Using Uvicorn with watchfiles will enable the following options (which are other
 
 ## Implementation
 
-* `--loop <str>` - Set the event loop implementation. The uvloop implementation provides greater performance, but is not compatible with Windows or PyPy. **Options:** *'auto', 'asyncio', 'uvloop'.* **Default:** *'auto'*.
+* `--loop <str>` - Set the event loop implementation. The uvloop implementation provides greater performance, but is not compatible with Windows or PyPy. The zuvloop implementation requires CPython 3.14 or newer and must be installed separately. **Options:** *'auto', 'asyncio', 'uvloop', 'zuvloop'.* **Default:** *'auto'*.
 * `--http <str>` - Set the [HTTP protocol implementation](concepts/http-protocols.md). The httptools implementation provides greater performance, but is not compatible with PyPy. The zttp implementation is experimental and requires the `zttp` package (`pip install zttp`). **Options:** *'auto', 'h11', 'httptools', 'zttp'.* **Default:** *'auto'*.
 * `--http2` - Enable [HTTP/2](concepts/http2.md). This requires `--http zttp`. **Default:** *False*.
 * `--ws <str>` - Set the WebSockets protocol implementation. Either of the `websockets` and `wsproto` packages are supported. There are two versions of `websockets` supported: `websockets` and `websockets-sansio`. Use `'none'` to ignore all websocket requests. **Options:** *'auto', 'none', 'websockets', 'websockets-sansio', 'wsproto'.* **Default:** *'auto'*.
