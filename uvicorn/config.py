@@ -35,7 +35,7 @@ class UvicornDeprecationWarning(UserWarning):
     """
 
 
-HTTPProtocolType = Literal["auto", "h11", "httptools", "zttp", "zttp1", "zttp2"]
+HTTPProtocolType = Literal["auto", "h11", "httptools", "httpunk", "httpunk1", "httpunk2", "zttp", "zttp1", "zttp2"]
 WSProtocolType = Literal["auto", "none", "websockets", "websockets-sansio", "wsproto"]
 LifespanType = Literal["auto", "on", "off"]
 LoopFactoryType = Literal["none", "auto", "asyncio", "uvloop", "zuvloop"]
@@ -53,6 +53,9 @@ HTTP_PROTOCOLS: dict[str, str] = {
     "auto": "uvicorn.protocols.http.auto:AutoHTTPProtocol",
     "h11": "uvicorn.protocols.http.h11_impl:H11Protocol",
     "httptools": "uvicorn.protocols.http.httptools_impl:HttpToolsProtocol",
+    "httpunk": "uvicorn.protocols.http.httpunk_impl:HTTPunkAutoProtocol",
+    "httpunk1": "uvicorn.protocols.http.httpunk_impl:HTTPunkH1Protocol",
+    "httpunk2": "uvicorn.protocols.http.httpunk_impl:HTTPunkH2Protocol",
     "zttp": "uvicorn.protocols.http.auto_zttp_impl:AutoZttpProtocol",
     "zttp1": "uvicorn.protocols.http.zttp_impl:ZttpProtocol",
     "zttp2": "uvicorn.protocols.http.zttp_h2_impl:ZttpH2Protocol",

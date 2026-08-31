@@ -266,3 +266,27 @@ def ws_protocol_cls(request: pytest.FixtureRequest):
 )
 def http_protocol_cls(request: pytest.FixtureRequest):
     return import_from_string(request.param)
+
+
+@pytest.fixture(
+    params=[
+        pytest.param(
+            "uvicorn.protocols.http.zttp_h2_impl:ZttpH2Protocol",
+            marks=pytest.mark.skipif(
+                not importlib.util.find_spec("zttp"),
+                reason="zttp not installed.",
+            ),
+            id="zttp2",
+        ),
+        pytest.param(
+            "uvicorn.protocols.http.httpunk_impl:HTTPunkH2Protocol",
+            marks=pytest.mark.skipif(
+                not importlib.util.find_spec("httpunk"),
+                reason="httpunk not installed.",
+            ),
+            id="httpunk2",
+        ),
+    ]
+)
+def http2_protocol_cls(request: pytest.FixtureRequest):
+    return import_from_string(request.param)
