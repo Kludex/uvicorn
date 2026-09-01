@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 import pytest
 
@@ -50,6 +51,7 @@ def test_lifespan_off():
 
         await lifespan.startup()
         await lifespan.shutdown()
+        lifespan.cancel()
 
     loop = asyncio.new_event_loop()
     loop.run_until_complete(test())
@@ -155,6 +157,70 @@ def test_lifespan_with_failed_startup(mode, raise_exception, caplog):
     ]
     assert "the lifespan event failed" in error_messages.pop(0)
     assert "Application startup failed. Exiting." in error_messages.pop(0)
+
+
+def test_lifespan_cancel_before_main_task_runs():
+    """cancel() must unblock startup() even if the lifespan task is cancelled
+    before its coroutine ever runs, in which case main()'s try/finally never
+    executes. Regression test for https://github.com/encode/uvicorn/issues/2751."""
+
+    async def app(scope, receive, send):  # pragma: no cover
+        pass
+
+    async def test():
+        config = Config(app=app, lifespan="auto")
+        lifespan = LifespanOn(config)
+
+        loop = asyncio.get_event_loop()
+        lifespan.main_lifespan_task = loop.create_task(lifespan.main())
+        # Cancel before the event loop has ever scheduled main() to run.
+        lifespan.cancel()
+
+        # Must complete instead of hanging forever.
+        await asyncio.wait_for(lifespan.startup_event.wait(), timeout=3)
+        assert lifespan.shutdown_event.is_set()
+        assert lifespan.error_occurred
+        assert lifespan.startup_failed
+
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(test())
+    loop.close()
+
+
+def test_lifespan_cancel_while_frozen_in_startup(caplog):
+    """Cancelling an app frozen inside lifespan startup must report the startup
+    as interrupted/failed, not 'Application startup complete.'."""
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
+
+    async def app(scope, receive, send):
+        message = await receive()
+        assert message["type"] == "lifespan.startup"
+        await asyncio.sleep(30)  # pragma: no cover  # Never yields control back.
+
+    async def test():
+        config = Config(app=app, lifespan="auto")
+        lifespan = LifespanOn(config)
+
+        startup_task = asyncio.create_task(lifespan.startup())
+        # Let the app reach its frozen await inside startup handling.
+        for _ in range(10):
+            await asyncio.sleep(0)
+        assert not lifespan.startup_event.is_set()
+
+        lifespan.cancel()
+        await asyncio.wait_for(startup_task, timeout=3)
+
+        assert lifespan.error_occurred
+        assert lifespan.startup_failed
+        assert lifespan.should_exit
+
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(test())
+    loop.close()
+    messages = [record.message for record in caplog.records if record.name == "uvicorn.error"]
+    assert "Application startup interrupted." in messages
+    assert "Application startup failed. Exiting." in messages
+    assert "Application startup complete." not in messages
 
 
 def test_lifespan_scope_asgi3app():

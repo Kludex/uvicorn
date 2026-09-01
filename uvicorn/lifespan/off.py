@@ -15,3 +15,6 @@ class LifespanOff:
 
     async def shutdown(self) -> None:
         pass
+
+    def cancel(self) -> None:
+        pass
