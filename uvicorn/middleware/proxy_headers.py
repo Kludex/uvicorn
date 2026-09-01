@@ -67,15 +67,20 @@ class ProxyHeadersMiddleware:
                     scope["client"] = (host, port)
 
             if x_forwarded_host_value is not None:
-                host_str = x_forwarded_host_value.decode("latin1").strip()
-                if host_str:
+                raw_host_str = x_forwarded_host_value.decode("latin1").strip()
+                if raw_host_str:
+                    # When multiple proxies append to X-Forwarded-Host, take the first (client-facing) host
+                    host_str = raw_host_str.split(",")[0].strip()
                     server_host, server_port = _parse_host_port(host_str)
-                    if x_forwarded_port_value is not None:
+                    if server_port == 0 and x_forwarded_port_value is not None:
                         try:
-                            server_port = int(x_forwarded_port_value.decode("latin1").strip())
+                            parsed_port = int(x_forwarded_port_value.decode("latin1").strip())
+                            if 0 < parsed_port <= 65535:
+                                server_port = parsed_port
                         except ValueError:
                             pass
-                    elif server_port == 0:
+
+                    if server_port == 0:
                         current_scheme = scope.get("scheme", "http")
                         server_port = 443 if current_scheme in ("https", "wss") else 80
 

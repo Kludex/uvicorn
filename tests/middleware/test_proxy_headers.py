@@ -672,3 +672,23 @@ async def test_proxy_headers_x_forwarded_host_and_port() -> None:
     scope3 = _make_http_scope([(b"x-forwarded-host", b"example.com"), (b"x-forwarded-proto", b"https")], scheme="http")
     await middleware(scope3, _noop_receive, _noop_send)
     assert captured["server"] == ("example.com", 443)
+
+    # Comma-separated X-Forwarded-Host from multiple proxies (takes first)
+    scope4 = _make_http_scope([(b"x-forwarded-host", b"client.example.com, proxy.example.com")], scheme="http")
+    await middleware(scope4, _noop_receive, _noop_send)
+    assert captured["server"] == ("client.example.com", 80)
+
+    # Port in host takes precedence over separate X-Forwarded-Port
+    scope5 = _make_http_scope([(b"x-forwarded-host", b"example.com:8443"), (b"x-forwarded-port", b"9000")], scheme="http")
+    await middleware(scope5, _noop_receive, _noop_send)
+    assert captured["server"] == ("example.com", 8443)
+
+    # Invalid / non-numeric X-Forwarded-Port falls back to scheme default
+    scope6 = _make_http_scope([(b"x-forwarded-host", b"example.com"), (b"x-forwarded-port", b"not-a-number")], scheme="http")
+    await middleware(scope6, _noop_receive, _noop_send)
+    assert captured["server"] == ("example.com", 80)
+
+    # Out-of-range port falls back to scheme default
+    scope7 = _make_http_scope([(b"x-forwarded-host", b"example.com"), (b"x-forwarded-port", b"99999")], scheme="http")
+    await middleware(scope7, _noop_receive, _noop_send)
+    assert captured["server"] == ("example.com", 80)
