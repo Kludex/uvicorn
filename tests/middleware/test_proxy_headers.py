@@ -646,3 +646,29 @@ async def test_proxy_headers_haproxy_behind_alb() -> None:
     await middleware(scope, _noop_receive, _noop_send)
     assert captured["client"] == ("1.2.3.4", 0)
     assert captured["scheme"] == "https"
+
+
+@pytest.mark.anyio
+async def test_proxy_headers_x_forwarded_host_and_port() -> None:
+    captured: dict[str, object] = {}
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        assert scope["type"] == "http"
+        captured["server"] = scope.get("server")
+
+    middleware = ProxyHeadersMiddleware(app, trusted_hosts="127.0.0.1")
+
+    # Host with explicit port in header
+    scope = _make_http_scope([(b"x-forwarded-host", b"example.com:8080")], scheme="http")
+    await middleware(scope, _noop_receive, _noop_send)
+    assert captured["server"] == ("example.com", 8080)
+
+    # Host with separate X-Forwarded-Port
+    scope2 = _make_http_scope([(b"x-forwarded-host", b"example.com"), (b"x-forwarded-port", b"9000")], scheme="http")
+    await middleware(scope2, _noop_receive, _noop_send)
+    assert captured["server"] == ("example.com", 9000)
+
+    # Host only, HTTPS default
+    scope3 = _make_http_scope([(b"x-forwarded-host", b"example.com"), (b"x-forwarded-proto", b"https")], scheme="http")
+    await middleware(scope3, _noop_receive, _noop_send)
+    assert captured["server"] == ("example.com", 443)

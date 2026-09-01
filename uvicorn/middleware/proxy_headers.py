@@ -35,11 +35,17 @@ class ProxyHeadersMiddleware:
         if client_host in self.trusted_hosts:
             x_forwarded_proto_value: bytes | None = None
             x_forwarded_for_values: list[bytes] = []
+            x_forwarded_host_value: bytes | None = None
+            x_forwarded_port_value: bytes | None = None
             for name, value in scope["headers"]:
                 if name == b"x-forwarded-proto":
                     x_forwarded_proto_value = value
                 elif name == b"x-forwarded-for":
                     x_forwarded_for_values.append(value)
+                elif name == b"x-forwarded-host":
+                    x_forwarded_host_value = value
+                elif name == b"x-forwarded-port":
+                    x_forwarded_port_value = value
 
             if x_forwarded_proto_value is not None:
                 x_forwarded_proto = x_forwarded_proto_value.decode("latin1").strip()
@@ -59,6 +65,21 @@ class ProxyHeadersMiddleware:
                     # Only set the client if we actually got something usable.
                     # See: https://github.com/Kludex/uvicorn/issues/1068
                     scope["client"] = (host, port)
+
+            if x_forwarded_host_value is not None:
+                host_str = x_forwarded_host_value.decode("latin1").strip()
+                if host_str:
+                    server_host, server_port = _parse_host_port(host_str)
+                    if x_forwarded_port_value is not None:
+                        try:
+                            server_port = int(x_forwarded_port_value.decode("latin1").strip())
+                        except ValueError:
+                            pass
+                    elif server_port == 0:
+                        current_scheme = scope.get("scheme", "http")
+                        server_port = 443 if current_scheme in ("https", "wss") else 80
+
+                    scope["server"] = (server_host, server_port)
 
         return await self.app(scope, receive, send)
 
