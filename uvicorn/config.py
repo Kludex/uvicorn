@@ -249,6 +249,7 @@ class Config:
         factory: bool = False,
         h11_max_incomplete_event_size: int | None = None,
         reset_contextvars: bool = False,
+        ipv6_v6only: bool | None = None,
     ):
         self.app = app
         self.host = host
@@ -298,6 +299,7 @@ class Config:
         self.factory = factory
         self.h11_max_incomplete_event_size = h11_max_incomplete_event_size
         self.reset_contextvars = reset_contextvars
+        self.ipv6_v6only = ipv6_v6only
 
         self.loaded = False
         self.configure_logging()
@@ -558,7 +560,7 @@ class Config:
             return None
         return loop_factory(use_subprocess=self.use_subprocess)
 
-    def bind_socket(self) -> socket.socket:
+    def bind_socket(self, log: bool = True) -> socket.socket:
         logger_args: list[str | int]
         if self.uds is not None:  # pragma: py-win32
             path = self.uds
@@ -568,6 +570,7 @@ class Config:
                 uds_perms = 0o666
                 os.chmod(self.uds, uds_perms)
             except OSError as exc:  # pragma: full coverage
+                sock.close()
                 logger.error(exc)
                 sys.exit(STARTUP_FAILURE)
 
@@ -592,9 +595,12 @@ class Config:
 
             sock = socket.socket(family=family)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if family == socket.AF_INET6 and self.ipv6_v6only is not None:
+                sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, self.ipv6_v6only)
             try:
                 sock.bind((self.host, self.port))
             except OSError as exc:  # pragma: full coverage
+                sock.close()
                 logger.error(exc)
                 sys.exit(STARTUP_FAILURE)
 
@@ -602,7 +608,8 @@ class Config:
             color_message = "Uvicorn running on " + style(addr_format, bold=True) + " (Press CTRL+C to quit)"
             protocol_name = "https" if self.is_ssl else "http"
             logger_args = [protocol_name, self.host, sock.getsockname()[1]]
-        logger.info(message, *logger_args, extra={"color_message": color_message})
+        if log:
+            logger.info(message, *logger_args, extra={"color_message": color_message})
         sock.set_inheritable(True)
         return sock
 

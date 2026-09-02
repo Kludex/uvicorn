@@ -179,17 +179,48 @@ class Server:
         else:
             # Standard case. Create a socket from a host/port pair.
             try:
-                server = await loop.create_server(
-                    create_protocol,
-                    host=config.host,
-                    port=config.port,
-                    ssl=config.ssl,
-                    backlog=config.backlog,
-                )
+                if config.ipv6_v6only is not None and config.host and ":" in config.host:  # pragma: py-win32
+                    # Untested on Windows: both tests exercising this branch are
+                    # skipped there (looser SO_REUSEADDR / dual-stack bind
+                    # semantics make them unreliable), so it isn't covered on
+                    # that platform. It's still expected to work at runtime.
+                    # asyncio's create_server(host=..., port=...) always forces
+                    # IPV6_V6ONLY=True for IPv6 addresses, ignoring the OS
+                    # default and any socket option set beforehand. To honor
+                    # an explicit ipv6_v6only setting we have to bind the
+                    # socket ourselves, the same way the multiprocess/`sockets=`
+                    # path above already does.
+                    # Logging is handled by `_log_started_message()` below,
+                    # like the rest of this "standard case" branch.
+                    sock = config.bind_socket(log=False)
+                    server = await loop.create_server(
+                        create_protocol,
+                        sock=sock,
+                        ssl=config.ssl,
+                        backlog=config.backlog,
+                    )
+                else:
+                    server = await loop.create_server(
+                        create_protocol,
+                        host=config.host,
+                        port=config.port,
+                        ssl=config.ssl,
+                        backlog=config.backlog,
+                    )
             except OSError as exc:
                 logger.error(exc)
                 await self.lifespan.shutdown()
                 sys.exit(STARTUP_FAILURE)
+            except SystemExit:  # pragma: py-win32
+                # config.bind_socket() already logged and called sys.exit()
+                # itself on a bind failure (e.g. an occupied IPv6 port); run
+                # lifespan cleanup before propagating, matching the OSError
+                # path above instead of skipping it. Untested on Windows:
+                # its looser SO_REUSEADDR semantics mean the bind conflict
+                # this relies on doesn't reliably occur there (see the
+                # skip on test_ipv6_v6only_bind_failure_runs_lifespan_shutdown).
+                await self.lifespan.shutdown()
+                raise
 
             assert server.sockets is not None
             listeners = server.sockets

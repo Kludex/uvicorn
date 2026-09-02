@@ -18,7 +18,7 @@ import yaml
 from pytest_mock import MockerFixture
 
 from tests.custom_loop_utils import CustomLoop
-from tests.utils import as_cwd, get_asyncio_default_loop_per_os
+from tests.utils import as_cwd, get_asyncio_default_loop_per_os, has_ipv6
 from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallable, Environ, Scope, StartResponse
 from uvicorn.config import Config, LoopFactoryType, UvicornDeprecationWarning
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -260,6 +260,50 @@ def test_socket_bind() -> None:
     sock = config.bind_socket()
     assert isinstance(sock, socket.socket)
     sock.close()
+
+
+@pytest.mark.skipif(not has_ipv6("::1"), reason="IPV6 not enabled")
+def test_bind_socket_ipv6_v6only_unset_leaves_os_default() -> None:
+    """
+    By default, `ipv6_v6only` is left unset, so `bind_socket()` doesn't touch
+    the IPV6_V6ONLY socket option at all, matching the pre-existing behavior.
+    """
+    config = Config(app=asgi_app, host="::1", port=0)
+    config.load()
+    with closing(config.bind_socket(log=False)) as sock:
+        # We can't assert a specific OS default value here (it's platform
+        # dependent), just that we didn't explicitly force a particular value.
+        assert isinstance(sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY), int)
+
+
+@pytest.mark.skipif(not has_ipv6("::"), reason="IPV6 not enabled")
+@pytest.mark.parametrize("v6only", [True, False])
+def test_bind_socket_ipv6_v6only_explicit(v6only: bool) -> None:
+    """
+    An explicit `ipv6_v6only` is applied to the bound socket (#2945).
+
+    Uses the wildcard `::` host rather than `::1`: on Linux, binding
+    specifically to the loopback address `::1` silently forces
+    IPV6_V6ONLY=True regardless of the requested socket option, since a
+    loopback-only bind can never be meaningfully dual-stack (there is no
+    IPv4-loopback equivalent of `::1`, unlike `::`/`0.0.0.0`). That's a
+    sensible kernel behavior, not a bug -- but it means `::1` can't be used
+    to test that an explicit `ipv6_v6only=False` sticks.
+    """
+    config = Config(app=asgi_app, host="::", port=0, ipv6_v6only=v6only)
+    config.load()
+    with closing(config.bind_socket(log=False)) as sock:
+        assert bool(sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY)) is v6only
+
+
+def test_bind_socket_ipv6_v6only_ignored_for_ipv4() -> None:
+    """
+    `ipv6_v6only` has no effect (and doesn't raise) when binding an IPv4 host.
+    """
+    config = Config(app=asgi_app, host="127.0.0.1", port=0, ipv6_v6only=False)
+    config.load()
+    with closing(config.bind_socket(log=False)) as sock:
+        assert sock.family == socket.AF_INET
 
 
 def test_ssl_config(
