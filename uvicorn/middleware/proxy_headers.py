@@ -35,7 +35,7 @@ class ProxyHeadersMiddleware:
         if client_host in self.trusted_hosts:
             x_forwarded_proto_value: bytes | None = None
             x_forwarded_for_values: list[bytes] = []
-            x_forwarded_host_value: bytes | None = None
+            x_forwarded_host_values: list[bytes] = []
             x_forwarded_port_value: bytes | None = None
             for name, value in scope["headers"]:
                 if name == b"x-forwarded-proto":
@@ -43,7 +43,7 @@ class ProxyHeadersMiddleware:
                 elif name == b"x-forwarded-for":
                     x_forwarded_for_values.append(value)
                 elif name == b"x-forwarded-host":
-                    x_forwarded_host_value = value
+                    x_forwarded_host_values.append(value)
                 elif name == b"x-forwarded-port":
                     x_forwarded_port_value = value
 
@@ -66,12 +66,20 @@ class ProxyHeadersMiddleware:
                     # See: https://github.com/Kludex/uvicorn/issues/1068
                     scope["client"] = (host, port)
 
-            if x_forwarded_host_value is not None:
-                raw_host_str = x_forwarded_host_value.decode("latin1").strip()
-                if raw_host_str:
-                    # When multiple proxies append to X-Forwarded-Host, take the first (client-facing) host
-                    host_str = raw_host_str.split(",")[0].strip()
+            if x_forwarded_host_values:
+                raw_host_str = b", ".join(x_forwarded_host_values).decode("latin1")
+                # When multiple proxies append to X-Forwarded-Host or repeated headers exist,
+                # select the first non-empty (client-facing) host.
+                host_str = ""
+                for item in _parse_raw_hosts(raw_host_str):
+                    if item:
+                        host_str = item
+                        break
+
+                if host_str:
                     server_host, server_port = _parse_host_port(host_str)
+                    if not (0 < server_port <= 65535):
+                        server_port = 0
                     if server_port == 0 and x_forwarded_port_value is not None:
                         try:
                             parsed_port = int(x_forwarded_port_value.decode("latin1").strip())
