@@ -668,3 +668,25 @@ def test_setup_event_loop_is_removed(caplog: pytest.LogCaptureFixture) -> None:
         AttributeError, match="The `setup_event_loop` method was replaced by `get_loop_factory` in uvicorn 0.36.0."
     ):
         config.setup_event_loop()
+
+
+def test_preload_enables_fork_on_posix(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(os, "name", "posix")
+    config = Config(app=asgi_app, workers=2, preload=True)
+    assert config.preload is True
+    assert config.use_fork is True
+
+
+def test_preload_disabled_on_windows(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    monkeypatch.setattr(os, "name", "nt")
+    with caplog.at_level(logging.WARNING, logger="uvicorn.error"):
+        config = Config(app=asgi_app, workers=2, preload=True)
+    assert config.preload is False
+    assert config.use_fork is False
+    assert any("preload" in record.message for record in caplog.records)
+
+
+def test_no_preload_does_not_fork() -> None:
+    config = Config(app=asgi_app, workers=2)
+    assert config.preload is False
+    assert config.use_fork is False
