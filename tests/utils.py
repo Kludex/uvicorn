@@ -54,3 +54,20 @@ def get_asyncio_default_loop_per_os() -> type[asyncio.AbstractEventLoop]:
         return asyncio.ProactorEventLoop  # type: ignore  # pragma: nocover
     else:
         return asyncio.SelectorEventLoop  # pragma: nocover
+
+
+def has_ipv6(host: str = "::1") -> bool:
+    import socket as _socket
+
+    sock = None
+    ipv6_available = False
+    if _socket.has_ipv6:
+        try:
+            sock = _socket.socket(_socket.AF_INET6)
+            sock.bind((host, 0))
+            ipv6_available = True
+        except Exception:  # pragma: no cover
+            pass
+    if sock:
+        sock.close()
+    return ipv6_available

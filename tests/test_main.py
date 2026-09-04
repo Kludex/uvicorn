@@ -9,7 +9,7 @@ import httpx2
 import pytest
 
 import uvicorn.server
-from tests.utils import run_server
+from tests.utils import has_ipv6, run_server
 from uvicorn import Server
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.config import STARTUP_FAILURE, Config
@@ -25,19 +25,7 @@ async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
     await send({"type": "http.response.body", "body": b"", "more_body": False})
 
 
-def _has_ipv6(host: str):
-    sock = None
-    has_ipv6 = False
-    if socket.has_ipv6:
-        try:
-            sock = socket.socket(socket.AF_INET6)
-            sock.bind((host, 0))
-            has_ipv6 = True
-        except Exception:  # pragma: no cover
-            pass
-    if sock:
-        sock.close()
-    return has_ipv6
+_has_ipv6 = has_ipv6
 
 
 @pytest.mark.parametrize(

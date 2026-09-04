@@ -18,7 +18,7 @@ import yaml
 from pytest_mock import MockerFixture
 
 from tests.custom_loop_utils import CustomLoop
-from tests.utils import as_cwd, get_asyncio_default_loop_per_os
+from tests.utils import as_cwd, get_asyncio_default_loop_per_os, has_ipv6
 from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallable, Environ, Scope, StartResponse
 from uvicorn.config import Config, LoopFactoryType, UvicornDeprecationWarning
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -260,6 +260,37 @@ def test_socket_bind() -> None:
     sock = config.bind_socket()
     assert isinstance(sock, socket.socket)
     sock.close()
+
+
+def test_socket_bind_ipv6(mocker: MockerFixture) -> None:
+    mock_socket_cls = mocker.patch("uvicorn.config.socket.socket")
+    mock_sock: MagicMock = mock_socket_cls.return_value
+    mock_sock.getsockname.return_value = ("::1", 8000)
+
+    config = Config(app=asgi_app, host="::1", port=8000)
+    config.load()
+    sock = config.bind_socket()
+
+    assert sock is mock_sock
+    mock_socket_cls.assert_called_once_with(family=socket.AF_INET6)
+    mock_sock.setsockopt.assert_any_call(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    if hasattr(socket, "IPPROTO_IPV6") and hasattr(socket, "IPV6_V6ONLY"):
+        mock_sock.setsockopt.assert_any_call(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+    mock_sock.bind.assert_called_once_with(("::1", 8000))
+
+
+@pytest.mark.skipif(not has_ipv6("::1"), reason="IPV6 not enabled")
+def test_socket_bind_ipv6_real() -> None:
+    config = Config(app=asgi_app, host="::1", port=0)
+    config.load()
+    sock = config.bind_socket()
+    try:
+        assert isinstance(sock, socket.socket)
+        assert sock.family == socket.AF_INET6
+        if hasattr(socket, "IPPROTO_IPV6") and hasattr(socket, "IPV6_V6ONLY"):
+            assert sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY) != 0
+    finally:
+        sock.close()
 
 
 def test_ssl_config(
