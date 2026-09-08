@@ -416,7 +416,7 @@ def web_concurrency(request: pytest.FixtureRequest) -> Iterator[int]:
         del os.environ["WEB_CONCURRENCY"]
 
 
-@pytest.fixture(params=["127.0.0.1", "127.0.0.2"])
+@pytest.fixture(params=["::1", "127.0.0.1", "127.0.0.2"])
 def forwarded_allow_ips(request: pytest.FixtureRequest) -> Iterator[str]:
     yield request.param
     if os.getenv("FORWARDED_ALLOW_IPS"):

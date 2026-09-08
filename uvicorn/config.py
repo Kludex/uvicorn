@@ -360,7 +360,7 @@ class Config:
 
         self.forwarded_allow_ips: list[str] | str
         if forwarded_allow_ips is None:
-            self.forwarded_allow_ips = os.environ.get("FORWARDED_ALLOW_IPS", "127.0.0.1")
+            self.forwarded_allow_ips = os.environ.get("FORWARDED_ALLOW_IPS", ["::1", "127.0.0.1"])
         else:
             self.forwarded_allow_ips = forwarded_allow_ips  # pragma: full coverage
 
