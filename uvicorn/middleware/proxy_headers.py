@@ -14,7 +14,7 @@ class ProxyHeadersMiddleware:
     `X-Forwarded-For` headers with the connecting client information.
 
     Modifies the `client` and `scheme` information so that they reference
-    the connecting client, rather that the connecting proxy.
+    the connecting client, rather than the connecting proxy.
 
     References:
     - <https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers#Proxies>
