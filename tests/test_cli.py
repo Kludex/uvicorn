@@ -60,11 +60,21 @@ def test_cli_headers() -> None:
     assert result.exit_code == 0
     mock_run.assert_called_once()
     assert mock_run.call_args[1]["headers"] == [
-        [
+        (
             "Content-Security-Policy",
             "default-src 'self'; script-src https://example.com",
-        ]
+        )
     ]
+
+
+def test_cli_headers_missing_colon() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli, ["tests.test_cli:App", "--header", "X-Bad-Header"])
+
+    assert result.exit_code == 2
+    assert "Expected 'Name:Value' format" in result.output
+    assert "X-Bad-Header" in result.output
 
 
 def test_cli_call_server_run() -> None:
