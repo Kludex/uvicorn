@@ -260,6 +260,7 @@ Uvicorn currently supports the following headers:
 
 - `X-Forwarded-For` ([MDN Reference](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For))
 - `X-Forwarded-Proto`([MDN Reference](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-Proto))
+- `X-Forwarded-Host`([MDN Reference]([https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-Host]))
 
 Uvicorn can use these headers to correctly set the client and protocol in the request.
 However as anyone can set these headers you must configure which "clients" you will trust to have set them correctly.
@@ -270,7 +271,7 @@ or Literals (e.g. `/path/to/socket.sock`). When running from CLI these are confi
 !!! Warning "Only trust clients you can actually trust!"
     Incorrectly trusting other clients can lead to malicious actors spoofing their apparent client address to your application.
 
-A proxy chain may send a header once per hop rather than as a single comma-separated value. Repeated `X-Forwarded-For` fields are combined in order (as the equivalent comma-separated list, [RFC 9110, 5.3](https://www.rfc-editor.org/rfc/rfc9110#section-5.3)), while for `X-Forwarded-Proto` the last field is used.
+A proxy chain may send a header once per hop rather than as a single comma-separated value. Repeated `X-Forwarded-For` fields are combined in order (as the equivalent comma-separated list, [RFC 9110, 5.3](https://www.rfc-editor.org/rfc/rfc9110#section-5.3)), while for `X-Forwarded-Proto` and `X-Forwarded-Host` the last field is used.
 
 For more information, check [`ProxyHeadersMiddleware`](https://github.com/Kludex/uvicorn/blob/main/uvicorn/middleware/proxy_headers.py).
 
