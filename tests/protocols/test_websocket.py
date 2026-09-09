@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict
 import httpx2
 import pytest
 import websockets.exceptions
-from websockets import __version__ as websockets_version
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.client import ClientProtocol
 from websockets.extensions.permessage_deflate import ClientPerMessageDeflateFactory
@@ -30,7 +29,7 @@ from uvicorn._types import (
     WebSocketResponseStartEvent,
 )
 from uvicorn.config import Config
-from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
+from uvicorn.protocols.websockets.websockets_sansio_impl import WEBSOCKETS_VERSION_INFO, WebSocketsSansIOProtocol
 from uvicorn.server import ServerState
 
 try:
@@ -221,7 +220,7 @@ async def test_headers(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProto
         # can see in the code that it used UTF-8 (accidentally!) This affects
         # only the websockets.connect() call in the test, not uvicorn itself.
         username = "abraão"
-        if websockets_version >= "17.0":  # pragma: no cover
+        if WEBSOCKETS_VERSION_INFO >= (17,):  # pragma: websockets-lt-17
             username = username.encode().decode("latin-1")
         async with connect(url, additional_headers=[("username", username)]):
             return True

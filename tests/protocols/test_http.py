@@ -17,6 +17,7 @@ from uvicorn.config import WS_PROTOCOLS, Config
 from uvicorn.lifespan.off import LifespanOff
 from uvicorn.lifespan.on import LifespanOn
 from uvicorn.protocols.http.h11_impl import H11Protocol
+from uvicorn.protocols.utils import ClientDisconnected
 from uvicorn.server import ServerState
 
 try:
@@ -28,11 +29,12 @@ except ModuleNotFoundError:  # pragma: no cover
 
 if TYPE_CHECKING:
     from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
+    from uvicorn.protocols.http.zttp_impl import ZttpProtocol
     from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol as _WSProtocol
 
     WSProtocol: TypeAlias = WebSocketsSansIOProtocol | _WSProtocol
-    HTTPProtocol: TypeAlias = H11Protocol | HttpToolsProtocol
+    HTTPProtocol: TypeAlias = H11Protocol | HttpToolsProtocol | ZttpProtocol
 
 pytestmark = pytest.mark.anyio
 
@@ -259,6 +261,7 @@ class MockProtocol(asyncio.Protocol):
     timeout_keep_alive_task: asyncio.TimerHandle | None
     ws_protocol_class: type[WSProtocol] | None
     scope: Scope
+    cycle: Any
 
 
 def get_connected_protocol(
@@ -686,6 +689,87 @@ async def test_early_disconnect(http_protocol_cls: type[HTTPProtocol]):
     assert got_disconnect_event
 
 
+async def test_disconnect_on_send(http_protocol_cls: type[HTTPProtocol]) -> None:
+    got_disconnected = False
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        try:
+            await send({"type": "http.response.start", "status": 200})
+        except ClientDisconnected:
+            nonlocal got_disconnected
+            got_disconnected = True
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    protocol.eof_received()
+    protocol.connection_lost(None)
+    await protocol.loop.run_one()
+    assert got_disconnected
+
+
+async def test_uncaught_disconnect_on_send_is_not_an_error(
+    caplog: pytest.LogCaptureFixture, http_protocol_cls: type[HTTPProtocol]
+) -> None:
+    """A disconnect propagating out of the app is discarded, not logged as a server error."""
+    caplog.set_level(logging.ERROR, logger="uvicorn.error")
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send({"type": "http.response.start", "status": 200})
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    protocol.eof_received()
+    protocol.connection_lost(None)
+    await protocol.loop.run_one()
+    assert caplog.records == []
+
+
+async def test_error_after_disconnect_does_not_raise(
+    caplog: pytest.LogCaptureFixture, http_protocol_cls: type[HTTPProtocol]
+) -> None:
+    """An app error raised after the client disconnected must not try to send a 500 response."""
+    caplog.set_level(logging.ERROR, logger="uvicorn.error")
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        raise RuntimeError("boom")
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    protocol.eof_received()
+    protocol.connection_lost(None)
+    await protocol.loop.run_one()
+
+    # The application error is logged, but no unhandled ClientDisconnected escapes.
+    assert any("Exception in ASGI application" in record.message for record in caplog.records)
+    assert not any(isinstance(record.exc_info and record.exc_info[1], ClientDisconnected) for record in caplog.records)
+
+
+async def test_send_500_response_swallows_disconnect(http_protocol_cls: type[HTTPProtocol]) -> None:
+    """A disconnect that lands while the 500 response drains for flow control is swallowed."""
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        pass
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    cycle = protocol.cycle
+
+    # Pause writing so send_500_response() blocks inside flow.drain() rather than
+    # completing synchronously, reproducing the flow-control race.
+    cycle.flow.pause_writing()
+    send_task = asyncio.create_task(cycle.send_500_response())
+    await asyncio.sleep(0)  # let the task advance into flow.drain()
+    assert not send_task.done()
+
+    # The client disconnects while the drain is pending; releasing it then makes
+    # the post-drain send() raise ClientDisconnected, which must be swallowed.
+    cycle.disconnected = True
+    cycle.flow.resume_writing()
+    await send_task  # must not raise
+
+    await protocol.loop.run_one()  # drain the queued app task
+
+
 async def test_early_response(http_protocol_cls: type[HTTPProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
@@ -921,8 +1005,8 @@ def asgi2app(scope: Scope):
 @pytest.mark.parametrize(
     "asgi2or3_app, expected_scopes",
     [
-        (asgi3app, {"version": "3.0", "spec_version": "2.3"}),
-        (asgi2app, {"version": "2.0", "spec_version": "2.3"}),
+        (asgi3app, {"version": "3.0", "spec_version": "2.5"}),
+        (asgi2app, {"version": "2.0", "spec_version": "2.5"}),
     ],
 )
 async def test_scopes(
