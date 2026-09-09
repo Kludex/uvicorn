@@ -35,10 +35,10 @@ class UvicornDeprecationWarning(UserWarning):
     """
 
 
-HTTPProtocolType = Literal["auto", "h11", "httptools", "zttp"]
+HTTPProtocolType = Literal["auto", "h11", "httptools", "zttp", "zttp1", "zttp2"]
 WSProtocolType = Literal["auto", "none", "websockets", "websockets-sansio", "wsproto"]
 LifespanType = Literal["auto", "on", "off"]
-LoopFactoryType = Literal["none", "auto", "asyncio", "uvloop"]
+LoopFactoryType = Literal["none", "auto", "asyncio", "uvloop", "zuvloop"]
 InterfaceType = Literal["auto", "asgi3", "asgi2", "wsgi"]
 
 LOG_LEVELS: dict[str, int] = {
@@ -53,7 +53,9 @@ HTTP_PROTOCOLS: dict[str, str] = {
     "auto": "uvicorn.protocols.http.auto:AutoHTTPProtocol",
     "h11": "uvicorn.protocols.http.h11_impl:H11Protocol",
     "httptools": "uvicorn.protocols.http.httptools_impl:HttpToolsProtocol",
-    "zttp": "uvicorn.protocols.http.zttp_impl:ZttpProtocol",
+    "zttp": "uvicorn.protocols.http.auto_zttp_impl:AutoZttpProtocol",
+    "zttp1": "uvicorn.protocols.http.zttp_impl:ZttpProtocol",
+    "zttp2": "uvicorn.protocols.http.zttp_h2_impl:ZttpH2Protocol",
 }
 WS_PROTOCOLS: dict[str, str | None] = {
     "auto": "uvicorn.protocols.websockets.auto:AutoWebSocketsProtocol",
@@ -72,6 +74,7 @@ LOOP_FACTORIES: dict[str, str | None] = {
     "auto": "uvicorn.loops.auto:auto_loop_factory",
     "asyncio": "uvicorn.loops.asyncio:asyncio_loop_factory",
     "uvloop": "uvicorn.loops.uvloop:uvloop_loop_factory",
+    "zuvloop": "uvicorn.loops.zuvloop:zuvloop_loop_factory",
 }
 INTERFACES: list[InterfaceType] = ["auto", "asgi3", "asgi2", "wsgi"]
 
@@ -123,6 +126,7 @@ def create_ssl_context(
     cert_reqs: int,
     ca_certs: str | os.PathLike[str] | None,
     ciphers: str | None,
+    alpn_protocols: list[str] | None = None,
 ) -> ssl.SSLContext:
     ctx = ssl.SSLContext(ssl_version)
     get_password = (lambda: password) if password else None
@@ -132,6 +136,8 @@ def create_ssl_context(
         ctx.load_verify_locations(ca_certs)
     if ciphers:
         ctx.set_ciphers(ciphers)
+    if alpn_protocols:  # pragma: no-zttp-h2
+        ctx.set_alpn_protocols(alpn_protocols)
     return ctx
 
 
@@ -433,6 +439,14 @@ class Config:
     def load(self) -> None:
         assert not self.loaded
 
+        if isinstance(self.http, str):
+            http_protocol_class = import_from_string(HTTP_PROTOCOLS.get(self.http, self.http))
+            self.http_protocol_class: type[asyncio.Protocol] = http_protocol_class
+        else:
+            self.http_protocol_class = self.http
+
+        alpn_protocols: list[str] | None = getattr(self.http_protocol_class, "alpn_protocols", None)
+
         if self.ssl_context_factory is not None:
 
             def default_factory() -> ssl.SSLContext:
@@ -450,6 +464,7 @@ class Config:
                     cert_reqs=self.ssl_cert_reqs,
                     ca_certs=self.ssl_ca_certs,
                     ciphers=self.ssl_ciphers,
+                    alpn_protocols=alpn_protocols,
                 )
 
             context = self.ssl_context_factory(self, default_factory)
@@ -466,6 +481,7 @@ class Config:
                 cert_reqs=self.ssl_cert_reqs,
                 ca_certs=self.ssl_ca_certs,
                 ciphers=self.ssl_ciphers,
+                alpn_protocols=alpn_protocols,
             )
         else:
             self.ssl = None
@@ -476,12 +492,6 @@ class Config:
             if b"server" not in dict(encoded_headers) and self.server_header
             else encoded_headers
         )
-
-        if isinstance(self.http, str):
-            http_protocol_class = import_from_string(HTTP_PROTOCOLS.get(self.http, self.http))
-            self.http_protocol_class: type[asyncio.Protocol] = http_protocol_class
-        else:
-            self.http_protocol_class = self.http
 
         if isinstance(self.ws, str):
             ws_protocol_class = import_from_string(WS_PROTOCOLS.get(self.ws, self.ws))

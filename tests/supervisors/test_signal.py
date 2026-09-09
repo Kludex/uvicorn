@@ -2,7 +2,7 @@ import asyncio
 import signal
 from asyncio import Event
 
-import httpx
+import httpx2
 import pytest
 
 from tests.utils import assert_signal, run_server
@@ -34,12 +34,12 @@ async def test_sigint_finish_req(unused_tcp_port: int):
     config = Config(app=wait_app, reload=False, port=unused_tcp_port, timeout_graceful_shutdown=1)
     server: Server
     with assert_signal(signal.SIGINT):
-        async with run_server(config) as server, httpx.AsyncClient() as client:
+        async with run_server(config) as server, httpx2.AsyncClient() as client:
             req = asyncio.create_task(client.get(f"http://127.0.0.1:{unused_tcp_port}"))
             await request_started.wait()
             server.handle_exit(sig=signal.SIGINT, frame=None)  # exit
             server_event.set()  # continue request
-            # ensure httpx has processed the response and result is complete
+            # ensure httpx2 has processed the response and result is complete
             await req
             assert req.result().status_code == 200
             await asyncio.sleep(0.1)  # ensure shutdown is complete
@@ -53,7 +53,7 @@ async def test_sigint_abort_req(unused_tcp_port: int, caplog):
     3. Shutdown sequence start
     4. Request is _NOT_ finished before timeout_graceful_shutdown=1
 
-    Result: Request is cancelled mid-execution, and httpx will raise a
+    Result: Request is cancelled mid-execution, and httpx2 will raise a
         `RemoteProtocolError`.
     """
 
@@ -71,12 +71,12 @@ async def test_sigint_abort_req(unused_tcp_port: int, caplog):
     config = Config(app=forever_app, reload=False, port=unused_tcp_port, timeout_graceful_shutdown=1)
     server: Server
     with assert_signal(signal.SIGINT):
-        async with run_server(config) as server, httpx.AsyncClient() as client:
+        async with run_server(config) as server, httpx2.AsyncClient() as client:
             req = asyncio.create_task(client.get(f"http://127.0.0.1:{unused_tcp_port}"))
             await request_started.wait()
             # trigger exit, this request should time out in ~1 sec
             server.handle_exit(sig=signal.SIGINT, frame=None)
-            with pytest.raises(httpx.RemoteProtocolError):
+            with pytest.raises(httpx2.RemoteProtocolError):
                 await req
 
     message = "Cancel 1 running task(s), timeout graceful shutdown exceeded"
@@ -105,9 +105,9 @@ async def test_sigint_deny_request_after_triggered(unused_tcp_port: int, caplog)
     config = Config(app=app, reload=False, port=unused_tcp_port, timeout_graceful_shutdown=1)
     server: Server
     with assert_signal(signal.SIGINT):
-        async with run_server(config) as server, httpx.AsyncClient() as client:
+        async with run_server(config) as server, httpx2.AsyncClient() as client:
             # exit and ensure we do not accept more requests
             server.handle_exit(sig=signal.SIGINT, frame=None)
             await asyncio.sleep(0.1)  # next tick
-            with pytest.raises(httpx.ConnectError):
+            with pytest.raises(httpx2.ConnectError):
                 await client.get(f"http://127.0.0.1:{unused_tcp_port}")

@@ -64,13 +64,13 @@ dev = [
     "coverage>=7.14.1",
     "coverage-conditional-plugin==0.9.0",
     "coverage-enable-subprocess==1.0",
-    "httpx==0.28.1",
+    "httpx2",
     # check dist
     "twine==7.0.0",
     # Explicit optionals,
     "a2wsgi==1.10.10",
     "wsproto==1.3.2",
-    "zttp==0.0.24; python_version >= '3.12'",
+    "zttp>=0.0.30",
 ]
 docs = [
     "zensical==0.0.53",
@@ -84,14 +84,14 @@ exclude-newer = "7 days"
 
 [tool.uv.exclude-newer-package]
 httptools = "2026-05-26"
-zttp = "2026-08-14"
+zttp = "2026-08-29"
 
 [project.scripts]
 uvicorn = "uvicorn.main:main"
 
 [project.urls]
 Changelog = "https://uvicorn.dev/release-notes"
-Funding = "https://github.com/sponsors/encode"
+Funding = "https://github.com/sponsors/Kludex"
 Homepage = "https://uvicorn.dev/"
 Source = "https://github.com/Kludex/uvicorn"
 
@@ -138,6 +138,8 @@ omit = [
     "uvicorn/workers.py",
     "uvicorn/__main__.py",
     "uvicorn/_compat.py",
+    # Optional integration covered by zuvloop's Uvicorn compatibility suite.
+    "uvicorn/loops/zuvloop.py",
     # Deprecated legacy websockets implementation, no longer tested.
     "uvicorn/protocols/websockets/websockets_impl.py",
     "tests/benchmarks/*",
@@ -165,8 +167,14 @@ exclude_lines = [
 ]
 "sys_platform != 'win32'" = ["uvicorn/loops/asyncio.py"]
 "not is_installed('zttp')" = ["uvicorn/protocols/http/zttp_impl.py"]
+"not is_installed('zttp') or package_version('zttp') < (0, 0, 13)" = [
+    "tests/protocols/test_http2.py",
+    "uvicorn/protocols/http/auto_zttp_impl.py",
+    "uvicorn/protocols/http/zttp_h2_impl.py",
+]
 
 [tool.coverage.coverage_conditional_plugin.rules]
+no-zttp-h2 = "not is_installed('zttp') or package_version('zttp') < (0, 0, 13)"
 py-win32 = "sys_platform == 'win32'"
 py-not-win32 = "sys_platform != 'win32'"
 py-linux = "sys_platform == 'linux'"

@@ -10,7 +10,7 @@ import sys
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
 
-import httpx
+import httpx2
 import pytest
 
 from tests.protocols.test_http import SIMPLE_GET_REQUEST
@@ -143,7 +143,7 @@ async def test_request_than_limit_max_requests_warn_log(
     caplog.set_level(logging.INFO, logger="uvicorn.error")
     config = Config(app=app, limit_max_requests=1, port=unused_tcp_port, http=http_protocol_cls)
     async with run_server(config):
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             tasks = [client.get(f"http://127.0.0.1:{unused_tcp_port}") for _ in range(2)]
             responses = await asyncio.gather(*tasks)
             assert len(responses) == 2
@@ -161,7 +161,7 @@ async def test_limit_max_requests_jitter(
         limit = server.limit_max_requests
         assert limit is not None
         assert 1 <= limit <= 3
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             tasks = [client.get(f"http://127.0.0.1:{unused_tcp_port}") for _ in range(limit + 1)]
             await asyncio.gather(*tasks)
     assert f"Maximum request limit of {limit} exceeded. Terminating process." in caplog.text
