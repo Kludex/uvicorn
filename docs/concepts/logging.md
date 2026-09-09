@@ -1,17 +1,21 @@
 Uvicorn uses Python's built-in [`logging`](https://docs.python.org/3/library/logging.html)
 module, and provides three loggers out of the box:
 
-| Logger name      | Purpose                                            |
-|------------------|----------------------------------------------------|
-| `uvicorn`        | Parent logger (rarely used directly)               |
-| `uvicorn.error`  | Server-level messages (startup, shutdown, errors)   |
-| `uvicorn.access` | Per-request access log lines                        |
+| Logger name      | Purpose                                                              |
+|------------------|----------------------------------------------------------------------|
+| `uvicorn`        | Parent logger (rarely used directly)                                 |
+| `uvicorn.server` | Server messages: startup, shutdown, protocol errors                  |
+| `uvicorn.access` | Per-request access log lines, including WebSocket handshake outcomes |
 
-!!! note
-    Despite its name, `uvicorn.error` is **not** limited to error messages.
-    It is the general-purpose server logger, similar to how Gunicorn names its
-    main logger. See [#562](https://github.com/encode/uvicorn/issues/562) for
-    background.
+!!! note "Renamed from `uvicorn.error`"
+    The `uvicorn.server` logger was previously named `uvicorn.error`, even though
+    it carried messages of every level (a convention inherited from Gunicorn).
+    See [#562](https://github.com/encode/uvicorn/issues/562) for background.
+
+    For now, a log config that references `uvicorn.error` is also applied to
+    `uvicorn.server`, and a deprecation warning is emitted. Update your config
+    to use `uvicorn.server` - the compatibility behavior will be removed in a
+    future release.
 
 ## Default Configuration
 
@@ -48,7 +52,7 @@ LOGGING_CONFIG = {
     },
     "loggers": {
         "uvicorn": {"handlers": ["default"], "level": "INFO", "propagate": False},
-        "uvicorn.error": {"level": "INFO"},
+        "uvicorn.server": {"level": "INFO"},
         "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": False},
     },
 }
@@ -99,7 +103,7 @@ loggers:
       - default
     level: INFO
     propagate: false
-  uvicorn.error:
+  uvicorn.server:
     level: INFO
   uvicorn.access:
     handlers:
@@ -161,7 +165,7 @@ Create a file named `log_config.json`:
       "level": "INFO",
       "propagate": false
     },
-    "uvicorn.error": {
+    "uvicorn.server": {
       "level": "INFO"
     },
     "uvicorn.access": {
@@ -209,7 +213,7 @@ log_config = {
     },
     "loggers": {
         "uvicorn": {"handlers": ["default"], "level": "INFO", "propagate": False},
-        "uvicorn.error": {"level": "INFO"},
+        "uvicorn.server": {"level": "INFO"},
         "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": False},
     },
 }
@@ -256,7 +260,7 @@ loggers:
       - file
     level: INFO
     propagate: false
-  uvicorn.error:
+  uvicorn.server:
     level: INFO
   uvicorn.access:
     handlers:
@@ -272,7 +276,9 @@ logs to the file as well, add `file` to the `uvicorn.access.handlers` list.
 
 Use the `--no-access-log` CLI flag, or set `access_log=False` programmatically.
 This removes all handlers from `uvicorn.access` without affecting the
-`uvicorn.error` logger.
+`uvicorn.server` logger. WebSocket handshake lines (e.g.
+`"WebSocket /path HTTP/1.1" 101`) are part of the access log, so this disables
+them as well.
 
 ### Disabling Colors
 
@@ -303,7 +309,7 @@ loggers:
       - default
     level: INFO
     propagate: false
-  uvicorn.error:
+  uvicorn.server:
     level: INFO
   uvicorn.access:
     handlers:

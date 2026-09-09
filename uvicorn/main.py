@@ -41,7 +41,7 @@ def _metavar_from_type(_type: Any) -> str:
     return f"[{'|'.join(key for key in get_args(_type) if key != 'none')}]"
 
 
-logger = logging.getLogger("uvicorn.error")
+logger = logging.getLogger("uvicorn.server")
 
 
 def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> None:
@@ -602,7 +602,7 @@ def run(
     )
     if config.reload or config.workers > 1:
         if not isinstance(app, str):
-            logger = logging.getLogger("uvicorn.error")
+            logger = logging.getLogger("uvicorn.server")
             logger.warning("You must pass the application as an import string to enable 'reload' or 'workers'.")
             sys.exit(STARTUP_FAILURE)
     else:
