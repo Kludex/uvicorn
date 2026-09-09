@@ -29,11 +29,12 @@ except ModuleNotFoundError:  # pragma: no cover
 
 if TYPE_CHECKING:
     from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
+    from uvicorn.protocols.http.zttp_impl import ZttpProtocol
     from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol as _WSProtocol
 
     WSProtocol: TypeAlias = WebSocketsSansIOProtocol | _WSProtocol
-    HTTPProtocol: TypeAlias = H11Protocol | HttpToolsProtocol
+    HTTPProtocol: TypeAlias = H11Protocol | HttpToolsProtocol | ZttpProtocol
 
 pytestmark = pytest.mark.anyio
 
