@@ -646,3 +646,86 @@ async def test_proxy_headers_haproxy_behind_alb() -> None:
     await middleware(scope, _noop_receive, _noop_send)
     assert captured["client"] == ("1.2.3.4", 0)
     assert captured["scheme"] == "https"
+
+
+@pytest.mark.anyio
+async def test_proxy_headers_x_forwarded_host_and_port() -> None:
+    captured: dict[str, object] = {}
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        assert scope["type"] == "http"
+        captured["server"] = scope.get("server")
+
+    middleware = ProxyHeadersMiddleware(app, trusted_hosts="127.0.0.1")
+
+    # Host with explicit port in header
+    scope = _make_http_scope([(b"x-forwarded-host", b"example.com:8080")], scheme="http")
+    await middleware(scope, _noop_receive, _noop_send)
+    assert captured["server"] == ("example.com", 8080)
+
+    # Host with separate X-Forwarded-Port
+    scope2 = _make_http_scope([(b"x-forwarded-host", b"example.com"), (b"x-forwarded-port", b"9000")], scheme="http")
+    await middleware(scope2, _noop_receive, _noop_send)
+    assert captured["server"] == ("example.com", 9000)
+
+    # Host only, HTTPS default
+    scope3 = _make_http_scope([(b"x-forwarded-host", b"example.com"), (b"x-forwarded-proto", b"https")], scheme="http")
+    await middleware(scope3, _noop_receive, _noop_send)
+    assert captured["server"] == ("example.com", 443)
+
+    # Comma-separated X-Forwarded-Host from multiple proxies (takes first)
+    scope4 = _make_http_scope([(b"x-forwarded-host", b"client.example.com, proxy.example.com")], scheme="http")
+    await middleware(scope4, _noop_receive, _noop_send)
+    assert captured["server"] == ("client.example.com", 80)
+
+    # Port in host takes precedence over separate X-Forwarded-Port
+    scope5 = _make_http_scope(
+        [(b"x-forwarded-host", b"example.com:8443"), (b"x-forwarded-port", b"9000")], scheme="http"
+    )
+    await middleware(scope5, _noop_receive, _noop_send)
+    assert captured["server"] == ("example.com", 8443)
+
+    # Invalid / non-numeric X-Forwarded-Port falls back to scheme default
+    scope6 = _make_http_scope(
+        [(b"x-forwarded-host", b"example.com"), (b"x-forwarded-port", b"not-a-number")], scheme="http"
+    )
+    await middleware(scope6, _noop_receive, _noop_send)
+    assert captured["server"] == ("example.com", 80)
+
+    # Out-of-range port falls back to scheme default
+    scope7 = _make_http_scope([(b"x-forwarded-host", b"example.com"), (b"x-forwarded-port", b"99999")], scheme="http")
+    await middleware(scope7, _noop_receive, _noop_send)
+    assert captured["server"] == ("example.com", 80)
+
+    # Repeated X-Forwarded-Host headers (preserves first across all fields)
+    scope8 = _make_http_scope(
+        [(b"x-forwarded-host", b"client.example.com"), (b"x-forwarded-host", b"proxy.example.com")],
+        scheme="http",
+    )
+    await middleware(scope8, _noop_receive, _noop_send)
+    assert captured["server"] == ("client.example.com", 80)
+
+    # Comma-separated X-Forwarded-Host with leading empty elements
+    scope9 = _make_http_scope(
+        [(b"x-forwarded-host", b", client.example.com, proxy.example.com")],
+        scheme="http",
+    )
+    await middleware(scope9, _noop_receive, _noop_send)
+    assert captured["server"] == ("client.example.com", 80)
+
+    # Out-of-range port in host string falls back to scheme default or separate X-Forwarded-Port
+    scope10 = _make_http_scope([(b"x-forwarded-host", b"example.com:99999")], scheme="http")
+    await middleware(scope10, _noop_receive, _noop_send)
+    assert captured["server"] == ("example.com", 80)
+
+    scope11 = _make_http_scope(
+        [(b"x-forwarded-host", b"example.com:99999"), (b"x-forwarded-port", b"8080")],
+        scheme="http",
+    )
+    await middleware(scope11, _noop_receive, _noop_send)
+    assert captured["server"] == ("example.com", 8080)
+
+    # Out-of-range port in bracketed IPv6 host falls back to scheme default
+    scope12 = _make_http_scope([(b"x-forwarded-host", b"[2001:db8::1]:99999")], scheme="http")
+    await middleware(scope12, _noop_receive, _noop_send)
+    assert captured["server"] == ("2001:db8::1", 80)
