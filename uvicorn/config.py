@@ -8,6 +8,7 @@ import logging.config
 import os
 import socket
 import ssl
+import stat
 import sys
 from collections.abc import Awaitable, Callable
 from configparser import RawConfigParser
@@ -564,8 +565,16 @@ class Config:
             path = self.uds
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             try:
-                sock.bind(path)
                 uds_perms = 0o666
+                try:
+                    uds_stat = os.stat(path)
+                except FileNotFoundError:
+                    pass
+                else:
+                    if stat.S_ISSOCK(uds_stat.st_mode):
+                        uds_perms = stat.S_IMODE(uds_stat.st_mode)
+                        os.remove(path)
+                sock.bind(path)
                 os.chmod(self.uds, uds_perms)
             except OSError as exc:  # pragma: full coverage
                 logger.error(exc)
