@@ -110,6 +110,7 @@ Graceful process shutdowns are particularly important during a restart period. D
 * Start a number of new server processes to handle incoming requests, listening on the existing socket.
 * Stop the previous server processes from listening on the existing socket.
 * Close any connections that are not currently waiting on an HTTP response, and wait for any other connections to finalize their HTTP responses.
+* Let connections that were accepted just before the shutdown began deliver their request, so that a request in flight at that moment is served rather than reset.
 * Wait for any background tasks to run to completion, such as occurs when the ASGI application has sent the HTTP response, but the asyncio task has not yet run to completion.
 
 Uvicorn handles process shutdown gracefully, ensuring that connections are properly finalized, and all tasks have run to completion. During a shutdown period Uvicorn will ensure that responses and tasks must still complete within the configured timeout periods.

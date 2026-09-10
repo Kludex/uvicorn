@@ -167,6 +167,29 @@ async def test_limit_max_requests_jitter(
     assert f"Maximum request limit of {limit} exceeded. Terminating process." in caplog.text
 
 
+async def test_shutdown_serves_request_on_just_accepted_connection(
+    unused_tcp_port: int, http_protocol_cls: type[H11Protocol | HttpToolsProtocol]
+):
+    """A connection accepted right before shutdown, whose request has not been read yet, is served rather than reset.
+
+    See https://github.com/Kludex/uvicorn/discussions/2315.
+    """
+    config = Config(app=app, lifespan="off", port=unused_tcp_port, http=http_protocol_cls)
+    async with run_server(config) as server:
+        reader, writer = await asyncio.open_connection("127.0.0.1", unused_tcp_port)
+        try:
+            # Let the server accept the connection, but do not yield again after writing the
+            # request: its bytes reach the server socket without being read before the shutdown.
+            while not server.server_state.connections:
+                await asyncio.sleep(0)
+            writer.write(SIMPLE_GET_REQUEST)
+            await server.shutdown()
+            response = await reader.read()
+        finally:
+            writer.close()
+    assert response.startswith(b"HTTP/1.1 200 OK")
+
+
 @contextlib.asynccontextmanager
 async def _raw_server(
     *,

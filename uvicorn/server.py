@@ -287,6 +287,11 @@ class Server:
         for sock in sockets or []:
             sock.close()  # pragma: full coverage
 
+        # A connection accepted just before the listeners closed may not have had its
+        # request read yet. Yield to the event loop so such requests are parsed first,
+        # otherwise the connection would be closed as idle and the request reset.
+        await asyncio.sleep(0.1)
+
         # Request shutdown on all existing connections.
         for connection in list(self.server_state.connections):
             connection.shutdown()
