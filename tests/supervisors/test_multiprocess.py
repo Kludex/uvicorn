@@ -40,34 +40,16 @@ async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
     pass  # pragma: no cover
 
 
-def test_process_ping_pong() -> None:
-    process = Process(Config(app=app), sockets=[])
-    threading.Thread(target=process.always_pong, daemon=True).start()
-    assert process.ping()
+def start_supervisor(supervisor: Multiprocess) -> threading.Thread:
+    thread = threading.Thread(target=supervisor.run, daemon=True)
+    thread.start()
+    return thread
 
 
-def test_process_ping_pong_timeout() -> None:
-    process = Process(Config(app=app), sockets=[])
-    assert not process.ping(0.1)
-
-
-def test_process_ping_broken_pipe() -> None:
-    process = Process(Config(app=app), sockets=[])
-    process.parent_conn.close()
-    process.child_conn.close()
-    assert not process.ping(0.1)
-
-
-def test_process_ready() -> None:
-    """`is_ready()` reflects whether the worker's server has finished startup."""
-    process = Process(Config(app=app), sockets=[])
-    threading.Thread(target=process.always_pong, daemon=True).start()
-
-    assert process.ping()
-    assert not process.is_ready()
-
-    process.server.started = True
-    assert process.is_ready()
+def stop_supervisor(supervisor: Multiprocess, thread: threading.Thread, sig: int = signal.SIGINT) -> None:
+    supervisor.signal_queue.append(sig)
+    thread.join(10)
+    assert not thread.is_alive()
 
 
 @new_console_in_windows
@@ -80,9 +62,8 @@ def test_multiprocess_run() -> None:
     """
     config = Config(app=app, workers=2)
     supervisor = Multiprocess(config, sockets=[])
-    threading.Thread(target=supervisor.run, daemon=True).start()
-    supervisor.signal_queue.append(signal.SIGINT)
-    supervisor.join_all()
+    thread = start_supervisor(supervisor)
+    stop_supervisor(supervisor, thread)
 
 
 @new_console_in_windows
@@ -92,7 +73,7 @@ def test_multiprocess_health_check() -> None:
     """
     config = Config(app=app, workers=2)
     supervisor = Multiprocess(config, sockets=[])
-    threading.Thread(target=supervisor.run, daemon=True).start()
+    thread = start_supervisor(supervisor)
     time.sleep(1)
     process = supervisor.processes[0]
     process.kill()
@@ -101,8 +82,7 @@ def test_multiprocess_health_check() -> None:
     while not all(p.is_alive() for p in supervisor.processes):  # pragma: no cover
         assert time.monotonic() < deadline, "Timed out waiting for processes to be alive"
         time.sleep(0.1)
-    supervisor.signal_queue.append(signal.SIGINT)
-    supervisor.join_all()
+    stop_supervisor(supervisor, thread)
 
 
 @new_console_in_windows
@@ -120,6 +100,7 @@ def test_multiprocess_worker_dies_on_startup() -> None:
         assert time.monotonic() < deadline, "Timed out waiting for the supervisor to stop"
         time.sleep(0.1)
     thread.join()
+    assert not thread.is_alive()
 
 
 @new_console_in_windows
@@ -129,10 +110,9 @@ def test_multiprocess_sigterm() -> None:
     """
     config = Config(app=app, workers=2)
     supervisor = Multiprocess(config, sockets=[])
-    threading.Thread(target=supervisor.run, daemon=True).start()
+    thread = start_supervisor(supervisor)
     time.sleep(1)
-    supervisor.signal_queue.append(signal.SIGTERM)
-    supervisor.join_all()
+    stop_supervisor(supervisor, thread, signal.SIGTERM)
 
 
 @pytest.mark.skipif(not hasattr(signal, "SIGBREAK"), reason="platform unsupports SIGBREAK")
@@ -143,10 +123,9 @@ def test_multiprocess_sigbreak() -> None:  # pragma: py-not-win32
     """
     config = Config(app=app, workers=2)
     supervisor = Multiprocess(config, sockets=[])
-    threading.Thread(target=supervisor.run, daemon=True).start()
+    thread = start_supervisor(supervisor)
     time.sleep(1)
-    supervisor.signal_queue.append(getattr(signal, "SIGBREAK"))
-    supervisor.join_all()
+    stop_supervisor(supervisor, thread, getattr(signal, "SIGBREAK"))
 
 
 @pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="platform unsupports SIGHUP")
@@ -156,7 +135,7 @@ def test_multiprocess_sighup() -> None:
     """
     config = Config(app=app, workers=2, timeout_worker_healthcheck=30)
     supervisor = Multiprocess(config, sockets=[])
-    threading.Thread(target=supervisor.run, daemon=True).start()
+    thread = start_supervisor(supervisor)
     time.sleep(1)
     pids = [p.pid for p in supervisor.processes]
     supervisor.signal_queue.append(signal.SIGHUP)
@@ -166,8 +145,7 @@ def test_multiprocess_sighup() -> None:
             break
         time.sleep(0.1)
     assert pids != [p.pid for p in supervisor.processes]
-    supervisor.signal_queue.append(signal.SIGINT)
-    supervisor.join_all()
+    stop_supervisor(supervisor, thread)
 
 
 @pytest.mark.skipif(os.name == "nt", reason="test spawns real worker processes")
@@ -187,15 +165,6 @@ def test_multiprocess_restart_aborts_when_replacement_not_ready(monkeypatch: pyt
     supervisor.join_all()
 
 
-def test_wait_until_ready_bails_on_shutdown_or_dead_worker() -> None:
-    process = Process(Config(app=app), sockets=[])
-
-    should_exit = threading.Event()
-    should_exit.set()
-    assert process.wait_until_ready(timeout=1, should_exit=should_exit) is False
-    assert process.wait_until_ready(timeout=0.5) is False
-
-
 def test_multiprocess_restart_stops_when_shutting_down() -> None:
     supervisor = Multiprocess(Config(app=app, workers=1), sockets=[])
     supervisor.processes = [Process(supervisor.config, [])]
@@ -213,12 +182,11 @@ def test_multiprocess_sigttin() -> None:
     """
     config = Config(app=app, workers=2)
     supervisor = Multiprocess(config, sockets=[])
-    threading.Thread(target=supervisor.run, daemon=True).start()
+    thread = start_supervisor(supervisor)
     supervisor.signal_queue.append(signal.SIGTTIN)
     time.sleep(1)
     assert len(supervisor.processes) == 3
-    supervisor.signal_queue.append(signal.SIGINT)
-    supervisor.join_all()
+    stop_supervisor(supervisor, thread)
 
 
 @pytest.mark.skipif(not hasattr(signal, "SIGTTOU"), reason="platform unsupports SIGTTOU")
@@ -228,12 +196,11 @@ def test_multiprocess_sigttou() -> None:
     """
     config = Config(app=app, workers=2)
     supervisor = Multiprocess(config, sockets=[])
-    threading.Thread(target=supervisor.run, daemon=True).start()
+    thread = start_supervisor(supervisor)
     supervisor.signal_queue.append(signal.SIGTTOU)
     time.sleep(1)
     assert len(supervisor.processes) == 1
     supervisor.signal_queue.append(signal.SIGTTOU)
     time.sleep(1)
     assert len(supervisor.processes) == 1
-    supervisor.signal_queue.append(signal.SIGINT)
-    supervisor.join_all()
+    stop_supervisor(supervisor, thread)

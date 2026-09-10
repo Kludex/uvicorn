@@ -15,7 +15,7 @@ class StatReload(BaseReload):
     def __init__(
         self,
         config: Config,
-        target: Callable[[list[socket] | None], None],
+        target: Callable[[list[socket] | None], None] | None,
         sockets: list[socket],
     ) -> None:
         super().__init__(config, target, sockets)

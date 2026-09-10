@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import os
 import signal
-import sys
 import threading
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -11,8 +10,8 @@ from socket import socket
 from types import FrameType
 
 from uvicorn._ansi import style
-from uvicorn._subprocess import get_subprocess
 from uvicorn.config import Config
+from uvicorn.supervisors.process import Process
 
 HANDLED_SIGNALS = (
     signal.SIGINT,  # Unix signal 2. Sent by Ctrl+C.
@@ -26,7 +25,7 @@ class BaseReload:
     def __init__(
         self,
         config: Config,
-        target: Callable[[list[socket] | None], None],
+        target: Callable[[list[socket] | None], None] | None,
         sockets: list[socket],
     ) -> None:
         self.config = config
@@ -34,17 +33,13 @@ class BaseReload:
         self.sockets = sockets
         self.should_exit = threading.Event()
         self.pid = os.getpid()
-        self.is_restarting = False
         self.reloader_name: str | None = None
 
     def signal_handler(self, sig: int, frame: FrameType | None) -> None:  # pragma: full coverage
         """
         A signal handler that is registered with the parent process.
         """
-        if sys.platform == "win32" and self.is_restarting:
-            self.is_restarting = False
-        else:
-            self.should_exit.set()
+        self.should_exit.set()
 
     def run(self) -> None:
         self.startup()
@@ -80,30 +75,18 @@ class BaseReload:
         for sig in HANDLED_SIGNALS:
             signal.signal(sig, self.signal_handler)
 
-        self.process = get_subprocess(config=self.config, target=self.target, sockets=self.sockets)
+        self.process = Process(config=self.config, target=self.target, sockets=self.sockets)
         self.process.start()
 
     def restart(self) -> None:
-        if sys.platform == "win32":  # pragma: py-not-win32
-            self.is_restarting = True
-            assert self.process.pid is not None
-            os.kill(self.process.pid, signal.CTRL_C_EVENT)
-
-            # This is a workaround to ensure the Ctrl+C event is processed
-            sys.stdout.write(" ")  # This has to be a non-empty string
-            sys.stdout.flush()
-        else:  # pragma: py-win32
-            self.process.terminate()
+        self.process.terminate()
         self.process.join()
 
-        self.process = get_subprocess(config=self.config, target=self.target, sockets=self.sockets)
+        self.process = Process(config=self.config, target=self.target, sockets=self.sockets)
         self.process.start()
 
     def shutdown(self) -> None:
-        if sys.platform == "win32":
-            self.should_exit.set()  # pragma: py-not-win32
-        else:
-            self.process.terminate()  # pragma: py-win32
+        self.process.terminate()
         self.process.join()
 
         for sock in self.sockets:

@@ -28,8 +28,7 @@ def get_subprocess(
     The child is not yet started at this point.
 
     * config - The Uvicorn configuration instance.
-    * target - A callable that accepts a list of sockets. In practice this will
-               be the `Server.run()` method.
+    * target - A callable that accepts a list of sockets.
     * sockets - A list of sockets to pass to the server. Sockets are bound once
                 by the parent process, and then passed to the child processes.
     """
@@ -61,8 +60,7 @@ def subprocess_started(
     Called when the child process starts.
 
     * config - The Uvicorn configuration instance.
-    * target - A callable that accepts a list of sockets. In practice this will
-               be the `Server.run()` method.
+    * target - A callable that accepts a list of sockets.
     * sockets - A list of sockets to pass to the server. Sockets are bound once
                 by the parent process, and then passed to the child processes.
     * stdin_fileno - The file number of sys.stdin, so that it can be reattached
@@ -76,7 +74,6 @@ def subprocess_started(
     config.configure_logging()
 
     try:
-        # Now we can call into `Server.run(sockets=sockets)`
         target(sockets=sockets)
     except KeyboardInterrupt:  # pragma: no cover
         # suppress the exception to avoid a traceback from subprocess.Popen
