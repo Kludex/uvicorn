@@ -274,7 +274,7 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
 )
 @click.option(
     "--limit-max-requests-jitter",
-    type=int,
+    type=click.IntRange(min=0),
     default=0,
     help="Maximum jitter to add to limit_max_requests."
     " Staggers worker restarts to avoid all workers restarting simultaneously.",

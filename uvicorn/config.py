@@ -278,6 +278,8 @@ class Config:
         self.root_path = root_path
         self.limit_concurrency = limit_concurrency
         self.limit_max_requests = limit_max_requests
+        if limit_max_requests_jitter < 0:
+            raise ValueError("limit_max_requests_jitter must be greater than or equal to 0")
         self.limit_max_requests_jitter = limit_max_requests_jitter
         self.backlog = backlog
         self.timeout_keep_alive = timeout_keep_alive
