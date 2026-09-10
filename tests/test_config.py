@@ -573,6 +573,36 @@ def test_bind_unix_socket_does_not_remove_other_files(
         assert path.read_text() == "keep this file"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
+def test_bind_unix_socket_does_not_replace_symlink_to_socket(
+    short_socket_name: str, mocker: MockerFixture
+) -> None:  # pragma: py-win32
+    target = Path(short_socket_name)
+    with closing(socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)) as existing_socket:
+        existing_socket.bind(short_socket_name)
+    target.chmod(0o600)
+    original_target_inode = target.stat().st_ino
+
+    path = target.with_name("link")
+    path.symlink_to(target)
+    original_link_inode = path.lstat().st_ino
+    config = Config(app=asgi_app, uds=str(path))
+
+    with closing(socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)) as sock:
+        mocker.patch("uvicorn.config.socket.socket", return_value=sock)
+        with pytest.raises(SystemExit) as exc_info:
+            config.bind_socket()
+
+    assert exc_info.value.code == STARTUP_FAILURE
+    assert path.is_symlink()
+    assert path.readlink() == target
+    assert path.lstat().st_ino == original_link_inode
+    target_stat = target.stat()
+    assert stat.S_ISSOCK(target_stat.st_mode)
+    assert target_stat.st_ino == original_target_inode
+    assert stat.S_IMODE(target_stat.st_mode) == 0o600
+
+
 @pytest.mark.parametrize(
     "reload, workers",
     [

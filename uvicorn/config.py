@@ -567,7 +567,7 @@ class Config:
             try:
                 uds_perms = 0o666
                 try:
-                    uds_stat = os.stat(path)
+                    uds_stat = os.lstat(path)
                 except FileNotFoundError:
                     pass
                 else:
