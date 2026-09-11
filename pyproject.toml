@@ -120,8 +120,9 @@ ignore_missing_imports = true
 follow_imports = "silent"
 
 [tool.pytest.ini_options]
-addopts = "-rxXs --strict-config --strict-markers -n 8"
+addopts = "-rxXs --strict-config --strict-markers -n 8 -m 'not stress'"
 xfail_strict = true
+markers = ["stress: resource-intensive tests run by the stress test workflow"]
 filterwarnings = [
     "error",
     "ignore:Uvicorn's native WSGI implementation is deprecated.*:DeprecationWarning",
@@ -143,6 +144,7 @@ omit = [
     # Deprecated legacy websockets implementation, no longer tested.
     "uvicorn/protocols/websockets/websockets_impl.py",
     "tests/benchmarks/*",
+    "tests/test_stress.py",
 ]
 
 [tool.coverage.report]
