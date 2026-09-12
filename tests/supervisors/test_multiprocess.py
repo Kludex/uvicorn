@@ -80,9 +80,10 @@ def test_multiprocess_run() -> None:
     """
     config = Config(app=app, workers=2)
     supervisor = Multiprocess(config, sockets=[])
-    threading.Thread(target=supervisor.run, daemon=True).start()
+    thread = threading.Thread(target=supervisor.run, daemon=True)
+    thread.start()
     supervisor.signal_queue.append(signal.SIGINT)
-    supervisor.join_all()
+    thread.join()
 
 
 @new_console_in_windows
