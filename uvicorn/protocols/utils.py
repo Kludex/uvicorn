@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import socket
+import ssl
 import urllib.parse
 
-from uvicorn._types import WWWScope
+from uvicorn._types import TLSExtension, WWWScope
 
 
 class ClientDisconnected(OSError): ...
@@ -46,6 +47,16 @@ def get_local_addr(transport: asyncio.Transport) -> tuple[str, int | None] | Non
 
 def is_ssl(transport: asyncio.Transport) -> bool:
     return bool(transport.get_extra_info("sslcontext"))
+
+
+def get_tls_extension(transport: asyncio.Transport) -> TLSExtension:
+    ssl_object: ssl.SSLObject | ssl.SSLSocket | None = transport.get_extra_info("ssl_object")
+    assert ssl_object is not None
+
+    client_cert = None
+    if ssl_object.context.verify_mode != ssl.CERT_NONE:
+        client_cert = ssl_object.getpeercert(binary_form=True)
+    return {"client_cert": client_cert}
 
 
 def get_client_addr(scope: WWWScope) -> str:

@@ -20,11 +20,19 @@ from uvicorn._types import (
     ASGISendEvent,
     HTTPRequestEvent,
     HTTPScope,
+    TLSExtension,
 )
 from uvicorn.config import Config
 from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT, FlowControl, service_unavailable
-from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
+from uvicorn.protocols.utils import (
+    get_client_addr,
+    get_local_addr,
+    get_path_with_query_string,
+    get_remote_addr,
+    get_tls_extension,
+    is_ssl,
+)
 from uvicorn.server import ServerState
 
 HEADER_RE = re.compile(b'[\x00-\x1f\x7f()<>@,;:\\[\\]={} \t\\\\"]')
@@ -89,6 +97,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.server: tuple[str, int | None] | None = None
         self.client: tuple[str, int] | None = None
         self.scheme: Literal["http", "https"] | None = None
+        self.tls: TLSExtension | None = None
         self.pipeline: deque[tuple[RequestResponseCycle, ASGI3Application]] = deque()
 
         # Per-request state
@@ -108,6 +117,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.server = get_local_addr(transport)
         self.client = get_remote_addr(transport)
         self.scheme = "https" if is_ssl(transport) else "http"
+        self.tls = get_tls_extension(transport) if self.scheme == "https" else None
 
         if self.logger.level <= TRACE_LOG_LEVEL:
             prefix = "%s:%d - " % self.client if self.client else ""
@@ -234,6 +244,8 @@ class HttpToolsProtocol(asyncio.Protocol):
             "headers": self.headers,
             "state": self.app_state.copy(),
         }
+        if self.tls is not None:
+            self.scope["extensions"] = {"tls": self.tls.copy()}
 
     # Parser callbacks
     def on_url(self, url: bytes) -> None:
