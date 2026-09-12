@@ -92,17 +92,18 @@ def test_multiprocess_health_check() -> None:
     """
     config = Config(app=app, workers=2)
     supervisor = Multiprocess(config, sockets=[])
-    threading.Thread(target=supervisor.run, daemon=True).start()
-    time.sleep(1)
-    process = supervisor.processes[0]
-    process.kill()
-    assert not process.is_alive()
-    deadline = time.monotonic() + 10
-    while not all(p.is_alive() for p in supervisor.processes):  # pragma: no cover
-        assert time.monotonic() < deadline, "Timed out waiting for processes to be alive"
-        time.sleep(0.1)
-    supervisor.signal_queue.append(signal.SIGINT)
-    supervisor.join_all()
+    try:
+        supervisor.init_processes()
+        process = supervisor.processes[0]
+        process.kill()
+        process.join()
+        supervisor.keep_subprocess_alive()
+
+        assert process not in supervisor.processes
+        assert all(process.is_alive() for process in supervisor.processes)
+    finally:
+        supervisor.terminate_all()
+        supervisor.join_all()
 
 
 @new_console_in_windows
@@ -156,18 +157,16 @@ def test_multiprocess_sighup() -> None:
     """
     config = Config(app=app, workers=2, timeout_worker_healthcheck=30)
     supervisor = Multiprocess(config, sockets=[])
-    threading.Thread(target=supervisor.run, daemon=True).start()
-    time.sleep(1)
-    pids = [p.pid for p in supervisor.processes]
-    supervisor.signal_queue.append(signal.SIGHUP)
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline:
-        if [p.pid for p in supervisor.processes] != pids:
-            break
-        time.sleep(0.1)
-    assert pids != [p.pid for p in supervisor.processes]
-    supervisor.signal_queue.append(signal.SIGINT)
-    supervisor.join_all()
+    try:
+        supervisor.init_processes()
+        pids = [process.pid for process in supervisor.processes]
+        supervisor.signal_queue.append(signal.SIGHUP)
+        supervisor.handle_signals()
+
+        assert pids != [process.pid for process in supervisor.processes]
+    finally:
+        supervisor.terminate_all()
+        supervisor.join_all()
 
 
 @pytest.mark.skipif(os.name == "nt", reason="test spawns real worker processes")

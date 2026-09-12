@@ -451,6 +451,21 @@ async def test_keepalive_timeout_with_pipelined_requests(http_protocol_cls: type
     assert protocol.timeout_keep_alive_task is not None
 
 
+async def test_keepalive_timeout_with_pipelined_websocket_upgrade(
+    http_protocol_cls: type[HTTPProtocol], ws_protocol_cls: type[WSProtocol]
+):
+    if http_protocol_cls.__name__ == "HttpToolsProtocol":
+        pytest.skip("httptools never upgrades with the keep-alive timer armed")
+
+    app = Response("Hello, world", media_type="text/plain")
+
+    protocol = get_connected_protocol(app, http_protocol_cls, ws=ws_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST + UPGRADE_REQUEST)
+    await protocol.loop.run_one()
+
+    assert protocol.timeout_keep_alive_task is None
+
+
 async def test_close(http_protocol_cls: type[HTTPProtocol]):
     app = Response(b"", status_code=204, headers={"connection": "close"})
 

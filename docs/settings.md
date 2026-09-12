@@ -92,7 +92,8 @@ Using Uvicorn with watchfiles will enable the following options (which are other
 ## Implementation
 
 * `--loop <str>` - Set the event loop implementation. The uvloop implementation provides greater performance, but is not compatible with Windows or PyPy. The zuvloop implementation requires CPython 3.14 or newer and must be installed separately. **Options:** *'auto', 'asyncio', 'uvloop', 'zuvloop'.* **Default:** *'auto'*.
-* `--http <str>` - Set the [HTTP protocol implementation](concepts/http-protocols.md). The httptools implementation provides greater performance, but is not compatible with PyPy. The zttp implementations are experimental and require the `zttp` package (`pip install zttp`): `zttp` serves both HTTP/1.1 and HTTP/2 (negotiated via ALPN over TLS, or via prior knowledge on cleartext connections), `zttp1` serves HTTP/1.1 only, and `zttp2` serves HTTP/2 only. See the [HTTP/2 documentation](concepts/http2.md) for details. **Options:** *'auto', 'h11', 'httptools', 'zttp', 'zttp1', 'zttp2'.* **Default:** *'auto'*.
+* `--http <str>` - Set the [HTTP protocol implementation](concepts/http-protocols.md). The httptools implementation provides greater performance, but is not compatible with PyPy. The zttp implementation is experimental and requires the `zttp` package (`pip install zttp`). **Options:** *'auto', 'h11', 'httptools', 'zttp'.* **Default:** *'auto'*.
+* `--http2` - Enable [HTTP/2](concepts/http2.md). This requires `--http zttp`. **Default:** *False*.
 * `--ws <str>` - Set the WebSockets protocol implementation. Either of the `websockets` and `wsproto` packages are supported. There are two versions of `websockets` supported: `websockets` and `websockets-sansio`. Use `'none'` to ignore all websocket requests. **Options:** *'auto', 'none', 'websockets', 'websockets-sansio', 'wsproto'.* **Default:** *'auto'*.
 * `--ws-max-size <int>` - Set the WebSockets max message size, in bytes. **Default:** *16777216* (16 MB).
 * `--ws-max-queue <int>` - Set the maximum length of the WebSocket incoming message queue. Only available with the `websockets` protocol. **Default:** *32*.
@@ -116,7 +117,7 @@ Note that WSGI mode always disables WebSocket support, as it is not supported by
 
 * `--root-path <str>` - Set the ASGI `root_path` for applications submounted below a given URL path. **Default:** *""*.
 * `--proxy-headers / --no-proxy-headers` - Enable/Disable X-Forwarded-Proto, X-Forwarded-For to populate remote address info. Defaults to enabled, but is restricted to only trusting connecting IPs in the `forwarded-allow-ips` configuration.
-* `--forwarded-allow-ips <comma-separated-list>` - Comma separated list of IP Addresses, IP Networks, or literals (e.g. UNIX Socket path) to trust with proxy headers. Defaults to the `$FORWARDED_ALLOW_IPS` environment variable if available, or '127.0.0.1'. The literal `'*'` means trust everything.
+* `--forwarded-allow-ips <comma-separated-list>` - Comma separated list of IP Addresses, IP Networks, or literals (e.g. UNIX Socket path) to trust with proxy headers. Defaults to `$FORWARDED_ALLOW_IPS` if set. Otherwise, `127.0.0.1` and `::1` are trusted. The literal `'*'` means trust everything.
 * `--server-header / --no-server-header` - Enable/Disable default `Server` header. **Default:** *True*.
 * `--date-header / --no-date-header` - Enable/Disable default `Date` header. **Default:** *True*.
 * `--header <name:value>` - Specify custom default HTTP response headers as a Name:Value pair. May be used multiple times.

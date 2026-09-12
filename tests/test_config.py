@@ -259,6 +259,12 @@ def test_concrete_http_class() -> None:
     assert config.http_protocol_class is H11Protocol
 
 
+def test_http2_requires_zttp_protocol() -> None:
+    config = Config(app=asgi_app, http="h11", http2=True)
+    with pytest.raises(ValueError, match="HTTP/2 requires the `zttp` HTTP protocol"):
+        config.load()
+
+
 def test_socket_bind() -> None:
     config = Config(app=asgi_app)
     config.load()
@@ -421,11 +427,19 @@ def web_concurrency(request: pytest.FixtureRequest) -> Iterator[int]:
         del os.environ["WEB_CONCURRENCY"]
 
 
-@pytest.fixture(params=["127.0.0.1", "127.0.0.2"])
+@pytest.fixture(params=["::1", "127.0.0.1", "127.0.0.2"])
 def forwarded_allow_ips(request: pytest.FixtureRequest) -> Iterator[str]:
     yield request.param
     if os.getenv("FORWARDED_ALLOW_IPS"):
         del os.environ["FORWARDED_ALLOW_IPS"]
+
+
+def test_forwarded_allow_ips_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("FORWARDED_ALLOW_IPS", raising=False)
+
+    config = Config(app=asgi_app)
+
+    assert config.forwarded_allow_ips == "127.0.0.1,::1"
 
 
 def test_env_file(
