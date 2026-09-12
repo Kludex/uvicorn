@@ -249,12 +249,6 @@ class Config:
         h11_max_incomplete_event_size: int | None = None,
         reset_contextvars: bool = False,
     ):
-        if http2 and http != "zttp":
-            raise ValueError(
-                "HTTP/2 requires the `zttp` HTTP protocol. Install it with `pip install zttp`, then select it with "
-                "`http='zttp'`. See https://uvicorn.dev/concepts/http2/ for more information."
-            )
-
         self.app = app
         self.host = host
         self.port = port
@@ -445,14 +439,16 @@ class Config:
     def load(self) -> None:
         assert not self.loaded
 
-        if isinstance(self.http, str):
-            http_protocol = (
-                "uvicorn.protocols.http.auto_zttp_impl:AutoZttpProtocol"
-                if self.http2
-                else HTTP_PROTOCOLS.get(self.http, self.http)
-            )
-            http_protocol_class = import_from_string(http_protocol)
+        if self.http2:
+            if self.http != "zttp":
+                raise ValueError(
+                    "HTTP/2 requires the `zttp` HTTP protocol. Install it with `pip install zttp`, then select it "
+                    "with `http='zttp'`. See https://uvicorn.dev/concepts/http2/ for more information."
+                )
+            http_protocol_class = import_from_string("uvicorn.protocols.http.auto_zttp_impl:AutoZttpProtocol")
             self.http_protocol_class: type[asyncio.Protocol] = http_protocol_class
+        elif isinstance(self.http, str):
+            self.http_protocol_class = import_from_string(HTTP_PROTOCOLS.get(self.http, self.http))
         else:
             self.http_protocol_class = self.http
 

@@ -255,8 +255,9 @@ def test_concrete_http_class() -> None:
 
 
 def test_http2_requires_zttp_protocol() -> None:
+    config = Config(app=asgi_app, http="h11", http2=True)
     with pytest.raises(ValueError, match="HTTP/2 requires the `zttp` HTTP protocol"):
-        Config(app=asgi_app, http="h11", http2=True)
+        config.load()
 
 
 def test_socket_bind() -> None:
