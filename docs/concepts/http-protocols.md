@@ -3,7 +3,7 @@
 Uvicorn provides several HTTP protocol implementations that you can choose from using the [`--http`](../settings.md#implementation) option:
 
 ```bash
-uvicorn main:app --http <auto|h11|httptools|zttp|zttp1|zttp2>
+uvicorn main:app --http <auto|h11|httptools|httpunk|zttp>
 ```
 
 By default, Uvicorn uses `--http auto`, which automatically selects:
@@ -18,6 +18,21 @@ By default, Uvicorn uses `--http auto`, which automatically selects:
 ## httptools
 
 [httptools](https://github.com/MagicStack/httptools) is a Python binding for the Node.js HTTP parser. It is installed as part of the `uvicorn[standard]` optional extras, and provides greater performance than h11, but is not compatible with PyPy.
+
+## httpunk
+
+[httpunk](https://github.com/gi0baro/httpunk) provides HTTP/1.1 and HTTP/2 implementations. You can install it and select its HTTP/1.1 implementation with:
+
+```bash
+pip install httpunk
+uvicorn main:app --http httpunk
+```
+
+You can enable HTTP/2 negotiation with:
+
+```bash
+uvicorn main:app --http httpunk --http2
+```
 
 ## zttp
 
@@ -40,9 +55,14 @@ You can run `uvicorn` with `zttp` with the following command:
 uvicorn main:app --http zttp
 ```
 
-zttp is the only implementation with HTTP/2 support. It comes in three variants: `zttp`
-serves both HTTP/1.1 and HTTP/2, `zttp1` serves HTTP/1.1 only, and `zttp2` serves HTTP/2
-only. See the [HTTP/2 documentation](http2.md) for details.
+The `zttp` implementation serves HTTP/1.1 by default. This keeps experimental HTTP/2
+support opt-in. You can enable HTTP/2 negotiation with:
+
+```bash
+uvicorn main:app --http zttp --http2
+```
+
+See the [HTTP/2 documentation](http2.md) for details.
 
 !!! warning "Experimental"
     zttp support is currently **experimental** and **not suited for production usage**. If you try it out, please report any issues or feedback on the [issue tracker](https://github.com/Kludex/uvicorn/issues).

@@ -197,6 +197,9 @@ class H11Protocol(asyncio.Protocol):
                 break
 
             elif isinstance(event, h11.Request):
+                # Pipelined HTTP requests and WebSocket upgrades may be processed after the keep-alive timer is armed.
+                self._unset_keepalive_if_required()
+
                 self.headers = [(key.lower(), value) for key, value in event.headers]
                 raw_path, _, query_string = event.target.partition(b"?")
                 path = unquote(raw_path.decode("ascii"))
@@ -230,14 +233,6 @@ class H11Protocol(asyncio.Protocol):
                     self.logger.warning(message)
                 else:
                     app = self.app
-
-                # When starting to process a request, disable the keep-alive
-                # timeout. Normally we disable this when receiving data from
-                # client and set back when finishing processing its request.
-                # However, for pipelined requests processing finishes after
-                # already receiving the next request and thus the timer may
-                # be set here, which we don't want.
-                self._unset_keepalive_if_required()
 
                 self.cycle = RequestResponseCycle(
                     scope=self.scope,

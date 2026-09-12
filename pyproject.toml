@@ -52,7 +52,7 @@ dev = [
     # We add uvicorn[standard] so `uv sync` considers the extras.
     "uvicorn[standard]",
     "ruff>=0.15.15",
-    "pytest==9.0.3",
+    "pytest>=9.1.1",
     "pytest-mock==3.15.1",
     "pytest-xdist[psutil]==3.8.0",
     "pytest-codspeed>=4.1.1",
@@ -74,7 +74,7 @@ dev = [
     "httpunk~=0.2.2",
 ]
 docs = [
-    "zensical==0.0.53",
+    "zensical>=0.0.57",
     "mkdocstrings-python>=2.0.3",
 ]
 
@@ -175,7 +175,7 @@ exclude_lines = [
 ]
 "not is_installed('httpunk')" = ["uvicorn/protocols/http/httpunk_impl.py"]
 "not is_installed('httpunk') or not is_installed('zttp') or package_version('zttp') < (0, 0, 13)" = [
-    "tests/protocols/test_http2.py",
+    "tests/protocols/test_httpunk.py",
 ]
 
 [tool.coverage.coverage_conditional_plugin.rules]

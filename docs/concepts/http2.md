@@ -1,5 +1,5 @@
-**Uvicorn** has experimental support for HTTP/2, built on the [`zttp`](https://zttp.marcelotryle.com/)
-parser.
+**Uvicorn** has experimental support for HTTP/2 through the
+[`httpunk`](https://github.com/gi0baro/httpunk) and [`zttp`](https://zttp.marcelotryle.com/) implementations.
 
 !!! warning "Experimental Feature"
     HTTP/2 support is currently **experimental** and is **not enabled by default**.
@@ -14,40 +14,41 @@ HTTP/2 introduces several key features:
 
 ## Enabling HTTP/2
 
-HTTP/2 support requires the `zttp` package:
+Install either `httpunk` or `zttp`:
 
-```bash
-pip install zttp
+=== "httpunk"
+    ```bash
+    pip install httpunk
+    ```
+
+=== "zttp"
+    ```bash
+    pip install zttp
+    ```
+
+Select the installed HTTP implementation and pass `--http2`:
+
+=== "httpunk"
+    ```bash
+    uvicorn main:app --http httpunk --http2
+    ```
+
+=== "zttp"
+    ```bash
+    uvicorn main:app --http zttp --http2
+    ```
+
+You can also enable HTTP/2 programmatically:
+
+```python
+import uvicorn
+
+uvicorn.run("main:app", http="httpunk", http2=True)
 ```
 
-To enable it, select the `zttp` HTTP implementation:
-
-=== "Command Line"
-    ```bash
-    uvicorn main:app --http zttp
-    ```
-
-=== "Programmatic"
-    ```python
-    import uvicorn
-
-    uvicorn.run("main:app", http="zttp")
-    ```
-
-The `zttp` implementation serves both HTTP versions: each connection is dispatched to
-HTTP/1.1 or HTTP/2 depending on what the client speaks. Two more variants pin a single
-version:
-
-| `--http` | Serves |
-| --- | --- |
-| `zttp` | HTTP/1.1 and HTTP/2 |
-| `zttp1` | HTTP/1.1 only |
-| `zttp2` | HTTP/2 only |
-
-`zttp2` is useful when every client is known to speak HTTP/2, e.g. gRPC backends or
-services behind a proxy configured for `h2c://` upstreams. Over TLS it advertises only
-`h2` via ALPN, so clients that cannot speak HTTP/2 get no negotiated protocol and the
-connection fails instead of falling back to HTTP/1.1.
+The `--http2` option makes the selected implementation serve both HTTP versions. Each connection is dispatched
+to HTTP/1.1 or HTTP/2 depending on what the client speaks. Without this option, the selected implementation
+serves HTTP/1.1 only. This default keeps experimental HTTP/2 support opt-in.
 
 ## Connection Methods
 
@@ -97,10 +98,10 @@ async def app(scope, receive, send):
     await send({"type": "http.response.body", "body": b"ok"})
 ```
 
-Run Uvicorn with `--http zttp` and the SSL certificate files:
+Run Uvicorn with `--http2` and the SSL certificate files:
 
 ```bash
-uvicorn main:app --http zttp --ssl-keyfile key.pem --ssl-certfile cert.pem
+uvicorn main:app --http httpunk --http2 --ssl-keyfile key.pem --ssl-certfile cert.pem
 ```
 
 You can test the connection using curl (`-k` skips certificate verification for self-signed certs):
@@ -136,7 +137,7 @@ sequenceDiagram
 Using the same `main.py`:
 
 ```bash
-uvicorn main:app --http zttp
+uvicorn main:app --http httpunk --http2
 ```
 
 ```bash
@@ -223,5 +224,5 @@ recommended default for most deployments.
 The implementation is young, and some protocol features are not complete yet:
 
 - HTTP/2 server push and `Expect: 100-continue` are not supported.
-- WebSockets over HTTP/2 (RFC 8441 extended `CONNECT`) are not supported. With `--http zttp`,
-  WebSocket connections still work - they are served over HTTP/1.1.
+- WebSockets over HTTP/2 (RFC 8441 extended `CONNECT`) are not supported. With `--http2`, WebSocket connections
+  still work - they are served over HTTP/1.1.

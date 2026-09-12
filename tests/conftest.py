@@ -271,21 +271,13 @@ def http_protocol_cls(request: pytest.FixtureRequest):
 @pytest.fixture(
     params=[
         pytest.param(
-            "uvicorn.protocols.http.zttp_h2_impl:ZttpH2Protocol",
-            marks=pytest.mark.skipif(
-                not importlib.util.find_spec("zttp"),
-                reason="zttp not installed.",
-            ),
-            id="zttp2",
-        ),
-        pytest.param(
             "uvicorn.protocols.http.httpunk_impl:HTTPunkH2Protocol",
             marks=pytest.mark.skipif(
                 not importlib.util.find_spec("httpunk"),
                 reason="httpunk not installed.",
             ),
-            id="httpunk2",
-        ),
+            id="httpunk",
+        )
     ]
 )
 def http2_protocol_cls(request: pytest.FixtureRequest):

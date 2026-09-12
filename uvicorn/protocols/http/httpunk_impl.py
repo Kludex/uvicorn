@@ -6,7 +6,7 @@ import contextvars
 import http
 import logging
 import sys
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 from urllib.parse import unquote
 
 from httpunk.asyncio import AutoServerProtocol, H1ServerProtocol, H2ServerProtocol
@@ -558,8 +558,9 @@ class _ASGIBridge(_BridgeBase):
 
 
 class HTTPunkAutoProtocol(_ASGIBridge, AutoServerProtocol):
-    """Serve each connection as HTTP/1 or HTTP/2, sniffed from the client's opening bytes
-    (so h2c prior-knowledge works). Registered as ``--http httpunk``."""
+    """Serve each connection as HTTP/1 or HTTP/2."""
+
+    alpn_protocols: ClassVar[list[str]] = ["h2", "http/1.1"]
 
 
 class HTTPunkH1Protocol(_ASGIBridge, H1ServerProtocol):
