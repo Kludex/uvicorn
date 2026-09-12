@@ -287,10 +287,6 @@ class H11Protocol(asyncio.Protocol):
             prefix = "%s:%d - " % self.client if self.client else ""
             self.logger.log(TRACE_LOG_LEVEL, "%sUpgrading to WebSocket", prefix)
 
-        # The transport is handed over to the WebSocket protocol, so the HTTP
-        # keep-alive timer must not outlive the upgrade. A pipelined upgrade is
-        # picked up from on_response_complete(), after the timer was armed and
-        # without passing the _unset_keepalive_if_required() below.
         self._unset_keepalive_if_required()
 
         self.connections.discard(self)

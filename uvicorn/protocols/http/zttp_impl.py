@@ -235,8 +235,6 @@ class ZttpProtocol(asyncio.Protocol):
             prefix = "%s:%d - " % self.client if self.client else ""
             self.logger.log(TRACE_LOG_LEVEL, "%sUpgrading to WebSocket", prefix)
 
-        # The transport is handed over to the WebSocket protocol, so the HTTP
-        # keep-alive timer must not outlive the upgrade.
         self._unset_keepalive_if_required()
 
         self.connections.discard(self)
