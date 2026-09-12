@@ -29,6 +29,11 @@ logger = logging.getLogger("uvicorn.error")
 
 
 def main(*args: Any, **kwargs: Any) -> Any:
+    warnings.warn(
+        "uvicorn.main() is deprecated, use uvicorn.run() or uvicorn.cli.main() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     from uvicorn.cli import main as cli_main
 
     return cli_main(*args, **kwargs)
