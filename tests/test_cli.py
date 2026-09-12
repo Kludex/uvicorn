@@ -2,6 +2,7 @@ import contextlib
 import importlib
 import os
 import platform
+import re
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -51,7 +52,9 @@ def test_cli_print_version() -> None:
 
 
 def test_main_invokes_cli() -> None:
-    with pytest.deprecated_call(match="is deprecated"):
+    with pytest.deprecated_call(
+        match=re.escape("uvicorn.main() is deprecated, use uvicorn.run() or uvicorn.cli.main() instead.")
+    ):
         assert uvicorn.main(["--version"], standalone_mode=False) == 0
 
 
