@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import signal
 import socket
+import subprocess
 import sys
 from collections.abc import Callable, Generator
 from pathlib import Path
@@ -399,6 +400,75 @@ def test_base_reloader_should_exit(tmp_path: Path):
     assert reloader.should_exit.is_set()
     with pytest.raises(StopIteration):
         reloader.pause()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only process creation mode")
+def test_reload_gracefully_stops_windowless_child(tmp_path: Path, unused_tcp_port: int) -> None:  # pragma: py-not-win32
+    app_path = tmp_path / "app.py"
+    app_path.write_text(
+        """\
+from __future__ import annotations
+
+async def app(scope, receive, send):
+    if scope["type"] != "lifespan":
+        return
+
+    while True:
+        message = await receive()
+        if message["type"] == "lifespan.startup":
+            await send({"type": "lifespan.startup.complete"})
+        elif message["type"] == "lifespan.shutdown":
+            await send({"type": "lifespan.shutdown.complete"})
+            return
+"""
+    )
+    # Use StatReload so watcher behavior does not affect this process-shutdown test.
+    (tmp_path / "watchfiles.py").write_text("raise ImportError\n")
+    log_path = tmp_path / "uvicorn.log"
+
+    with log_path.open("w") as log:
+        process = subprocess.Popen(
+            [sys.executable, "-m", "uvicorn", "app:app", "--reload", "--port", str(unused_tcp_port)],
+            cwd=tmp_path,
+            stdin=subprocess.DEVNULL,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            creationflags=0x08000000,  # CREATE_NO_WINDOW
+        )
+
+        try:
+            deadline = monotonic() + 15
+            while monotonic() < deadline:
+                output = log_path.read_text()
+                if "Application startup complete" in output or process.poll() is not None:
+                    break
+                sleep(0.1)
+
+            assert process.poll() is None, f"Uvicorn exited before startup:\n{output}"
+            assert "Application startup complete" in output, f"Uvicorn did not start:\n{output}"
+
+            sleep(1)
+            app_path.write_text(app_path.read_text() + "\n")
+
+            deadline = monotonic() + 15
+            while monotonic() < deadline:
+                output = log_path.read_text()
+                if output.count("Application startup complete") >= 2 or process.poll() is not None:
+                    break
+                sleep(0.1)
+
+            assert process.poll() is None, f"Uvicorn exited during reload:\n{output}"
+            assert output.count("Application startup complete") >= 2, f"Uvicorn did not reload:\n{output}"
+            assert "Application shutdown complete" in output
+        finally:
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+            process.kill()
+            process.wait()
 
 
 def test_base_reloader_closes_sockets_on_shutdown():
