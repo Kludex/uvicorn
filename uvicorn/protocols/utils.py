@@ -51,10 +51,9 @@ def is_ssl(transport: asyncio.Transport) -> bool:
 
 def get_tls_extension(transport: asyncio.Transport) -> TLSExtension:
     ssl_object: ssl.SSLObject | ssl.SSLSocket | None = transport.get_extra_info("ssl_object")
-    assert ssl_object is not None
 
     client_cert = None
-    if ssl_object.context.verify_mode != ssl.CERT_NONE:
+    if ssl_object is not None and ssl_object.context.verify_mode != ssl.CERT_NONE:
         client_cert = ssl_object.getpeercert(binary_form=True)
     return {"client_cert": client_cert}
 

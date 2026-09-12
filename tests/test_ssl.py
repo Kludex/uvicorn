@@ -87,7 +87,7 @@ async def test_client_certificate_in_http_scope(
         http=http_protocol_cls,
         loop="asyncio",
         lifespan="off",
-        limit_max_requests=1,
+        limit_max_requests=2,
         ssl_keyfile=tls_certificate_private_key_path,
         ssl_certfile=tls_certificate_server_cert_path,
         ssl_ca_certs=tls_ca_certificate_pem_path,
@@ -96,10 +96,17 @@ async def test_client_certificate_in_http_scope(
     )
     async with run_server(config):
         async with httpx2.AsyncClient(verify=tls_client_ssl_context) as client:
-            response = await client.get(f"https://127.0.0.1:{unused_tcp_port}")
+            responses = [
+                await client.get(f"https://127.0.0.1:{unused_tcp_port}"),
+                await client.get(f"https://127.0.0.1:{unused_tcp_port}"),
+            ]
 
-    assert response.status_code == 204
-    assert scopes[0]["extensions"]["tls"] == {"client_cert": client_certificate_der(tls_client_certificate)}
+    assert [response.status_code for response in responses] == [204, 204]
+    assert scopes[0]["client"] == scopes[1]["client"]
+    first_client_cert = scopes[0]["extensions"]["tls"]["client_cert"]
+    second_client_cert = scopes[1]["extensions"]["tls"]["client_cert"]
+    assert first_client_cert == client_certificate_der(tls_client_certificate)
+    assert second_client_cert is first_client_cert
 
 
 @pytest.mark.anyio
