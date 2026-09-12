@@ -1851,7 +1851,7 @@ dev = [
     { name = "cryptography", specifier = ">=44.0.3" },
     { name = "httpx2" },
     { name = "mypy", specifier = ">=2.1.0" },
-    { name = "pytest", specifier = "==9.1.1" },
+    { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-codspeed", specifier = ">=4.1.1" },
     { name = "pytest-mock", specifier = "==3.15.1" },
     { name = "pytest-xdist", extras = ["psutil"], specifier = "==3.8.0" },
@@ -1866,7 +1866,7 @@ dev = [
 ]
 docs = [
     { name = "mkdocstrings-python", specifier = ">=2.0.3" },
-    { name = "zensical", specifier = "==0.0.57" },
+    { name = "zensical", specifier = ">=0.0.57" },
 ]
 
 [[package]]
