@@ -33,7 +33,8 @@ openssl req -newkey rsa:2048 -nodes \
 printf '%s\n' \
   'basicConstraints=CA:FALSE' \
   'keyUsage=digitalSignature' \
-  'extendedKeyUsage=clientAuth' > tls/client.ext
+  'extendedKeyUsage=clientAuth' \
+  'subjectAltName=URI:spiffe://example.com/client' > tls/client.ext
 openssl x509 -req -days 365 \
   -in tls/client.csr -CA tls/ca.pem -CAkey tls/ca.key -CAserial tls/ca.srl \
   -extfile tls/client.ext -out tls/client.pem
