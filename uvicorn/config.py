@@ -35,7 +35,7 @@ class UvicornDeprecationWarning(UserWarning):
     """
 
 
-HTTPProtocolType = Literal["auto", "h11", "httptools", "zttp", "zttp1", "zttp2"]
+HTTPProtocolType = Literal["auto", "h11", "httptools", "zttp"]
 WSProtocolType = Literal["auto", "none", "websockets", "websockets-sansio", "wsproto"]
 LifespanType = Literal["auto", "on", "off"]
 LoopFactoryType = Literal["none", "auto", "asyncio", "uvloop", "zuvloop"]
@@ -53,9 +53,7 @@ HTTP_PROTOCOLS: dict[str, str] = {
     "auto": "uvicorn.protocols.http.auto:AutoHTTPProtocol",
     "h11": "uvicorn.protocols.http.h11_impl:H11Protocol",
     "httptools": "uvicorn.protocols.http.httptools_impl:HttpToolsProtocol",
-    "zttp": "uvicorn.protocols.http.auto_zttp_impl:AutoZttpProtocol",
-    "zttp1": "uvicorn.protocols.http.zttp_impl:ZttpProtocol",
-    "zttp2": "uvicorn.protocols.http.zttp_h2_impl:ZttpH2Protocol",
+    "zttp": "uvicorn.protocols.http.zttp_impl:ZttpProtocol",
 }
 WS_PROTOCOLS: dict[str, str | None] = {
     "auto": "uvicorn.protocols.websockets.auto:AutoWebSocketsProtocol",
@@ -204,6 +202,7 @@ class Config:
         fd: int | None = None,
         loop: LoopFactoryType | str = "auto",
         http: type[asyncio.Protocol] | HTTPProtocolType | str = "auto",
+        http2: bool = False,
         ws: type[asyncio.Protocol] | WSProtocolType | str = "auto",
         ws_max_size: int = 16 * 1024 * 1024,
         ws_max_queue: int = 32,
@@ -257,6 +256,7 @@ class Config:
         self.fd = fd
         self.loop = loop
         self.http = http
+        self.http2 = http2
         self.ws = ws
         self.ws_max_size = ws_max_size
         self.ws_max_queue = ws_max_queue
@@ -439,9 +439,16 @@ class Config:
     def load(self) -> None:
         assert not self.loaded
 
-        if isinstance(self.http, str):
-            http_protocol_class = import_from_string(HTTP_PROTOCOLS.get(self.http, self.http))
+        if self.http2:
+            if self.http != "zttp":
+                raise ValueError(
+                    "HTTP/2 requires the `zttp` HTTP protocol. Install it with `pip install zttp`, then select it "
+                    "with `http='zttp'`. See https://uvicorn.dev/concepts/http2/ for more information."
+                )
+            http_protocol_class = import_from_string("uvicorn.protocols.http.auto_zttp_impl:AutoZttpProtocol")
             self.http_protocol_class: type[asyncio.Protocol] = http_protocol_class
+        elif isinstance(self.http, str):
+            self.http_protocol_class = import_from_string(HTTP_PROTOCOLS.get(self.http, self.http))
         else:
             self.http_protocol_class = self.http
 
