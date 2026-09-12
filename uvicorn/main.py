@@ -10,6 +10,7 @@ from collections.abc import Callable
 from configparser import RawConfigParser
 from typing import IO, Any
 
+import uvicorn.server
 from uvicorn._types import ASGIApplication
 from uvicorn.config import (
     LOGGING_CONFIG,
@@ -22,7 +23,6 @@ from uvicorn.config import (
     LoopFactoryType,
     WSProtocolType,
 )
-from uvicorn.server import Server
 from uvicorn.supervisors import ChangeReload, Multiprocess
 
 logger = logging.getLogger("uvicorn.error")
@@ -153,7 +153,7 @@ def run(
     else:
         config.load_app()
 
-    server = Server(config=config)
+    server = uvicorn.server.Server(config=config)
 
     try:
         if config.should_reload:
@@ -175,14 +175,20 @@ def run(
 
 
 def __getattr__(name: str) -> Any:
+    if name == "Server":
+        warnings.warn(
+            "uvicorn.main.Server is deprecated, use uvicorn.server.Server instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return uvicorn.server.Server
     if name == "ServerState":
         warnings.warn(
             "uvicorn.main.ServerState is deprecated, use uvicorn.server.ServerState instead.",
             DeprecationWarning,
+            stacklevel=2,
         )
-        from uvicorn.server import ServerState
-
-        return ServerState
+        return uvicorn.server.ServerState
     raise AttributeError(f"module {__name__} has no attribute {name}")
 
 

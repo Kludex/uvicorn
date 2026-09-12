@@ -201,6 +201,13 @@ async def test_exit_on_create_server_with_invalid_host() -> None:
     assert exc_info.value.code == STARTUP_FAILURE
 
 
+def test_deprecated_server_from_main() -> None:
+    with pytest.deprecated_call(match="uvicorn.main.Server is deprecated, use uvicorn.server.Server instead."):
+        from uvicorn.main import Server as DeprecatedServer
+
+    assert DeprecatedServer is uvicorn.server.Server
+
+
 def test_deprecated_server_state_from_main() -> None:
     with pytest.deprecated_call(
         match="uvicorn.main.ServerState is deprecated, use uvicorn.server.ServerState instead."
