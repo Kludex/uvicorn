@@ -451,6 +451,20 @@ async def test_keepalive_timeout_with_pipelined_requests(http_protocol_cls: type
     assert protocol.timeout_keep_alive_task is not None
 
 
+async def test_keepalive_timeout_with_websocket_upgrade(
+    http_protocol_cls: type[HTTPProtocol], ws_protocol_cls: type[WSProtocol]
+):
+    app = Response("Hello, world", media_type="text/plain")
+
+    protocol = get_connected_protocol(app, http_protocol_cls, ws=ws_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    assert protocol.timeout_keep_alive_task is not None
+
+    protocol.data_received(UPGRADE_REQUEST)
+    assert protocol.timeout_keep_alive_task is None
+
+
 async def test_keepalive_timeout_with_pipelined_websocket_upgrade(
     http_protocol_cls: type[HTTPProtocol], ws_protocol_cls: type[WSProtocol]
 ):
