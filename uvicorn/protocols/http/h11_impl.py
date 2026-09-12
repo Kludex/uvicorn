@@ -197,6 +197,7 @@ class H11Protocol(asyncio.Protocol):
                 break
 
             elif isinstance(event, h11.Request):
+                # A pipelined request may be processed after the keep-alive timer is armed.
                 self._unset_keepalive_if_required()
 
                 self.headers = [(key.lower(), value) for key, value in event.headers]

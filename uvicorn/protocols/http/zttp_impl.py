@@ -145,6 +145,7 @@ class ZttpProtocol(asyncio.Protocol):
     def handle_events(self, event: zttp.Event) -> None:
         while event is not zttp.NEED_DATA:
             if isinstance(event, zttp.Request):
+                # A pipelined request may be processed after the keep-alive timer is armed.
                 self._unset_keepalive_if_required()
 
                 assert isinstance(event.headers, zttp.HeaderBlock)
