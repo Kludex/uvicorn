@@ -1,6 +1,7 @@
 import importlib
 import inspect
 import socket
+import subprocess
 import sys
 from logging import WARNING
 from pathlib import Path
@@ -23,6 +24,14 @@ async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
     assert scope["type"] == "http"
     await send({"type": "http.response.start", "status": 204, "headers": []})
     await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+
+def test_import_without_dependencies() -> None:
+    subprocess.run(
+        [sys.executable, "-S", "-c", "import sys; import uvicorn; assert 'click' not in sys.modules"],
+        check=True,
+        cwd=Path(__file__).parents[1],
+    )
 
 
 def _has_ipv6(host: str):
