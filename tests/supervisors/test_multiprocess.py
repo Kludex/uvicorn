@@ -156,8 +156,8 @@ def test_multiprocess_sighup() -> None:
     """
     config = Config(app=app, workers=2, timeout_worker_healthcheck=30)
     supervisor = Multiprocess(config, sockets=[])
-    supervisor.init_processes()
     try:
+        supervisor.init_processes()
         pids = [process.pid for process in supervisor.processes]
         supervisor.signal_queue.append(signal.SIGHUP)
         supervisor.handle_signals()
