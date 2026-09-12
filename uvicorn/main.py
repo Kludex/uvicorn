@@ -28,10 +28,10 @@ from uvicorn.supervisors import ChangeReload, Multiprocess
 logger = logging.getLogger("uvicorn.error")
 
 
-def main() -> None:
+def main(*args: Any, **kwargs: Any) -> Any:
     from uvicorn.cli import main as cli_main
 
-    cli_main()
+    return cli_main(*args, **kwargs)
 
 
 def run(
@@ -184,3 +184,7 @@ def __getattr__(name: str) -> Any:
 
         return ServerState
     raise AttributeError(f"module {__name__} has no attribute {name}")
+
+
+if __name__ == "__main__":
+    main()  # pragma: no cover

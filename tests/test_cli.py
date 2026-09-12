@@ -50,13 +50,8 @@ def test_cli_print_version() -> None:
     ) in result.output
 
 
-def test_main_invokes_cli(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(sys, "argv", ["uvicorn", "--version"])
-
-    with pytest.raises(SystemExit) as exc_info:
-        uvicorn.main()
-
-    assert exc_info.value.code == 0
+def test_main_invokes_cli() -> None:
+    assert uvicorn.main(["--version"], standalone_mode=False) == 0
 
 
 def test_cli_headers() -> None:
