@@ -60,6 +60,15 @@ def test_main_invokes_cli(capsys: pytest.CaptureFixture[str]) -> None:
     assert f"Running uvicorn {uvicorn.__version__}" in capsys.readouterr().out
 
 
+def test_main_command_invokes_cli(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.deprecated_call(
+        match=re.escape("uvicorn.main() is deprecated, use uvicorn.run() or uvicorn.cli.main() instead.")
+    ):
+        assert uvicorn.main.main(["--version"], standalone_mode=False) == 0
+
+    assert f"Running uvicorn {uvicorn.__version__}" in capsys.readouterr().out
+
+
 def test_cli_headers() -> None:
     runner = CliRunner()
 

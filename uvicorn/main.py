@@ -28,15 +28,29 @@ from uvicorn.supervisors import ChangeReload, Multiprocess
 logger = logging.getLogger("uvicorn.error")
 
 
-def main(*args: Any, **kwargs: Any) -> Any:
-    warnings.warn(
-        "uvicorn.main() is deprecated, use uvicorn.run() or uvicorn.cli.main() instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    from uvicorn.cli import main as cli_main
+class _DeprecatedMain:
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        self._warn()
+        from uvicorn.cli import main as cli_main
 
-    return cli_main(*args, **kwargs)
+        return cli_main(*args, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        self._warn()
+        from uvicorn.cli import main as cli_main
+
+        return getattr(cli_main, name)
+
+    @staticmethod
+    def _warn() -> None:
+        warnings.warn(
+            "uvicorn.main() is deprecated, use uvicorn.run() or uvicorn.cli.main() instead.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+
+
+main = _DeprecatedMain()
 
 
 def run(
