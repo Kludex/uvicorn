@@ -30,9 +30,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 from __future__ import annotations
 
+import sys
 import types
 from collections.abc import Awaitable, Callable, Iterable, MutableMapping
 from typing import Any, Literal, Protocol, TypedDict
+
+if sys.version_info >= (3, 11):  # pragma: py-lt-311
+    from typing import NotRequired
+else:  # pragma: py-gte-311
+    from typing_extensions import NotRequired
 
 # WSGI
 Environ = MutableMapping[str, Any]
@@ -47,15 +53,7 @@ class ASGIVersions(TypedDict):
     version: Literal["2.0"] | Literal["3.0"]
 
 
-class _OptionalState(TypedDict, total=False):
-    state: dict[str, Any]
-
-
-class _OptionalScope(_OptionalState, total=False):
-    extensions: dict[str, dict[object, object]]
-
-
-class HTTPScope(_OptionalScope):
+class HTTPScope(TypedDict):
     type: Literal["http"]
     asgi: ASGIVersions
     http_version: str
@@ -68,9 +66,11 @@ class HTTPScope(_OptionalScope):
     headers: Iterable[tuple[bytes, bytes]]
     client: tuple[str, int] | None
     server: tuple[str, int | None] | None
+    state: NotRequired[dict[str, Any]]
+    extensions: NotRequired[dict[str, dict[object, object]]]
 
 
-class WebSocketScope(_OptionalScope):
+class WebSocketScope(TypedDict):
     type: Literal["websocket"]
     asgi: ASGIVersions
     http_version: str
@@ -83,11 +83,14 @@ class WebSocketScope(_OptionalScope):
     client: tuple[str, int] | None
     server: tuple[str, int | None] | None
     subprotocols: Iterable[str]
+    state: NotRequired[dict[str, Any]]
+    extensions: NotRequired[dict[str, dict[object, object]]]
 
 
-class LifespanScope(_OptionalState):
+class LifespanScope(TypedDict):
     type: Literal["lifespan"]
     asgi: ASGIVersions
+    state: NotRequired[dict[str, Any]]
 
 
 WWWScope = HTTPScope | WebSocketScope
@@ -105,23 +108,17 @@ class HTTPResponseDebugEvent(TypedDict):
     info: dict[str, object]
 
 
-class _HTTPResponseStartEventOptional(TypedDict, total=False):
-    headers: Iterable[tuple[bytes, bytes]]
-    trailers: bool
-
-
-class HTTPResponseStartEvent(_HTTPResponseStartEventOptional):
+class HTTPResponseStartEvent(TypedDict):
     type: Literal["http.response.start"]
     status: int
+    headers: NotRequired[Iterable[tuple[bytes, bytes]]]
+    trailers: NotRequired[bool]
 
 
-class _OptionalMoreBody(TypedDict, total=False):
-    more_body: bool
-
-
-class HTTPResponseBodyEvent(_OptionalMoreBody):
+class HTTPResponseBodyEvent(TypedDict):
     type: Literal["http.response.body"]
     body: bytes
+    more_body: NotRequired[bool]
 
 
 class HTTPResponseTrailersEvent(TypedDict):
@@ -144,43 +141,36 @@ class WebSocketConnectEvent(TypedDict):
     type: Literal["websocket.connect"]
 
 
-class _WebSocketAcceptEventOptional(TypedDict, total=False):
-    subprotocol: str | None
-    headers: Iterable[tuple[bytes, bytes]]
-
-
-class WebSocketAcceptEvent(_WebSocketAcceptEventOptional):
+class WebSocketAcceptEvent(TypedDict):
     type: Literal["websocket.accept"]
+    subprotocol: NotRequired[str | None]
+    headers: NotRequired[Iterable[tuple[bytes, bytes]]]
 
 
-class _OptionalText(TypedDict, total=False):
-    text: None
-
-
-class _WebSocketReceiveEventBytes(_OptionalText):
+class _WebSocketReceiveEventBytes(TypedDict):
     type: Literal["websocket.receive"]
     bytes: bytes
+    text: NotRequired[None]
 
 
-class _OptionalBytes(TypedDict, total=False):
-    bytes: None
-
-
-class _WebSocketReceiveEventText(_OptionalBytes):
+class _WebSocketReceiveEventText(TypedDict):
     type: Literal["websocket.receive"]
+    bytes: NotRequired[None]
     text: str
 
 
 WebSocketReceiveEvent = _WebSocketReceiveEventBytes | _WebSocketReceiveEventText
 
 
-class _WebSocketSendEventBytes(_OptionalText):
+class _WebSocketSendEventBytes(TypedDict):
     type: Literal["websocket.send"]
     bytes: bytes
+    text: NotRequired[None]
 
 
-class _WebSocketSendEventText(_OptionalBytes):
+class _WebSocketSendEventText(TypedDict):
     type: Literal["websocket.send"]
+    bytes: NotRequired[None]
     text: str
 
 
@@ -193,26 +183,22 @@ class WebSocketResponseStartEvent(TypedDict):
     headers: Iterable[tuple[bytes, bytes]]
 
 
-class WebSocketResponseBodyEvent(_OptionalMoreBody):
+class WebSocketResponseBodyEvent(TypedDict):
     type: Literal["websocket.http.response.body"]
     body: bytes
+    more_body: NotRequired[bool]
 
 
-class _OptionalReason(TypedDict, total=False):
-    reason: str | None
-
-
-class WebSocketDisconnectEvent(_OptionalReason):
+class WebSocketDisconnectEvent(TypedDict):
     type: Literal["websocket.disconnect"]
     code: int
+    reason: NotRequired[str | None]
 
 
-class _WebSocketCloseEventOptional(_OptionalReason, total=False):
-    code: int
-
-
-class WebSocketCloseEvent(_WebSocketCloseEventOptional):
+class WebSocketCloseEvent(TypedDict):
     type: Literal["websocket.close"]
+    code: NotRequired[int]
+    reason: NotRequired[str | None]
 
 
 class LifespanStartupEvent(TypedDict):

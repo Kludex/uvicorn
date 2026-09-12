@@ -26,9 +26,9 @@ async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
     await send({"type": "http.response.body", "body": b"", "more_body": False})
 
 
-def test_import_without_dependencies() -> None:
+def test_import_does_not_import_click() -> None:
     subprocess.run(
-        [sys.executable, "-S", "-c", "import sys; import uvicorn; assert 'click' not in sys.modules"],
+        [sys.executable, "-c", "import sys; import uvicorn; assert 'click' not in sys.modules"],
         check=True,
         cwd=Path(__file__).parents[1],
     )
