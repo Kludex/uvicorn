@@ -145,6 +145,8 @@ class ZttpProtocol(asyncio.Protocol):
     def handle_events(self, event: zttp.Event) -> None:
         while event is not zttp.NEED_DATA:
             if isinstance(event, zttp.Request):
+                self._unset_keepalive_if_required()
+
                 assert isinstance(event.headers, zttp.HeaderBlock)
                 self.headers = event.headers.to_list(lowercase_names=True)
                 path = event.path.decode("ascii")
@@ -180,8 +182,6 @@ class ZttpProtocol(asyncio.Protocol):
                     self.logger.warning(message)
                 else:
                     app = self.app
-
-                self._unset_keepalive_if_required()
 
                 self.cycle = RequestResponseCycle(
                     scope=self.scope,
@@ -234,8 +234,6 @@ class ZttpProtocol(asyncio.Protocol):
         if self.logger.level <= TRACE_LOG_LEVEL:  # pragma: no cover
             prefix = "%s:%d - " % self.client if self.client else ""
             self.logger.log(TRACE_LOG_LEVEL, "%sUpgrading to WebSocket", prefix)
-
-        self._unset_keepalive_if_required()
 
         self.connections.discard(self)
         output = bytearray(event.method + b" " + event.target + b" HTTP/1.1\r\n")
