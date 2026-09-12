@@ -156,18 +156,16 @@ def test_multiprocess_sighup() -> None:
     """
     config = Config(app=app, workers=2, timeout_worker_healthcheck=30)
     supervisor = Multiprocess(config, sockets=[])
-    threading.Thread(target=supervisor.run, daemon=True).start()
-    time.sleep(1)
-    pids = [p.pid for p in supervisor.processes]
-    supervisor.signal_queue.append(signal.SIGHUP)
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline:
-        if [p.pid for p in supervisor.processes] != pids:
-            break
-        time.sleep(0.1)
-    assert pids != [p.pid for p in supervisor.processes]
-    supervisor.signal_queue.append(signal.SIGINT)
-    supervisor.join_all()
+    supervisor.init_processes()
+    try:
+        pids = [process.pid for process in supervisor.processes]
+        supervisor.signal_queue.append(signal.SIGHUP)
+        supervisor.handle_signals()
+
+        assert pids != [process.pid for process in supervisor.processes]
+    finally:
+        supervisor.terminate_all()
+        supervisor.join_all()
 
 
 @pytest.mark.skipif(os.name == "nt", reason="test spawns real worker processes")
