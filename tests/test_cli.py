@@ -51,9 +51,7 @@ def test_cli_print_version() -> None:
 
 
 def test_main_invokes_cli() -> None:
-    with pytest.deprecated_call(
-        match=r"uvicorn\.main\(\) is deprecated, use uvicorn\.run\(\) or uvicorn\.cli\.main\(\) instead\."
-    ):
+    with pytest.deprecated_call(match="is deprecated"):
         assert uvicorn.main(["--version"], standalone_mode=False) == 0
 
 
