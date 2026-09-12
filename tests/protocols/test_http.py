@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import socket
+import ssl
 import threading
 import time
 from collections.abc import Callable
@@ -167,19 +168,38 @@ UPGRADE_REQUEST_ERROR_FIELD = b"\r\n".join(
 )
 
 
+class MockSSLObject:
+    def __init__(self) -> None:
+        self.context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        self.context.verify_mode = ssl.CERT_REQUIRED
+
+    def get_verified_chain(self) -> list[bytes]:
+        return [b"client certificate", b"issuer certificate"]
+
+
 class MockTransport:
     def __init__(
-        self, sockname: tuple[str, int] | None = None, peername: tuple[str, int] | None = None, sslcontext: bool = False
+        self,
+        sockname: tuple[str, int] | None = None,
+        peername: tuple[str, int] | None = None,
+        sslcontext: bool = False,
+        ssl_object: object | None = None,
     ):
         self.sockname = ("127.0.0.1", 8000) if sockname is None else sockname
         self.peername = ("127.0.0.1", 8001) if peername is None else peername
         self.sslcontext = sslcontext
+        self.ssl_object = ssl_object
         self.closed = False
         self.buffer = b""
         self.read_paused = False
 
     def get_extra_info(self, key: Any):
-        return {"sockname": self.sockname, "peername": self.peername, "sslcontext": self.sslcontext}.get(key)
+        return {
+            "sockname": self.sockname,
+            "peername": self.peername,
+            "sslcontext": self.sslcontext,
+            "ssl_object": self.ssl_object,
+        }.get(key)
 
     def write(self, data: bytes):
         assert not self.closed
@@ -265,10 +285,11 @@ def get_connected_protocol(
     app: ASGIApplication,
     http_protocol_cls: type[HTTPProtocol],
     lifespan: LifespanOff | LifespanOn | None = None,
+    transport: MockTransport | None = None,
     **kwargs: Any,
 ) -> MockProtocol:
     loop = MockLoop()
-    transport = MockTransport()
+    transport = MockTransport() if transport is None else transport
     config = Config(app=app, **kwargs)
     lifespan = lifespan or LifespanOff(config)
     server_state = ServerState()
@@ -285,6 +306,45 @@ async def test_get_request(http_protocol_cls: type[HTTPProtocol]):
     await protocol.loop.run_one()
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
     assert b"Hello, world" in protocol.transport.buffer
+
+
+async def test_https_without_ssl_object(http_protocol_cls: type[HTTPProtocol]):
+    scopes: list[Scope] = []
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        scopes.append(scope)
+        response = Response(b"", status_code=204)
+        await response(scope, receive, send)
+
+    protocol = get_connected_protocol(app, http_protocol_cls, transport=MockTransport(sslcontext=True))
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+
+    scope = scopes[0]
+    assert scope["type"] == "http"
+    assert scope["scheme"] == "https"
+    assert scope["extensions"]["tls"] == {"client_cert_chain": ()}
+
+
+async def test_https_with_verified_chain(http_protocol_cls: type[HTTPProtocol]):
+    scopes: list[Scope] = []
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        scopes.append(scope)
+        response = Response(b"", status_code=204)
+        await response(scope, receive, send)
+
+    ssl_object = MockSSLObject()
+    transport = MockTransport(sslcontext=True, ssl_object=ssl_object)
+    protocol = get_connected_protocol(app, http_protocol_cls, transport=transport)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+
+    scope = scopes[0]
+    assert scope["type"] == "http"
+    assert scope["extensions"]["tls"] == {
+        "client_cert_chain": tuple(ssl.DER_cert_to_PEM_cert(cert) for cert in ssl_object.get_verified_chain())
+    }
 
 
 @pytest.mark.parametrize(
