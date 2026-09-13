@@ -612,7 +612,9 @@ class Config:
                 try:
                     sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, True)
                 except OSError:  # pragma: full coverage
-                    pass
+                    logger.warning(
+                        "Unable to set IPV6_V6ONLY on the IPv6 socket; IPv4 connections may be accepted alongside IPv6"
+                    )
             try:
                 sock.bind((self.host, self.port))
             except OSError as exc:  # pragma: full coverage

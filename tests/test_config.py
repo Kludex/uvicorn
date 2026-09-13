@@ -280,7 +280,35 @@ def test_socket_bind_ipv6_sets_v6only() -> None:
     sock = config.bind_socket()
     try:
         assert sock.family == socket.AF_INET6
-        assert sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY)
+        # has_ipv6 doesn't guarantee these constants exist on every platform.
+        if hasattr(socket, "IPPROTO_IPV6") and hasattr(socket, "IPV6_V6ONLY"):
+            assert sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY)
+    finally:
+        sock.close()
+
+
+@pytest.mark.skipif(
+    not (socket.has_ipv6 and hasattr(socket, "IPPROTO_IPV6") and hasattr(socket, "IPV6_V6ONLY")),
+    reason="requires IPv6 support with IPV6_V6ONLY",
+)
+def test_socket_bind_ipv6_tolerates_rejected_v6only(mocker: MockerFixture) -> None:
+    # If the platform has the IPV6_V6ONLY constants but the kernel rejects
+    # the option, bind_socket() must still return a bound socket instead of
+    # propagating the OSError from setsockopt().
+    original_setsockopt = socket.socket.setsockopt
+
+    def fake_setsockopt(self: socket.socket, level: int, optname: int, value: object, *args: object) -> None:
+        if level == socket.IPPROTO_IPV6 and optname == socket.IPV6_V6ONLY:
+            raise OSError("unsupported option")
+        original_setsockopt(self, level, optname, value, *args)  # type: ignore[arg-type]
+
+    mocker.patch.object(socket.socket, "setsockopt", fake_setsockopt)
+
+    config = Config(app=asgi_app, host="::1", port=0)
+    config.load()
+    sock = config.bind_socket()
+    try:
+        assert isinstance(sock, socket.socket)
     finally:
         sock.close()
 
