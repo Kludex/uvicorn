@@ -291,10 +291,11 @@ def test_socket_bind_ipv6_sets_v6only() -> None:
     not (socket.has_ipv6 and hasattr(socket, "IPPROTO_IPV6") and hasattr(socket, "IPV6_V6ONLY")),
     reason="requires IPv6 support with IPV6_V6ONLY",
 )
-def test_socket_bind_ipv6_tolerates_rejected_v6only(mocker: MockerFixture) -> None:
+def test_socket_bind_ipv6_tolerates_rejected_v6only(mocker: MockerFixture, caplog: pytest.LogCaptureFixture) -> None:
     # If the platform has the IPV6_V6ONLY constants but the kernel rejects
     # the option, bind_socket() must still return a bound socket instead of
-    # propagating the OSError from setsockopt().
+    # propagating the OSError from setsockopt(), and it must warn rather than
+    # silently fall back to a dual-stack socket.
     original_setsockopt = socket.socket.setsockopt
 
     def fake_setsockopt(self: socket.socket, level: int, optname: int, value: object, *args: object) -> None:
@@ -309,6 +310,7 @@ def test_socket_bind_ipv6_tolerates_rejected_v6only(mocker: MockerFixture) -> No
     sock = config.bind_socket()
     try:
         assert isinstance(sock, socket.socket)
+        assert any("Unable to set IPV6_V6ONLY" in record.message for record in caplog.records)
     finally:
         sock.close()
 
