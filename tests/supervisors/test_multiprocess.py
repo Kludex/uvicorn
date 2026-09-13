@@ -83,7 +83,8 @@ def test_multiprocess_run() -> None:
     thread = threading.Thread(target=supervisor.run, daemon=True)
     thread.start()
     supervisor.signal_queue.append(signal.SIGINT)
-    thread.join()
+    thread.join(timeout=10)
+    assert not thread.is_alive(), "Supervisor did not shut down in time"
 
 
 @new_console_in_windows
