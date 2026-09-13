@@ -334,8 +334,7 @@ async def test_https_with_verified_chain(http_protocol_cls: type[HTTPProtocol]):
         response = Response(b"", status_code=204)
         await response(scope, receive, send)
 
-    ssl_object = MockSSLObject()
-    transport = MockTransport(sslcontext=True, ssl_object=ssl_object)
+    transport = MockTransport(sslcontext=True, ssl_object=MockSSLObject())
     protocol = get_connected_protocol(app, http_protocol_cls, transport=transport)
     protocol.data_received(SIMPLE_GET_REQUEST)
     await protocol.loop.run_one()
@@ -343,7 +342,10 @@ async def test_https_with_verified_chain(http_protocol_cls: type[HTTPProtocol]):
     scope = scopes[0]
     assert scope["type"] == "http"
     assert scope["extensions"]["tls"] == {
-        "client_cert_chain": tuple(ssl.DER_cert_to_PEM_cert(cert) for cert in ssl_object.get_verified_chain())
+        "client_cert_chain": (
+            "-----BEGIN CERTIFICATE-----\nY2xpZW50IGNlcnRpZmljYXRl\n-----END CERTIFICATE-----\n",
+            "-----BEGIN CERTIFICATE-----\naXNzdWVyIGNlcnRpZmljYXRl\n-----END CERTIFICATE-----\n",
+        )
     }
 
 

@@ -194,7 +194,12 @@ from cryptography.x509.oid import ExtensionOID
 
 def client_uris(client_cert_chain: tuple[str, ...]) -> list[str]:
     client_cert = x509.load_pem_x509_certificate(client_cert_chain[0].encode("ascii"))
-    alternative_names = client_cert.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME).value
+    try:
+        alternative_names = client_cert.extensions.get_extension_for_oid(
+            ExtensionOID.SUBJECT_ALTERNATIVE_NAME
+        ).value
+    except x509.ExtensionNotFound:
+        return []
     return alternative_names.get_values_for_type(x509.UniformResourceIdentifier)
 ```
 

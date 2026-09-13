@@ -4,8 +4,7 @@ import asyncio
 import socket
 import ssl
 import urllib.parse
-
-from typing_extensions import Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from uvicorn._types import TLSExtension, WWWScope
 
