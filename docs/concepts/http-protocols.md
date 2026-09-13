@@ -3,7 +3,7 @@
 Uvicorn provides several HTTP protocol implementations that you can choose from using the [`--http`](../settings.md#implementation) option:
 
 ```bash
-uvicorn main:app --http <auto|h11|httptools|httpunk|zttp>
+uvicorn main:app --http <auto|h11|httptools|zttp>
 ```
 
 By default, Uvicorn uses `--http auto`, which automatically selects:
@@ -18,21 +18,6 @@ By default, Uvicorn uses `--http auto`, which automatically selects:
 ## httptools
 
 [httptools](https://github.com/MagicStack/httptools) is a Python binding for the Node.js HTTP parser. It is installed as part of the `uvicorn[standard]` optional extras, and provides greater performance than h11, but is not compatible with PyPy.
-
-## httpunk
-
-[httpunk](https://github.com/gi0baro/httpunk) provides HTTP/1.1 and HTTP/2 implementations. You can install it and select its HTTP/1.1 implementation with:
-
-```bash
-pip install httpunk
-uvicorn main:app --http httpunk
-```
-
-You can enable HTTP/2 negotiation with:
-
-```bash
-uvicorn main:app --http httpunk --http2
-```
 
 ## zttp
 
