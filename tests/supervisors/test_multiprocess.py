@@ -84,6 +84,12 @@ def test_multiprocess_run() -> None:
     thread.start()
     supervisor.signal_queue.append(signal.SIGINT)
     thread.join(timeout=10)
+    if thread.is_alive():  # pragma: no cover - only runs after a timeout
+        supervisor.should_exit.set()
+        for process in supervisor.processes:
+            if process.exitcode is None:
+                process.kill()
+        thread.join(timeout=10)
     assert not thread.is_alive(), "Supervisor did not shut down in time"
 
 

@@ -42,16 +42,18 @@ def touch_soon() -> Generator[Callable[..., Event]]:
 
     def start(*paths: Path) -> Event:
         stop_event = Event()
-        thread = Thread(target=touch_repeatedly, args=(stop_event, *paths))
+        thread = Thread(target=touch_repeatedly, args=(stop_event, *paths), daemon=True)
         thread.start()
         threads.append((thread, stop_event))
         return stop_event
 
     yield start
 
-    for thread, stop_event in threads:
+    for _, stop_event in threads:
         stop_event.set()
-        thread.join()
+    for thread, _ in threads:
+        thread.join(timeout=10)
+        assert not thread.is_alive(), "Touch worker did not shut down in time"
 
 
 class TestBaseReload:
