@@ -268,6 +268,23 @@ def test_socket_bind() -> None:
     sock.close()
 
 
+@pytest.mark.skipif(not socket.has_ipv6, reason="requires IPv6 support")
+def test_socket_bind_ipv6_sets_v6only() -> None:
+    # Regression test: bind_socket() previously left IPV6_V6ONLY unset, so an
+    # IPv6 bind here (the multi-worker path) silently inherited the platform's
+    # dual-stack default instead of matching asyncio's loop.create_server(),
+    # which always binds IPv6 sockets as IPv6-only. That made `--host '::'`
+    # accept IPv4 connections with multiple workers but not with one.
+    config = Config(app=asgi_app, host="::1", port=0)
+    config.load()
+    sock = config.bind_socket()
+    try:
+        assert sock.family == socket.AF_INET6
+        assert sock.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY)
+    finally:
+        sock.close()
+
+
 def test_ssl_config(
     tls_ca_certificate_pem_path: str,
     tls_ca_certificate_private_key_path: str,
