@@ -41,6 +41,7 @@ An incoming HTTP request might have a connection `scope` like this:
 ```python
 {
     'type': 'http',
+    'asgi': {'version': '3.0', 'spec_version': '2.5'},
     'scheme': 'http',
     'root_path': '',
     'server': ('127.0.0.1', 8000),
@@ -54,6 +55,8 @@ An incoming HTTP request might have a connection `scope` like this:
     ]
 }
 ```
+
+The `asgi` key reports which version of the specification Uvicorn implements. `version` is the ASGI application interface version, and follows the `--interface` setting: `3.0` for `asgi3` and `wsgi`, `2.0` for `asgi2`. `spec_version` is the version of the [HTTP & WebSocket message format](https://asgi.readthedocs.io/en/latest/specs/www.html#spec-versions) that the server understands, and applications can use it to decide whether a given feature is available.
 
 ### HTTP Messages
 

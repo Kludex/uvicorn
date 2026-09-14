@@ -40,6 +40,28 @@ Once a response has been sent, Uvicorn will no longer buffer any remaining reque
 
 Together with the read flow control, this behavior ensures that responses that return without reading the request body will not stream any substantial amounts of data into memory.
 
+### Client disconnects
+
+If the client disconnects before the response has been completed, any later call to `send` will raise an `OSError`, rather than returning silently. This is required from version 2.4 of the ASGI specification, and lets applications stop generating a response that no longer has anywhere to go — which matters most for long-running or streaming responses.
+
+Applications that want to react to this should catch `OSError`. The specific subclass raised is an implementation detail and may differ between protocol implementations, or change between releases.
+
+Handling it is optional. If it propagates out of the ASGI callable, Uvicorn discards it without logging a traceback, since a disconnected client is not a server error:
+
+```python
+async def app(scope, receive, send):
+    await send({'type': 'http.response.start', 'status': 200, 'headers': []})
+    for chunk in produce_chunks():
+        try:
+            await send({'type': 'http.response.body', 'body': chunk, 'more_body': True})
+        except OSError:
+            # The client has gone away; stop doing the work.
+            return
+    await send({'type': 'http.response.body', 'body': b''})
+```
+
+Note that `send` may also raise slightly before the corresponding `http.disconnect` message becomes available from `receive`.
+
 ### Expect: 100-Continue
 
 The `Expect: 100-Continue` header may be sent by clients to require a confirmation from the server before uploading the request body. This can be used to ensure that large request bodies are only sent once the client has confirmation that the server is willing to accept the request.
