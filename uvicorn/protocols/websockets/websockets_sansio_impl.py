@@ -540,6 +540,10 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                     self.conn.send_response(response)
                     output = self.conn.data_to_send()
                     self.close_sent = True
+                    # A denial response finishes the handshake just as an
+                    # accept does, so run_asgi must not treat the app's return
+                    # as an incomplete handshake and log an error for it.
+                    self.handshake_complete = True
                     self.transport.write(b"".join(output))
                     self.transport.close()
             else:  # pragma: no cover
