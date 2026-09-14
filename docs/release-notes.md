@@ -2,7 +2,7 @@
 toc_depth: 2
 ---
 
-## 0.53.0 (September 13, 2026)
+## 0.53.0 (September 14, 2026)
 
 This release adds experimental HTTP/2 support through `zttp`. Enable it with `--http zttp --http2`.
 Upgrade-based h2c and WebSockets over HTTP/2 are not supported.
