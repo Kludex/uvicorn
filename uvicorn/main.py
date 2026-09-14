@@ -106,7 +106,7 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     type=float,
     default=0.25,
     show_default=True,
-    help="Delay between previous and next check if application needs to be. Defaults to 0.25s.",
+    help="Delay between previous and next check if application needs to be reloaded. Defaults to 0.25s.",
 )
 @click.option(
     "--workers",
