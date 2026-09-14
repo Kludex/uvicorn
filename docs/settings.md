@@ -45,6 +45,7 @@ uvicorn itself.
 
 * `--host <str>` - Bind socket to this host. Use `--host 0.0.0.0` to make the application available on your local network. IPv6 addresses are supported, for example: `--host '::'`. **Default:** *'127.0.0.1'*.
 * `--port <int>` - Bind to a socket with this port. If set to 0, an available port will be picked. **Default:** *8000*.
+* `--ipv6-v6only` / `--no-ipv6-v6only` - Explicitly set the `IPV6_V6ONLY` socket option for an IPv6 `--host`, instead of relying on the OS default. Left unset by default, in which case single- and multi-worker mode may bind differently: single-worker mode delegates to `asyncio.loop.create_server()`, which always forces IPv6-only, while multi-worker mode inherits the OS default (commonly, but not always, dual-stack on Linux — configurable via the `net.ipv6.bindv6only` sysctl). Pass `--no-ipv6-v6only` to make an IPv6 `--host` accept IPv4 connections too, in both modes.
 * `--uds <path>` - Bind to a UNIX domain socket, for example `--uds /tmp/uvicorn.sock`. Useful if you want to run Uvicorn behind a reverse proxy.
 * `--fd <int>` - Bind to socket from this file descriptor. Useful if you want to run Uvicorn within a process manager.
 
