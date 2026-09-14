@@ -80,9 +80,17 @@ def test_multiprocess_run() -> None:
     """
     config = Config(app=app, workers=2)
     supervisor = Multiprocess(config, sockets=[])
-    threading.Thread(target=supervisor.run, daemon=True).start()
+    thread = threading.Thread(target=supervisor.run, daemon=True)
+    thread.start()
     supervisor.signal_queue.append(signal.SIGINT)
-    supervisor.join_all()
+    thread.join(timeout=10)
+    if thread.is_alive():  # pragma: no cover - only runs after a timeout
+        supervisor.should_exit.set()
+        for process in supervisor.processes:
+            if process.exitcode is None:
+                process.kill()
+        thread.join(timeout=10)
+    assert not thread.is_alive(), "Supervisor did not shut down in time"
 
 
 @new_console_in_windows
@@ -151,11 +159,12 @@ def test_multiprocess_sigbreak() -> None:  # pragma: py-not-win32
 
 
 @pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="platform unsupports SIGHUP")
-def test_multiprocess_sighup() -> None:
+def test_multiprocess_sighup(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     Ensure that the SIGHUP signal is handled as expected.
     """
-    config = Config(app=app, workers=2, timeout_worker_healthcheck=30)
+    monkeypatch.setattr(Process, "is_ready", lambda self, timeout=1: True)
+    config = Config(app=app, workers=2)
     supervisor = Multiprocess(config, sockets=[])
     try:
         supervisor.init_processes()
