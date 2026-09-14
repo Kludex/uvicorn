@@ -2,6 +2,22 @@
 toc_depth: 2
 ---
 
+## 0.53.0 (September 13, 2026)
+
+This release adds experimental HTTP/2 support through `zttp`. Enable it with `--http zttp --http2`.
+Upgrade-based h2c and WebSockets over HTTP/2 are not supported.
+
+### Added
+
+* Add experimental HTTP/2 support through `zttp` ([#2982](https://github.com/Kludex/uvicorn/pull/2982), [#3101](https://github.com/Kludex/uvicorn/pull/3101))
+* Add support for `zuvloop` ([#3104](https://github.com/Kludex/uvicorn/pull/3104))
+
+### Fixed
+
+* Handle comma-separated, case-insensitive `Connection: close` tokens across HTTP implementations ([#3103](https://github.com/Kludex/uvicorn/pull/3103))
+* Trust IPv6 loopback in the default `FORWARDED_ALLOW_IPS` value ([#3119](https://github.com/Kludex/uvicorn/pull/3119))
+* Cancel the HTTP keep-alive timer when upgrading to WebSocket ([#3107](https://github.com/Kludex/uvicorn/pull/3107))
+
 ## 0.52.4 (August 18, 2026)
 
 ### Fixed
