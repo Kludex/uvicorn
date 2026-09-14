@@ -23,6 +23,7 @@ from websockets.server import ServerProtocol
 from uvicorn._types import (
     ASGIReceiveEvent,
     ASGISendEvent,
+    TLSExtension,
     WebSocketScope,
 )
 from uvicorn.config import Config
@@ -33,6 +34,7 @@ from uvicorn.protocols.utils import (
     get_local_addr,
     get_path_with_query_string,
     get_remote_addr,
+    get_tls_extension,
     is_ssl,
 )
 from uvicorn.server import ServerState
@@ -82,6 +84,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.server: tuple[str, int | None] | None = None
         self.client: tuple[str, int] | None = None
         self.scheme: Literal["wss", "ws"] = None  # type: ignore[assignment]
+        self.tls: TLSExtension | None = None
 
         # WebSocket state
         self.queue: asyncio.Queue[ASGIReceiveEvent] = asyncio.Queue()
@@ -133,6 +136,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.server = get_local_addr(transport)
         self.client = get_remote_addr(transport)
         self.scheme = "wss" if is_ssl(transport) else "ws"
+        self.tls = get_tls_extension(transport) if self.scheme == "wss" else None
 
         if self.logger.level <= TRACE_LOG_LEVEL:
             prefix = "%s:%d - " % self.client if self.client else ""
@@ -264,6 +268,8 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             "state": self.app_state.copy(),
             "extensions": {"websocket.http.response": {}},
         }
+        if self.tls is not None:
+            self.scope["extensions"]["tls"] = self.tls.copy()
         self.queue.put_nowait({"type": "websocket.connect"})
         task = self.loop.create_task(self.run_asgi())
         task.add_done_callback(self.on_task_complete)

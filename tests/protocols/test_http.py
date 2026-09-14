@@ -265,10 +265,11 @@ def get_connected_protocol(
     app: ASGIApplication,
     http_protocol_cls: type[HTTPProtocol],
     lifespan: LifespanOff | LifespanOn | None = None,
+    transport: MockTransport | None = None,
     **kwargs: Any,
 ) -> MockProtocol:
     loop = MockLoop()
-    transport = MockTransport()
+    transport = MockTransport() if transport is None else transport
     config = Config(app=app, **kwargs)
     lifespan = lifespan or LifespanOff(config)
     server_state = ServerState()
@@ -285,6 +286,24 @@ async def test_get_request(http_protocol_cls: type[HTTPProtocol]):
     await protocol.loop.run_one()
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
     assert b"Hello, world" in protocol.transport.buffer
+
+
+async def test_https_without_ssl_object(http_protocol_cls: type[HTTPProtocol]):
+    scopes: list[Scope] = []
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        scopes.append(scope)
+        response = Response(b"", status_code=204)
+        await response(scope, receive, send)
+
+    protocol = get_connected_protocol(app, http_protocol_cls, transport=MockTransport(sslcontext=True))
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+
+    scope = scopes[0]
+    assert scope["type"] == "http"
+    assert scope["scheme"] == "https"
+    assert scope["extensions"]["tls"] == {"client_cert": None}
 
 
 @pytest.mark.parametrize(

@@ -18,11 +18,19 @@ from uvicorn._types import (
     HTTPResponseBodyEvent,
     HTTPResponseStartEvent,
     HTTPScope,
+    TLSExtension,
 )
 from uvicorn.config import Config
 from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT, FlowControl, service_unavailable
-from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
+from uvicorn.protocols.utils import (
+    get_client_addr,
+    get_local_addr,
+    get_path_with_query_string,
+    get_remote_addr,
+    get_tls_extension,
+    is_ssl,
+)
 from uvicorn.server import ServerState
 
 
@@ -65,6 +73,7 @@ class ZttpProtocol(asyncio.Protocol):
         self.server: tuple[str, int | None] | None = None
         self.client: tuple[str, int] | None = None
         self.scheme: Literal["http", "https"] | None = None
+        self.tls: TLSExtension | None = None
 
         # Per-request state
         self.scope: HTTPScope = None  # type: ignore[assignment]
@@ -82,6 +91,7 @@ class ZttpProtocol(asyncio.Protocol):
         self.server = get_local_addr(transport)
         self.client = get_remote_addr(transport)
         self.scheme = "https" if is_ssl(transport) else "http"
+        self.tls = get_tls_extension(transport) if self.scheme == "https" else None
 
         if self.logger.level <= TRACE_LOG_LEVEL:
             prefix = "%s:%d - " % self.client if self.client else ""
@@ -170,6 +180,8 @@ class ZttpProtocol(asyncio.Protocol):
                     "headers": self.headers,
                     "state": self.app_state.copy(),
                 }
+                if self.tls is not None:
+                    self.scope["extensions"] = {"tls": self.tls.copy()}
                 if self._should_upgrade():
                     self.handle_websocket_upgrade(event)
                     return
