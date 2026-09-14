@@ -292,6 +292,37 @@ async def test_request_scope():
     assert received_scope["raw_path"] == b"/api/path%2Fitem"
     assert received_scope["query_string"] == b"a=1&b=2"
     assert (b"host", b"example.org") in received_scope["headers"]
+    assert received_scope["extensions"] == {"http.response.early_hint": {}}
+
+
+async def test_early_hints():
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert scope["type"] == "http"
+        assert "http.response.early_hint" in scope["extensions"]
+        await send(
+            {
+                "type": "http.response.early_hint",
+                "links": [b"</style.css>; rel=preload; as=style", b"</script.js>; rel=preload; as=script"],
+            }
+        )
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"OK"})
+
+    protocol = get_connected_protocol(app)
+    client = H2Client()
+
+    client.request(b"GET", b"/")
+    protocol.data_received(client.data_to_send())
+    await protocol.loop.run_one()
+
+    responses = [event for event in client.events(protocol.transport.buffer) if isinstance(event, zttp.Response)]
+    assert [(event.status_code, list(event.headers)) for event in responses] == [
+        (
+            103,
+            [(b"link", b"</style.css>; rel=preload; as=style"), (b"link", b"</script.js>; rel=preload; as=script")],
+        ),
+        (200, []),
+    ]
 
 
 async def test_multiplexed_requests():

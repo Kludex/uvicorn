@@ -156,6 +156,27 @@ async def app(scope, receive, send):
     print(f"HTTP Version: {scope['http_version']}")  # "2" for HTTP/2
 ```
 
+## Early Hints
+
+Uvicorn advertises the `http.response.early_hint` ASGI extension for HTTP/2 requests. You can send one or more
+`103 Early Hints` responses before the final response:
+
+```python title="main.py"
+async def app(scope, receive, send):
+    if "http.response.early_hint" in scope.get("extensions", {}):
+        await send(
+            {
+                "type": "http.response.early_hint",
+                "links": [b"</style.css>; rel=preload; as=style"],
+            }
+        )
+
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    await send({"type": "http.response.body", "body": b"ok"})
+```
+
+Each value in `links` becomes a separate `Link` header in the `103` response.
+
 ## Using with Reverse Proxies
 
 In production, Uvicorn is typically deployed behind a reverse proxy like Nginx, Caddy, or HAProxy.

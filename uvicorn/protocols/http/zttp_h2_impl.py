@@ -213,6 +213,7 @@ class ZttpH2Protocol(asyncio.Protocol):
             "query_string": event.query,
             "headers": headers,
             "state": self.app_state.copy(),
+            "extensions": {"http.response.early_hint": {}},
         }
 
         # Refuse new streams once a shutdown began, and handle 503 responses
@@ -436,10 +437,19 @@ class RequestResponseCycle:
         if self.disconnected:
             return
 
+        if message["type"] == "http.response.early_hint" and not self.response_started:
+            hint_headers = [(b"link", link) for link in message["links"]]
+            self.stream.send_informational(103, hint_headers)
+            self.transport.write(self.conn.data_to_send())
+            return
+
         if not self.response_started:
             # Sending response status line and headers
             if message["type"] != "http.response.start":
-                raise RuntimeError(f"Expected ASGI message 'http.response.start', but got '{message['type']}'.")
+                raise RuntimeError(
+                    "Expected ASGI message 'http.response.start' or 'http.response.early_hint', "
+                    f"but got '{message['type']}'."
+                )
 
             self.response_started = True
 
