@@ -10,36 +10,36 @@
       
       
       
-        <link rel="canonical" href="https://uvicorn.dev/installation/">
+        <link rel="canonical" href="https://uvicorn.dev/concepts/http2/">
       
       
-        <link rel="prev" href="./..">
+        <link rel="prev" href="../lifespan/">
       
       
-        <link rel="next" href="../settings/">
+        <link rel="next" href="../logging/">
       
       
         
       
       
-      <link rel="icon" href="../uvicorn.png">
+      <link rel="icon" href="../../uvicorn.png">
       <meta name="generator" content="zensical-0.0.57">
     
     
       
-        <title>Installation - Uvicorn</title>
+        <title>Http2 - Uvicorn</title>
       
     
     
       
         
       
-      <link rel="stylesheet" href="../assets/stylesheets/modern/main.5da3a30f.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.5da3a30f.min.css">
       
         
           
         
-        <link rel="stylesheet" href="../assets/stylesheets/modern/palette.812a03bb.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.812a03bb.min.css">
       
       
 
@@ -58,9 +58,9 @@
       
     
     
-      <link rel="stylesheet" href="../css/extra.css">
+      <link rel="stylesheet" href="../../css/extra.css">
     
-    <script>__md_scope=new URL("..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    <script>__md_scope=new URL("../..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
     
       
   
@@ -104,7 +104,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#optional-dependencies" class="md-skip">
+        <a href="#overview" class="md-skip">
           Skip to content
         </a>
       
@@ -120,9 +120,9 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="./.." title="Uvicorn" class="md-header__button md-logo" aria-label="Uvicorn" data-md-component="logo">
+    <a href="../.." title="Uvicorn" class="md-header__button md-logo" aria-label="Uvicorn" data-md-component="logo">
       
-  <img src="../uvicorn.png" alt="Uvicorn">
+  <img src="../../uvicorn.png" alt="Uvicorn">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
@@ -139,7 +139,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Installation
+              Http2
             
           </span>
         </div>
@@ -228,9 +228,9 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="./.." title="Uvicorn" class="md-nav__button md-logo" aria-label="Uvicorn" data-md-component="logo">
+    <a href="../.." title="Uvicorn" class="md-nav__button md-logo" aria-label="Uvicorn" data-md-component="logo">
       
-  <img src="../uvicorn.png" alt="Uvicorn">
+  <img src="../../uvicorn.png" alt="Uvicorn">
 
     </a>
     Uvicorn
@@ -257,7 +257,7 @@
   
   
     <li class="md-nav__item">
-      <a href="./.." class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -280,34 +280,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      
-      
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Installation
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="././" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
         
   
   
@@ -322,36 +298,6 @@
   
 
       </a>
-      
-        
-
-
-<nav class="md-nav md-nav--secondary" aria-label="On this page">
-  
-  
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      On this page
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#optional-dependencies" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Optional Dependencies
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -363,7 +309,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../settings/" class="md-nav__link">
+      <a href="../../settings/" class="md-nav__link">
         
   
   
@@ -389,7 +335,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../server-behavior/" class="md-nav__link">
+      <a href="../../server-behavior/" class="md-nav__link">
         
   
   
@@ -412,8 +358,10 @@
       
   
   
+    
   
   
+  
     
     
     
@@ -424,11 +372,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
         
           
           <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
@@ -448,7 +396,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
@@ -465,7 +413,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../concepts/asgi/" class="md-nav__link">
+      <a href="../asgi/" class="md-nav__link">
         
   
   
@@ -492,7 +440,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../concepts/lifespan/" class="md-nav__link">
+      <a href="../lifespan/" class="md-nav__link">
         
   
   
@@ -516,10 +464,34 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../concepts/http2/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  HTTP/2
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
         
   
   
@@ -534,6 +506,147 @@
   
 
       </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Overview
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#enabling-http2" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Enabling HTTP/2
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#connection-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Connection Methods
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Connection Methods">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#h2-http2-over-tls-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        h2: HTTP/2 over TLS (Recommended)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#h2c-http2-cleartext-with-prior-knowledge" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        h2c: HTTP/2 Cleartext with Prior Knowledge
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#asgi-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        ASGI Scope
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#using-with-reverse-proxies" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Using with Reverse Proxies
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Using with Reverse Proxies">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#proxy-http2-upstream-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Proxy HTTP/2 Upstream Support
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-considerations" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Performance Considerations
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#current-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Current Limitations
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -546,7 +659,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../concepts/logging/" class="md-nav__link">
+      <a href="../logging/" class="md-nav__link">
         
   
   
@@ -573,7 +686,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../concepts/http-protocols/" class="md-nav__link">
+      <a href="../http-protocols/" class="md-nav__link">
         
   
   
@@ -600,7 +713,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../concepts/websockets/" class="md-nav__link">
+      <a href="../websockets/" class="md-nav__link">
         
   
   
@@ -627,7 +740,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../concepts/event-loop/" class="md-nav__link">
+      <a href="../event-loop/" class="md-nav__link">
         
   
   
@@ -711,7 +824,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../deployment/" class="md-nav__link">
+      <a href="../../deployment/" class="md-nav__link">
         
   
   
@@ -738,7 +851,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../deployment/docker/" class="md-nav__link">
+      <a href="../../deployment/docker/" class="md-nav__link">
         
   
   
@@ -772,7 +885,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../release-notes/" class="md-nav__link">
+      <a href="../../release-notes/" class="md-nav__link">
         
   
   
@@ -798,7 +911,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../contributing/" class="md-nav__link">
+      <a href="../../contributing/" class="md-nav__link">
         
   
   
@@ -821,7 +934,7 @@
   <div class="md-nav__sponsors">
     <p class="md-nav__sponsors-title">Sponsors</p>
     <a href="https://fastapi.tiangolo.com" title="FastAPI" class="md-nav__sponsor">
-      <img src="../img/fastapi-logo.png" alt="FastAPI">
+      <img src="../../img/fastapi-logo.png" alt="FastAPI">
     </a>
     <a href="https://github.com/sponsors/Kludex" class="md-nav__sponsor-cta">
       Become a sponsor! ❤️
@@ -863,10 +976,121 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#optional-dependencies" class="md-nav__link">
+  <a href="#overview" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Optional Dependencies
+        Overview
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#enabling-http2" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Enabling HTTP/2
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#connection-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Connection Methods
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Connection Methods">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#h2-http2-over-tls-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        h2: HTTP/2 over TLS (Recommended)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#h2c-http2-cleartext-with-prior-knowledge" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        h2c: HTTP/2 Cleartext with Prior Knowledge
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#asgi-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        ASGI Scope
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#using-with-reverse-proxies" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Using with Reverse Proxies
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Using with Reverse Proxies">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#proxy-http2-upstream-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Proxy HTTP/2 Upstream Support
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-considerations" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Performance Considerations
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#current-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Current Limitations
       </span>
     </span>
   </a>
@@ -891,6 +1115,51 @@
   
 
 
+  <nav class="md-path" aria-label="Navigation" >
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  
+  <span class="md-ellipsis">
+    Welcome
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+    
+    
+    
+      <li class="md-path__item">
+        <a href="../asgi/" class="md-path__link">
+          
+  
+  <span class="md-ellipsis">
+    Concepts
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
               
               <article class="md-content__inner md-typeset">
                 
@@ -899,74 +1168,221 @@
   
 
 
-  <h1 id="__skip">Installation</h1>
+  <h1 id="__skip">Http2</h1>
 
-<p><strong>Uvicorn</strong> is available on <a href="https://pypi.org/project/uvicorn/">PyPI</a> so installation is as simple as:</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">pip</label><label for="__tabbed_1_2">uv</label></div>
-<div class="tabbed-content">
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>uvicorn
-</code></pre></div>
+<p><strong>Uvicorn</strong> has experimental support for HTTP/2, built on the <a href="https://zttp.marcelotryle.com/"><code>zttp</code></a>
+parser.</p>
+<div class="admonition warning">
+<p class="admonition-title">Experimental Feature</p>
+<p>HTTP/2 support is currently <strong>experimental</strong> and is <strong>not enabled by default</strong>.</p>
 </div>
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>add<span class="w"> </span>uvicorn
-</code></pre></div>
-</div>
-</div>
-</div>
-<p>The above will install Uvicorn with the minimal set of dependencies:</p>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>HTTP/2 introduces several key features:</p>
 <ul>
-<li><a href="https://github.com/python-hyper/h11"><code>h11</code></a> — Pure Python sans-io HTTP/1.1 implementation.</li>
-<li><a href="https://github.com/pallets/click"><code>click</code></a> — Command line interface library.</li>
+<li><strong>Multiplexing</strong>: Multiple requests and responses can be sent simultaneously over a single TCP connection</li>
+<li><strong>Header compression</strong>: HTTP headers are compressed using HPACK, reducing overhead</li>
+<li><strong>Binary protocol</strong>: More efficient parsing compared to HTTP/1.1's text-based format</li>
 </ul>
-<p>If you are running on Python 3.10 or early versions,
-<a href="https://github.com/python/typing_extensions"><code>typing_extensions</code></a> will also be installed.</p>
-<h2 id="optional-dependencies">Optional Dependencies<a class="headerlink" href="#optional-dependencies" title="Permanent link">&para;</a></h2>
-<p>There are many optional dependencies that can be installed to add support for various features.</p>
-<p>If you just want to install all of them at once, you can use the <code>standard</code> extra:</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="2:2"><input checked="checked" id="__tabbed_2_1" name="__tabbed_2" type="radio" /><input id="__tabbed_2_2" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="__tabbed_2_1">pip</label><label for="__tabbed_2_2">uv</label></div>
+<h2 id="enabling-http2">Enabling HTTP/2<a class="headerlink" href="#enabling-http2" title="Permanent link">&para;</a></h2>
+<p>HTTP/2 support requires the <code>zttp</code> package:</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>zttp
+</code></pre></div>
+<p>To enable it, select the <code>zttp</code> HTTP implementation and pass <code>--http2</code>:</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Command Line</label><label for="__tabbed_1_2">Programmatic</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">&#39;uvicorn[standard]&#39;</span>
+<div class="highlight"><pre><span></span><code>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--http<span class="w"> </span>zttp<span class="w"> </span>--http2
 </code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>add<span class="w"> </span><span class="s1">&#39;uvicorn[standard]&#39;</span>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">uvicorn</span>
+
+<span class="n">uvicorn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;main:app&quot;</span><span class="p">,</span> <span class="n">http</span><span class="o">=</span><span class="s2">&quot;zttp&quot;</span><span class="p">,</span> <span class="n">http2</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </code></pre></div>
 </div>
 </div>
 </div>
-<p>The <code>standard</code> extra installs the following dependencies:</p>
+<p>The <code>--http2</code> option makes <code>zttp</code> serve both HTTP versions. Each connection is dispatched
+to HTTP/1.1 or HTTP/2 depending on what the client speaks. Without this option, <code>zttp</code>
+serves HTTP/1.1 only. This default keeps experimental HTTP/2 support opt-in.</p>
+<h2 id="connection-methods">Connection Methods<a class="headerlink" href="#connection-methods" title="Permanent link">&para;</a></h2>
+<h3 id="h2-http2-over-tls-recommended">h2: HTTP/2 over TLS (Recommended)<a class="headerlink" href="#h2-http2-over-tls-recommended" title="Permanent link">&para;</a></h3>
+<p>When using HTTPS, HTTP/2 is negotiated via <strong>ALPN</strong> (Application-Layer Protocol Negotiation)
+during the TLS handshake. This is the most common way to use HTTP/2, and the only one web
+browsers support.</p>
+<pre class="mermaid"><code>sequenceDiagram
+    participant Client
+    participant Server
+
+    Note over Client,Server: TLS Handshake with ALPN
+
+    Client-&gt;&gt;Server: ClientHello
+    Note right of Client: ALPN: h2, http/1.1
+
+    Server-&gt;&gt;Client: ServerHello
+    Note right of Server: ALPN: h2
+
+    Note over Client,Server: TLS Handshake Complete
+
+    Client-&gt;&gt;Server: Connection Preface
+    Note right of Client: PRI * HTTP/2.0
+    Client-&gt;&gt;Server: Client SETTINGS Frame
+    Server-&gt;&gt;Client: Server SETTINGS Frame
+
+    Note over Client,Server: HTTP/2 Connection Established
+
+    Client-&gt;&gt;Server: HEADERS (Stream 1)
+    Server-&gt;&gt;Client: HEADERS + DATA (Stream 1)</code></pre>
+<p>For testing it locally, you can generate a self-signed certificate:</p>
+<div class="highlight"><pre><span></span><code>openssl<span class="w"> </span>req<span class="w"> </span>-x509<span class="w"> </span>-newkey<span class="w"> </span>rsa:2048<span class="w"> </span>-keyout<span class="w"> </span>key.pem<span class="w"> </span>-out<span class="w"> </span>cert.pem<span class="w"> </span>-days<span class="w"> </span><span class="m">365</span><span class="w"> </span>-nodes<span class="w"> </span>-subj<span class="w"> </span><span class="s2">&quot;/CN=localhost&quot;</span>
+</code></pre></div>
+<p>Then create a simple ASGI application:</p>
+<div class="highlight"><span class="filename">main.py</span><pre><span></span><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">app</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">receive</span><span class="p">,</span> <span class="n">send</span><span class="p">):</span>
+    <span class="k">await</span> <span class="n">send</span><span class="p">({</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;http.response.start&quot;</span><span class="p">,</span> <span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="mi">200</span><span class="p">,</span> <span class="s2">&quot;headers&quot;</span><span class="p">:</span> <span class="p">[]})</span>
+    <span class="k">await</span> <span class="n">send</span><span class="p">({</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;http.response.body&quot;</span><span class="p">,</span> <span class="s2">&quot;body&quot;</span><span class="p">:</span> <span class="sa">b</span><span class="s2">&quot;ok&quot;</span><span class="p">})</span>
+</code></pre></div>
+<p>Run Uvicorn with <code>--http zttp --http2</code> and the SSL certificate files:</p>
+<div class="highlight"><pre><span></span><code>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--http<span class="w"> </span>zttp<span class="w"> </span>--http2<span class="w"> </span>--ssl-keyfile<span class="w"> </span>key.pem<span class="w"> </span>--ssl-certfile<span class="w"> </span>cert.pem
+</code></pre></div>
+<p>You can test the connection using curl (<code>-k</code> skips certificate verification for self-signed certs):</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-v<span class="w"> </span>--http2<span class="w"> </span>-k<span class="w"> </span>https://localhost:8000/
+</code></pre></div>
+<h3 id="h2c-http2-cleartext-with-prior-knowledge">h2c: HTTP/2 Cleartext with Prior Knowledge<a class="headerlink" href="#h2c-http2-cleartext-with-prior-knowledge" title="Permanent link">&para;</a></h3>
+<p>On cleartext connections, Uvicorn accepts clients that speak HTTP/2 directly - known as
+"prior knowledge" h2c. The client opens the connection with the HTTP/2 preface instead of an
+HTTP/1.1 request, and Uvicorn switches protocols on the spot.</p>
+<pre class="mermaid"><code>sequenceDiagram
+    participant Client
+    participant Server
+
+    Note over Client,Server: Cleartext TCP Connection
+
+    Client-&gt;&gt;Server: Connection Preface
+    Note right of Client: PRI * HTTP/2.0
+    Client-&gt;&gt;Server: Client SETTINGS Frame
+    Server-&gt;&gt;Client: Server SETTINGS Frame
+
+    Note over Client,Server: HTTP/2 Connection Established
+
+    Client-&gt;&gt;Server: HEADERS + DATA (Stream 1)
+    Server-&gt;&gt;Client: HEADERS + DATA (Stream 1)</code></pre>
+<p>Using the same <code>main.py</code>:</p>
+<div class="highlight"><pre><span></span><code>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--http<span class="w"> </span>zttp<span class="w"> </span>--http2
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-v<span class="w"> </span>--http2-prior-knowledge<span class="w"> </span>http://localhost:8000/
+</code></pre></div>
+<p>This is the mechanism proxies use for cleartext HTTP/2 upstreams, so HTTP/2 between a proxy
+and Uvicorn works without TLS. How you enable it is proxy-specific: Traefik and Caddy use
+<code>h2c://</code> upstream URLs, while Envoy configures HTTP/2 on the cluster.</p>
+<div class="admonition warning">
+<p class="admonition-title">h2c is cleartext</p>
+<p>Prior-knowledge h2c provides no transport encryption or peer authentication. Limit it to
+trusted private networks (e.g. the proxy-to-Uvicorn hop); use HTTP/2 over TLS for any
+untrusted hop.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>The HTTP/1.1 <code>Upgrade: h2c</code> mechanism is <strong>not</strong> supported: an upgrade request is served
+as plain HTTP/1.1, which RFC 7540 explicitly allows. Browsers do not support h2c at all -
+they only speak HTTP/2 over TLS.</p>
+</div>
+<h2 id="asgi-scope">ASGI Scope<a class="headerlink" href="#asgi-scope" title="Permanent link">&para;</a></h2>
+<p>When a request comes in over HTTP/2, the ASGI scope has <code>http_version</code> set to <code>"2"</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">app</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">receive</span><span class="p">,</span> <span class="n">send</span><span class="p">):</span>
+    <span class="k">assert</span> <span class="n">scope</span><span class="p">[</span><span class="s2">&quot;type&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;http&quot;</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;HTTP Version: </span><span class="si">{</span><span class="n">scope</span><span class="p">[</span><span class="s1">&#39;http_version&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>  <span class="c1"># &quot;2&quot; for HTTP/2</span>
+</code></pre></div>
+<h2 id="using-with-reverse-proxies">Using with Reverse Proxies<a class="headerlink" href="#using-with-reverse-proxies" title="Permanent link">&para;</a></h2>
+<p>In production, Uvicorn is typically deployed behind a reverse proxy like Nginx, Caddy, or HAProxy.
+The proxy can terminate TLS and serve HTTP/2 to clients, while talking either HTTP/1.1 or
+HTTP/2 to Uvicorn.</p>
+<pre class="mermaid"><code>flowchart LR
+    Client &lt;--&gt;|HTTP/2 over TLS| Proxy
+    Proxy &lt;--&gt;|HTTP/1.1 or HTTP/2| Uvicorn
+
+    style Client fill:#e1f5fe
+    style Proxy fill:#fff3e0
+    style Uvicorn fill:#e8f5e9</code></pre>
+<h3 id="proxy-http2-upstream-support">Proxy HTTP/2 Upstream Support<a class="headerlink" href="#proxy-http2-upstream-support" title="Permanent link">&para;</a></h3>
+<p><strong>HTTP/2 upstream</strong> refers to the protocol used between the proxy and Uvicorn. While all modern
+proxies support HTTP/2 for client connections, support for HTTP/2 to backend servers varies.</p>
+<p><strong>Multiplexing</strong> is HTTP/2's ability to send multiple requests simultaneously over a single TCP
+connection. Some proxies support HTTP/2 upstream but open a new connection per request, which
+means they don't truly multiplex.</p>
+<p>Here's the state of proxy support at the time of writing:</p>
+<table>
+<thead>
+<tr>
+<th>Proxy</th>
+<th>HTTP/2 Upstream</th>
+<th>Multiplexing</th>
+<th>Enabled by</th>
+<th>Documentation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Envoy</strong></td>
+<td>Yes</td>
+<td>Yes</td>
+<td>HTTP/2 protocol options on the cluster</td>
+<td><a href="https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/connection_pooling">Connection Pooling Docs</a></td>
+</tr>
+<tr>
+<td><strong>Caddy</strong></td>
+<td>Yes</td>
+<td>Yes</td>
+<td><code>h2c://</code> upstream (experimental), or <code>versions 2</code> in the transport for TLS</td>
+<td><a href="https://caddyserver.com/docs/caddyfile/directives/reverse_proxy">reverse_proxy Docs</a></td>
+</tr>
+<tr>
+<td><strong>HAProxy</strong></td>
+<td>Yes</td>
+<td>Yes</td>
+<td><code>proto h2</code> on the server line (cleartext), <code>ssl alpn h2,http/1.1</code> (TLS)</td>
+<td><a href="https://www.haproxy.com/documentation/hapee/latest/load-balancing/protocols/http-2/">HTTP/2 Docs</a></td>
+</tr>
+<tr>
+<td><strong>Traefik</strong></td>
+<td>Yes</td>
+<td>Yes</td>
+<td><code>h2c://</code> service URL</td>
+<td><a href="https://doc.traefik.io/traefik/routing/services/">ServersTransport Docs</a></td>
+</tr>
+<tr>
+<td><strong>Apache</strong></td>
+<td>Yes (2.4.19+)</td>
+<td>No</td>
+<td><code>h2://</code> / <code>h2c://</code> in <code>ProxyPass</code> (no HTTP/1.1 fallback)</td>
+<td><a href="https://httpd.apache.org/docs/current/mod/mod_proxy_http2.html">mod_proxy_http2 Docs</a></td>
+</tr>
+<tr>
+<td><strong>Nginx</strong></td>
+<td>Yes (1.29.4+)</td>
+<td>No</td>
+<td><code>proxy_http_version 2;</code> (requires <code>ngx_http_v2_module</code>)</td>
+<td><a href="https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_http_version">ngx_http_proxy_module Docs</a></td>
+</tr>
+</tbody>
+</table>
+<p>Uvicorn supports both upstream flavors: cleartext prior-knowledge h2c, and HTTP/2 over TLS
+via ALPN when the proxy-to-Uvicorn hop uses TLS.</p>
+<h3 id="performance-considerations">Performance Considerations<a class="headerlink" href="#performance-considerations" title="Permanent link">&para;</a></h3>
+<p>HTTP/2 provides the most benefit when:</p>
 <ul>
-<li>
-<p><strong><a href="https://github.com/MagicStack/uvloop"><code>uvloop</code></a> — Fast, drop-in replacement of the built-in asyncio event loop.</strong></p>
-<p>When <code>uvloop</code> is installed, Uvicorn will use it by default.</p>
-</li>
-<li>
-<p><strong><a href="https://github.com/MagicStack/httptools"><code>httptools</code></a> — Python binding for the Node.js HTTP parser.</strong></p>
-<p>When <code>httptools</code> is installed, Uvicorn will use it by default for HTTP/1.1 parsing.</p>
-<p>You can read this issue to understand how it compares with <code>h11</code>: <a href="https://github.com/python-hyper/h11/issues/9">h11/issues/9</a>.</p>
-</li>
-<li>
-<p><strong><a href="https://websockets.readthedocs.io/en/stable/"><code>websockets</code></a> — WebSocket library for Python.</strong></p>
-<p>When <code>websockets</code> is installed, Uvicorn will use it by default for WebSocket handling.</p>
-<p>You can alternatively install <strong><a href="https://github.com/python-hyper/wsproto"><code>wsproto</code></a></strong> and set the <code>--ws</code>
-option to <code>wsproto</code> to use it instead.</p>
-</li>
-<li>
-<p><strong><a href="https://github.com/samuelcolvin/watchfiles"><code>watchfiles</code></a> — Simple, modern and high performance file
-    watching and code reload in python.</strong></p>
-<p>When <code>watchfiles</code> is installed, Uvicorn will use it by default for the <code>--reload</code> option.</p>
-</li>
-<li>
-<p><strong><a href="https://github.com/theskumar/python-dotenv"><code>python-dotenv</code></a> — Reads key-value pairs from a <code>.env</code> file
-    and adds them to the environment.</strong></p>
-<p>This is installed to allow you to use the <code>--env-file</code> option.</p>
-</li>
-<li>
-<p><strong><a href="https://github.com/yaml/pyyaml"><code>PyYAML</code></a> — YAML parser and emitter for Python.</strong></p>
-<p>This is installed to allow you to provide a <code>.yaml</code> file to the <code>--log-config</code> option.</p>
-</li>
+<li><strong>High latency connections</strong>: Multiplexing reduces round-trip overhead</li>
+<li><strong>Many concurrent requests</strong>: Multiple streams share a single connection</li>
+<li><strong>Large headers</strong>: HPACK compression reduces header overhead</li>
+</ul>
+<p>For internal, low-latency connections (like proxy to backend), HTTP/1.1 with keepalive often
+performs comparably to HTTP/2. It is simpler to configure and debug, which is why it remains the
+recommended default for most deployments.</p>
+<h2 id="current-limitations">Current Limitations<a class="headerlink" href="#current-limitations" title="Permanent link">&para;</a></h2>
+<p>The implementation is young, and some protocol features are not complete yet:</p>
+<ul>
+<li>HTTP/2 server push and <code>Expect: 100-continue</code> are not supported.</li>
+<li>WebSockets over HTTP/2 (RFC 8441 extended <code>CONNECT</code>) are not supported. With <code>--http zttp --http2</code>,
+  WebSocket connections still work - they are served over HTTP/1.1.</li>
 </ul>
 
 
@@ -1009,7 +1425,7 @@ option to <code>wsproto</code> to use it instead.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="./.." class="md-footer__link md-footer__link--prev" aria-label="Previous: Welcome">
+          <a href="../lifespan/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Lifespan">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -1019,20 +1435,20 @@ option to <code>wsproto</code> to use it instead.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Welcome
+                Lifespan
               </div>
             </div>
           </a>
         
         
           
-          <a href="../settings/" class="md-footer__link md-footer__link--next" aria-label="Next: Settings">
+          <a href="../logging/" class="md-footer__link md-footer__link--next" aria-label="Next: Logging">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Settings
+                Logging
               </div>
             </div>
             <div class="md-footer__button md-icon">
@@ -1129,10 +1545,10 @@ option to <code>wsproto</code> to use it instead.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["content.code.annotate","content.code.copy","content.tabs.link","navigation.footer","navigation.path","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","toc.follow"],"search":"../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["content.code.annotate","content.code.copy","content.tabs.link","navigation.footer","navigation.path","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","toc.follow"],"search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../assets/javascripts/bundle.49251538.min.js"></script>
+      <script src="../../assets/javascripts/bundle.49251538.min.js"></script>
       
     
   </body>

@@ -19,6 +19,9 @@
         <loc>https://uvicorn.dev/concepts/lifespan/</loc>
       </url>
       <url>
+        <loc>https://uvicorn.dev/concepts/http2/</loc>
+      </url>
+      <url>
         <loc>https://uvicorn.dev/concepts/logging/</loc>
       </url>
       <url>

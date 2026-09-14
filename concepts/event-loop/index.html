@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../uvicorn.png">
-      <meta name="generator" content="zensical-0.0.53">
+      <meta name="generator" content="zensical-0.0.57">
     
     
       
@@ -34,12 +34,12 @@
       
         
       
-      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.20815dad.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.5da3a30f.min.css">
       
         
           
         
-        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.dfe2e883.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.812a03bb.min.css">
       
       
 
@@ -467,6 +467,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../http2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  HTTP/2
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../logging/" class="md-nav__link">
         
   
@@ -605,6 +632,17 @@
       On this page
     </label>
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#zuvloop" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        zuvloop
+      </span>
+    </span>
+  </a>
+  
+</li>
       
         <li class="md-nav__item">
   <a href="#custom-event-loop" class="md-nav__link">
@@ -874,6 +912,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#zuvloop" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        zuvloop
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#custom-event-loop" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -984,8 +1033,8 @@
 
 
 <h1 id="event-loop">Event Loop<a class="headerlink" href="#event-loop" title="Permanent link">&para;</a></h1>
-<p>Uvicorn provides two event loop implementations that you can choose from using the <a href="../../settings/#implementation"><code>--loop</code></a> option:</p>
-<div class="highlight"><pre><span></span><code>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--loop<span class="w"> </span>&lt;auto<span class="p">|</span>asyncio<span class="p">|</span>uvloop&gt;
+<p>Uvicorn provides three event loop implementations that you can choose from using the <a href="../../settings/#implementation"><code>--loop</code></a> option:</p>
+<div class="highlight"><pre><span></span><code>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--loop<span class="w"> </span>&lt;auto<span class="p">|</span>asyncio<span class="p">|</span>uvloop<span class="p">|</span>zuvloop&gt;
 </code></pre></div>
 <p>By default, Uvicorn uses <code>--loop auto</code>, which automatically selects:</p>
 <ol>
@@ -999,6 +1048,26 @@ When running with <code>--reload</code> or multiple workers, it uses <a class="a
 <summary>Why can <code>ProactorEventLoop</code> fail with multiple processes on Windows?</summary>
 <p>If you want to know more about it, you can read the issue <a href="https://github.com/python/cpython/issues/122240">#cpython/122240</a>.</p>
 </details>
+<h2 id="zuvloop">zuvloop<a class="headerlink" href="#zuvloop" title="Permanent link">&para;</a></h2>
+<p><a href="https://zuvloop.marcelotryle.com/"><code>zuvloop</code></a> is an <code>asyncio</code> event loop powered by libuv and written in Zig.
+It requires CPython 3.14 or newer.</p>
+<p>Install <code>zuvloop</code> separately:</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">pip</label><label for="__tabbed_1_2">uv</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>zuvloop
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>add<span class="w"> </span>zuvloop
+</code></pre></div>
+</div>
+</div>
+</div>
+<p>Then select it explicitly:</p>
+<div class="highlight"><pre><span></span><code>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--loop<span class="w"> </span>zuvloop
+</code></pre></div>
+<p>Uvicorn does not include <code>zuvloop</code> in the <code>standard</code> extra or select it with <code>--loop auto</code>.</p>
 <h2 id="custom-event-loop">Custom Event Loop<a class="headerlink" href="#custom-event-loop" title="Permanent link">&para;</a></h2>
 <p>You can use custom event loop implementations by specifying a module path and function name using the colon notation:</p>
 <div class="highlight"><pre><span></span><code>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--loop<span class="w"> </span>&lt;module&gt;:&lt;<span class="k">function</span>&gt;
@@ -1007,7 +1076,7 @@ When running with <code>--reload</code> or multiple workers, it uses <a class="a
 <h3 id="rloop">rloop<a class="headerlink" href="#rloop" title="Permanent link">&para;</a></h3>
 <p><a href="https://github.com/gi0baro/rloop">rloop</a> is an experimental AsyncIO event loop implemented in Rust on top of the <a href="https://github.com/tokio-rs/mio">mio</a> crate. It aims to provide high performance through Rust's systems programming capabilities.</p>
 <p>You can install it with:</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">pip</label><label for="__tabbed_1_2">uv</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="2:2"><input checked="checked" id="__tabbed_2_1" name="__tabbed_2" type="radio" /><input id="__tabbed_2_2" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="__tabbed_2_1">pip</label><label for="__tabbed_2_2">uv</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>rloop
@@ -1029,7 +1098,7 @@ When running with <code>--reload</code> or multiple workers, it uses <a class="a
 <h3 id="winloop">Winloop<a class="headerlink" href="#winloop" title="Permanent link">&para;</a></h3>
 <p><a href="https://github.com/Vizonex/Winloop">Winloop</a> is an alternative library that brings uvloop-like performance to Windows. Since uvloop is based on libuv and doesn't support Windows, Winloop provides a Windows-compatible implementation with significant performance improvements over the standard Windows event loop policies.</p>
 <p>You can install it with:</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="2:2"><input checked="checked" id="__tabbed_2_1" name="__tabbed_2" type="radio" /><input id="__tabbed_2_2" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="__tabbed_2_1">pip</label><label for="__tabbed_2_2">uv</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="3:2"><input checked="checked" id="__tabbed_3_1" name="__tabbed_3" type="radio" /><input id="__tabbed_3_2" name="__tabbed_3" type="radio" /><div class="tabbed-labels"><label for="__tabbed_3_1">pip</label><label for="__tabbed_3_2">uv</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>winloop
@@ -1208,7 +1277,7 @@ When running with <code>--reload</code> or multiple workers, it uses <a class="a
       <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["content.code.annotate","content.code.copy","content.tabs.link","navigation.footer","navigation.path","navigation.sections","navigation.top","navigation.tracking","search.suggest","search.highlight","toc.follow"],"search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.69c251d7.min.js"></script>
+      <script src="../../assets/javascripts/bundle.49251538.min.js"></script>
       
     
   </body>
