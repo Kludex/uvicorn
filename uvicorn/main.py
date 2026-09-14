@@ -135,7 +135,7 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     "--http2",
     is_flag=True,
     default=False,
-    help="Enable HTTP/2 support. Requires --http zttp.",
+    help="Enable HTTP/2 support. Requires --http zttp or --http httpunk.",
     show_default=True,
 )
 @click.option(

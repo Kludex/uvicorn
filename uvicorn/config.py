@@ -35,7 +35,7 @@ class UvicornDeprecationWarning(UserWarning):
     """
 
 
-HTTPProtocolType = Literal["auto", "h11", "httptools", "zttp"]
+HTTPProtocolType = Literal["auto", "h11", "httptools", "httpunk", "zttp"]
 WSProtocolType = Literal["auto", "none", "websockets", "websockets-sansio", "wsproto"]
 LifespanType = Literal["auto", "on", "off"]
 LoopFactoryType = Literal["none", "auto", "asyncio", "uvloop", "zuvloop"]
@@ -53,6 +53,7 @@ HTTP_PROTOCOLS: dict[str, str] = {
     "auto": "uvicorn.protocols.http.auto:AutoHTTPProtocol",
     "h11": "uvicorn.protocols.http.h11_impl:H11Protocol",
     "httptools": "uvicorn.protocols.http.httptools_impl:HttpToolsProtocol",
+    "httpunk": "uvicorn.protocols.http.httpunk_impl:HTTPunkH1Protocol",
     "zttp": "uvicorn.protocols.http.zttp_impl:ZttpProtocol",
 }
 WS_PROTOCOLS: dict[str, str | None] = {
@@ -440,13 +441,16 @@ class Config:
         assert not self.loaded
 
         if self.http2:
-            if self.http != "zttp":
+            if self.http == "httpunk":
+                protocol_path = "uvicorn.protocols.http.httpunk_impl:HTTPunkAutoProtocol"
+            elif self.http == "zttp":
+                protocol_path = "uvicorn.protocols.http.auto_zttp_impl:AutoZttpProtocol"
+            else:
                 raise ValueError(
-                    "HTTP/2 requires the `zttp` HTTP protocol. Install it with `pip install zttp`, then select it "
-                    "with `http='zttp'`. See https://uvicorn.dev/concepts/http2/ for more information."
+                    "HTTP/2 requires the `httpunk` or `zttp` HTTP protocol. Select it with `http='httpunk'` or "
+                    "`http='zttp'`. See https://uvicorn.dev/concepts/http2/ for more information."
                 )
-            http_protocol_class = import_from_string("uvicorn.protocols.http.auto_zttp_impl:AutoZttpProtocol")
-            self.http_protocol_class: type[asyncio.Protocol] = http_protocol_class
+            self.http_protocol_class: type[asyncio.Protocol] = import_from_string(protocol_path)
         elif isinstance(self.http, str):
             self.http_protocol_class = import_from_string(HTTP_PROTOCOLS.get(self.http, self.http))
         else:
