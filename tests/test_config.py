@@ -59,6 +59,11 @@ def test_config_should_reload_is_set(app: ASGIApplication, expected_should_reloa
     assert config.should_reload is expected_should_reload
 
 
+def test_config_rejects_negative_limit_max_requests_jitter() -> None:
+    with pytest.raises(ValueError, match="limit_max_requests_jitter must be greater than or equal to 0"):
+        Config(app=asgi_app, limit_max_requests_jitter=-1)
+
+
 def test_should_warn_on_invalid_reload_configuration(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     config_class = Config(app=asgi_app, reload_dirs=[str(tmp_path)])
     assert not config_class.should_reload
