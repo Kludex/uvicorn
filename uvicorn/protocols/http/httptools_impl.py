@@ -5,11 +5,12 @@ import contextvars
 import http
 import logging
 import re
+import sys
 import urllib
 from asyncio.events import TimerHandle
 from collections import deque
 from collections.abc import Callable
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 import httptools
 
@@ -18,16 +19,15 @@ from uvicorn._types import (
     ASGIReceiveEvent,
     ASGISendEvent,
     HTTPRequestEvent,
-    HTTPResponseStartEvent,
     HTTPScope,
 )
 from uvicorn.config import Config
 from uvicorn.logging import TRACE_LOG_LEVEL
-from uvicorn.protocols.http.flow_control import CLOSE_HEADER, HIGH_WATER_LIMIT, FlowControl, service_unavailable
+from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT, FlowControl, service_unavailable
 from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
 from uvicorn.server import ServerState
 
-HEADER_RE = re.compile(b'[\x00-\x1f\x7f()<>@,;:[]={} \t\\"]')
+HEADER_RE = re.compile(b'[\x00-\x1f\x7f()<>@,;:\\[\\]={} \t\\\\"]')
 HEADER_VALUE_RE = re.compile(b"[\x00-\x08\x0a-\x1f\x7f]")
 
 
@@ -70,6 +70,7 @@ class HttpToolsProtocol(asyncio.Protocol):
 
         self.ws_protocol_class = config.ws_protocol_class
         self.root_path = config.root_path
+        self.asgi_version = config.asgi_version
         self.limit_concurrency = config.limit_concurrency
         self.app_state = app_state
 
@@ -129,7 +130,7 @@ class HttpToolsProtocol(asyncio.Protocol):
             self.transport.close()
             self._unset_keepalive_if_required()
 
-        self.parser = None
+        self.parser = None  # type: ignore[assignment]
 
     def eof_received(self) -> None:
         pass
@@ -224,7 +225,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.headers = []
         self.scope = {  # type: ignore[typeddict-item]
             "type": "http",
-            "asgi": {"version": self.config.asgi_version, "spec_version": "2.3"},
+            "asgi": {"version": self.asgi_version, "spec_version": "2.3"},
             "http_version": "1.1",
             "server": self.server,
             "client": self.client,
@@ -284,23 +285,30 @@ class HttpToolsProtocol(asyncio.Protocol):
             default_headers=self.server_state.default_headers,
             message_event=asyncio.Event(),
             expect_100_continue=self.expect_100_continue,
-            keep_alive=http_version != "1.0",
+            keep_alive=http_version != "1.0" and self.parser.should_keep_alive(),
             on_response=self.on_response_complete,
         )
         if existing_cycle is None or existing_cycle.response_complete:
             # Standard case - start processing the request.
-            # For the asyncio loop, we need to explicitly start with an empty context
-            # as it can be polluted from previous ASGI runs.
-            # See https://github.com/python/cpython/issues/140947 for details.
-            task = contextvars.Context().run(self.loop.create_task, self.cycle.run_asgi(app))
-            # TODO: Replace the line above with the line below for Python >= 3.11
-            # task = self.loop.create_task(self.cycle.run_asgi(app), context=contextvars.Context())
-            task.add_done_callback(self.tasks.discard)
-            self.tasks.add(task)
+            self._start_asgi_task(self.cycle, app)
         else:
             # Pipelined HTTP requests need to be queued up.
             self.flow.pause_reading()
             self.pipeline.appendleft((self.cycle, app))
+
+    def _start_asgi_task(self, cycle: RequestResponseCycle, app: ASGI3Application) -> None:
+        if self.config.reset_contextvars:
+            # Opt-in workaround for https://github.com/python/cpython/issues/140947:
+            # asyncio can leak context vars between tasks. Hides context set in the
+            # lifespan or by external instrumentation.
+            if sys.version_info >= (3, 11):  # pragma: py-lt-311
+                task = self.loop.create_task(cycle.run_asgi(app), context=contextvars.Context())
+            else:  # pragma: py-gte-311
+                task = contextvars.Context().run(self.loop.create_task, cycle.run_asgi(app))
+        else:
+            task = self.loop.create_task(cycle.run_asgi(app))
+        task.add_done_callback(self.tasks.discard)
+        self.tasks.add(task)
 
     def on_body(self, body: bytes) -> None:
         if (self.parser.should_upgrade() and self._should_upgrade()) or self.cycle.response_complete:
@@ -332,9 +340,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         # Keep-Alive timeout instead.
         if self.pipeline:
             cycle, app = self.pipeline.pop()
-            task = self.loop.create_task(cycle.run_asgi(app))
-            task.add_done_callback(self.tasks.discard)
-            self.tasks.add(task)
+            self._start_asgi_task(cycle, app)
         else:
             self.timeout_keep_alive_task = self.loop.call_later(
                 self.timeout_keep_alive, self.timeout_keep_alive_handler
@@ -401,7 +407,7 @@ class RequestResponseCycle:
         self.waiting_for_100_continue = expect_100_continue
 
         # Request state
-        self.body = b""
+        self.body = bytearray()
         self.more_body = True
 
         # Response state
@@ -455,8 +461,6 @@ class RequestResponseCycle:
 
     # ASGI interface
     async def send(self, message: ASGISendEvent) -> None:
-        message_type = message["type"]
-
         if self.flow.write_paused and not self.disconnected:
             await self.flow.drain()  # pragma: full coverage
 
@@ -465,19 +469,14 @@ class RequestResponseCycle:
 
         if not self.response_started:
             # Sending response status line and headers
-            if message_type != "http.response.start":
-                msg = "Expected ASGI message 'http.response.start', but got '%s'."
-                raise RuntimeError(msg % message_type)
-            message = cast("HTTPResponseStartEvent", message)
+            if message["type"] != "http.response.start":
+                raise RuntimeError(f"Expected ASGI message 'http.response.start', but got '{message['type']}'.")
 
             self.response_started = True
             self.waiting_for_100_continue = False
 
             status_code = message["status"]
             headers = self.default_headers + list(message.get("headers", []))
-
-            if CLOSE_HEADER in self.scope["headers"] and CLOSE_HEADER not in headers:
-                headers = headers + [CLOSE_HEADER]
 
             if self.access_log:
                 self.access_logger.info(
@@ -491,6 +490,7 @@ class RequestResponseCycle:
 
             # Write response status line and headers
             content = [STATUS_LINE[status_code]]
+            has_connection_close = False
 
             for name, value in headers:
                 if HEADER_RE.search(name):
@@ -505,9 +505,15 @@ class RequestResponseCycle:
                 elif name == b"transfer-encoding" and value.lower() == b"chunked":
                     self.expected_content_length = 0
                     self.chunked_encoding = True
-                elif name == b"connection" and value.lower() == b"close":
-                    self.keep_alive = False
+                elif name == b"connection":
+                    connection = [token.lower().strip() for token in value.split(b",")]
+                    if b"close" in connection:
+                        self.keep_alive = False
+                        has_connection_close = True
                 content.extend([name, b": ", value, b"\r\n"])
+
+            if not self.keep_alive and not has_connection_close:
+                content.append(b"connection: close\r\n")
 
             if self.chunked_encoding is None and self.scope["method"] != "HEAD" and status_code not in (204, 304):
                 # Neither content-length nor transfer-encoding specified
@@ -519,11 +525,10 @@ class RequestResponseCycle:
 
         elif not self.response_complete:
             # Sending response body
-            if message_type != "http.response.body":
-                msg = "Expected ASGI message 'http.response.body', but got '%s'."
-                raise RuntimeError(msg % message_type)
+            if message["type"] != "http.response.body":
+                raise RuntimeError(f"Expected ASGI message 'http.response.body', but got '{message['type']}'.")
 
-            body = cast(bytes, message.get("body", b""))
+            body = message.get("body", b"")
             more_body = message.get("more_body", False)
 
             # Write response body
@@ -557,8 +562,7 @@ class RequestResponseCycle:
 
         else:
             # Response already sent
-            msg = "Unexpected ASGI message '%s' sent, after response already completed."
-            raise RuntimeError(msg % message_type)
+            raise RuntimeError(f"Unexpected ASGI message '{message['type']}' sent, after response already completed.")
 
     async def receive(self) -> ASGIReceiveEvent:
         if self.waiting_for_100_continue and not self.transport.is_closing():
@@ -572,6 +576,6 @@ class RequestResponseCycle:
 
         if self.disconnected or self.response_complete:
             return {"type": "http.disconnect"}
-        message: HTTPRequestEvent = {"type": "http.request", "body": self.body, "more_body": self.more_body}
-        self.body = b""
+        message: HTTPRequestEvent = {"type": "http.request", "body": bytes(self.body), "more_body": self.more_body}
+        self.body = bytearray()
         return message

@@ -14,8 +14,7 @@ from configparser import RawConfigParser
 from pathlib import Path
 from typing import IO, Any, Literal
 
-import click
-
+from uvicorn._ansi import style
 from uvicorn._compat import iscoroutinefunction
 from uvicorn._types import ASGIApplication
 from uvicorn.importer import ImportFromStringError, import_from_string
@@ -25,10 +24,21 @@ from uvicorn.middleware.message_logger import MessageLoggerMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from uvicorn.middleware.wsgi import WSGIMiddleware
 
-HTTPProtocolType = Literal["auto", "h11", "httptools"]
+
+class UvicornDeprecationWarning(UserWarning):
+    """A custom deprecation warning for Uvicorn.
+
+    Unlike the built-in DeprecationWarning, this inherits from UserWarning to ensure it is visible by default, helping
+    users discover deprecated features without needing to enable warnings explicitly.
+
+    Reference: https://sethmlarson.dev/deprecations-via-warnings-dont-work-for-python-libraries
+    """
+
+
+HTTPProtocolType = Literal["auto", "h11", "httptools", "zttp"]
 WSProtocolType = Literal["auto", "none", "websockets", "websockets-sansio", "wsproto"]
 LifespanType = Literal["auto", "on", "off"]
-LoopFactoryType = Literal["none", "auto", "asyncio", "uvloop"]
+LoopFactoryType = Literal["none", "auto", "asyncio", "uvloop", "zuvloop"]
 InterfaceType = Literal["auto", "asgi3", "asgi2", "wsgi"]
 
 LOG_LEVELS: dict[str, int] = {
@@ -43,6 +53,7 @@ HTTP_PROTOCOLS: dict[str, str] = {
     "auto": "uvicorn.protocols.http.auto:AutoHTTPProtocol",
     "h11": "uvicorn.protocols.http.h11_impl:H11Protocol",
     "httptools": "uvicorn.protocols.http.httptools_impl:HttpToolsProtocol",
+    "zttp": "uvicorn.protocols.http.zttp_impl:ZttpProtocol",
 }
 WS_PROTOCOLS: dict[str, str | None] = {
     "auto": "uvicorn.protocols.websockets.auto:AutoWebSocketsProtocol",
@@ -61,10 +72,13 @@ LOOP_FACTORIES: dict[str, str | None] = {
     "auto": "uvicorn.loops.auto:auto_loop_factory",
     "asyncio": "uvicorn.loops.asyncio:asyncio_loop_factory",
     "uvloop": "uvicorn.loops.uvloop:uvloop_loop_factory",
+    "zuvloop": "uvicorn.loops.zuvloop:zuvloop_loop_factory",
 }
 INTERFACES: list[InterfaceType] = ["auto", "asgi3", "asgi2", "wsgi"]
 
 SSL_PROTOCOL_VERSION: int = ssl.PROTOCOL_TLS_SERVER
+
+STARTUP_FAILURE = 3
 
 LOGGING_CONFIG: dict[str, Any] = {
     "version": 1,
@@ -110,6 +124,7 @@ def create_ssl_context(
     cert_reqs: int,
     ca_certs: str | os.PathLike[str] | None,
     ciphers: str | None,
+    alpn_protocols: list[str] | None = None,
 ) -> ssl.SSLContext:
     ctx = ssl.SSLContext(ssl_version)
     get_password = (lambda: password) if password else None
@@ -119,6 +134,8 @@ def create_ssl_context(
         ctx.load_verify_locations(ca_certs)
     if ciphers:
         ctx.set_ciphers(ciphers)
+    if alpn_protocols:  # pragma: no-zttp-h2
+        ctx.set_alpn_protocols(alpn_protocols)
     return ctx
 
 
@@ -185,6 +202,7 @@ class Config:
         fd: int | None = None,
         loop: LoopFactoryType | str = "auto",
         http: type[asyncio.Protocol] | HTTPProtocolType | str = "auto",
+        http2: bool = False,
         ws: type[asyncio.Protocol] | WSProtocolType | str = "auto",
         ws_max_size: int = 16 * 1024 * 1024,
         ws_max_queue: int = 32,
@@ -193,7 +211,7 @@ class Config:
         ws_per_message_deflate: bool = True,
         lifespan: LifespanType = "auto",
         env_file: str | os.PathLike[str] | None = None,
-        log_config: dict[str, Any] | str | RawConfigParser | IO[Any] | None = LOGGING_CONFIG,
+        log_config: dict[str, Any] | str | os.PathLike[str] | RawConfigParser | IO[Any] | None = LOGGING_CONFIG,
         log_level: str | int | None = None,
         access_log: bool = True,
         use_colors: bool | None = None,
@@ -224,10 +242,12 @@ class Config:
         ssl_version: int = SSL_PROTOCOL_VERSION,
         ssl_cert_reqs: int = ssl.CERT_NONE,
         ssl_ca_certs: str | os.PathLike[str] | None = None,
-        ssl_ciphers: str = "TLSv1",
+        ssl_ciphers: str | None = None,
+        ssl_context_factory: Callable[[Config, Callable[[], ssl.SSLContext]], ssl.SSLContext] | None = None,
         headers: list[tuple[str, str]] | None = None,
         factory: bool = False,
         h11_max_incomplete_event_size: int | None = None,
+        reset_contextvars: bool = False,
     ):
         self.app = app
         self.host = host
@@ -236,6 +256,7 @@ class Config:
         self.fd = fd
         self.loop = loop
         self.http = http
+        self.http2 = http2
         self.ws = ws
         self.ws_max_size = ws_max_size
         self.ws_max_queue = ws_max_queue
@@ -271,10 +292,12 @@ class Config:
         self.ssl_cert_reqs = ssl_cert_reqs
         self.ssl_ca_certs = ssl_ca_certs
         self.ssl_ciphers = ssl_ciphers
+        self.ssl_context_factory = ssl_context_factory
         self.headers: list[tuple[str, str]] = headers or []
         self.encoded_headers: list[tuple[bytes, bytes]] = []
         self.factory = factory
         self.h11_max_incomplete_event_size = h11_max_incomplete_event_size
+        self.reset_contextvars = reset_contextvars
 
         self.loaded = False
         self.configure_logging()
@@ -337,7 +360,7 @@ class Config:
 
         self.forwarded_allow_ips: list[str] | str
         if forwarded_allow_ips is None:
-            self.forwarded_allow_ips = os.environ.get("FORWARDED_ALLOW_IPS", "127.0.0.1")
+            self.forwarded_allow_ips = os.environ.get("FORWARDED_ALLOW_IPS", "127.0.0.1,::1")
         else:
             self.forwarded_allow_ips = forwarded_allow_ips  # pragma: full coverage
 
@@ -355,7 +378,7 @@ class Config:
 
     @property
     def is_ssl(self) -> bool:
-        return bool(self.ssl_keyfile or self.ssl_certfile)
+        return bool(self.ssl_keyfile or self.ssl_certfile or self.ssl_context_factory)
 
     @property
     def use_subprocess(self) -> bool:
@@ -365,6 +388,9 @@ class Config:
         logging.addLevelName(TRACE_LOG_LEVEL, "TRACE")
 
         if self.log_config is not None:
+            if isinstance(self.log_config, os.PathLike):
+                self.log_config = os.fspath(self.log_config)
+
             if isinstance(self.log_config, dict):
                 if self.use_colors in (True, False):
                     self.log_config["formatters"]["default"]["use_colors"] = self.use_colors
@@ -375,9 +401,12 @@ class Config:
                     loaded_config = json.load(file)
                     logging.config.dictConfig(loaded_config)
             elif isinstance(self.log_config, str) and self.log_config.endswith((".yaml", ".yml")):
-                # Install the PyYAML package or the uvicorn[standard] optional
-                # dependencies to enable this functionality.
-                import yaml
+                try:
+                    import yaml
+                except ImportError as e:
+                    raise ImportError(
+                        "Install the PyYAML package or uvicorn[standard] to use `--log-config` with YAML files."
+                    ) from e
 
                 with open(self.log_config) as file:
                     loaded_config = yaml.safe_load(file)
@@ -389,7 +418,7 @@ class Config:
 
         if self.log_level is not None:
             if isinstance(self.log_level, str):
-                log_level = LOG_LEVELS[self.log_level]
+                log_level = LOG_LEVELS[self.log_level.lower()]
             else:
                 log_level = self.log_level
             logging.getLogger("uvicorn.error").setLevel(log_level)
@@ -399,12 +428,59 @@ class Config:
             logging.getLogger("uvicorn.access").handlers = []
             logging.getLogger("uvicorn.access").propagate = False
 
+    def load_app(self) -> Any:
+        """Import the app and return it. Exits on failure."""
+        try:
+            return import_from_string(self.app)
+        except ImportFromStringError as exc:
+            logger.error("Error loading ASGI app. %s" % exc)
+            sys.exit(STARTUP_FAILURE)
+
     def load(self) -> None:
         assert not self.loaded
 
-        if self.is_ssl:
+        if self.http2:
+            if self.http != "zttp":
+                raise ValueError(
+                    "HTTP/2 requires the `zttp` HTTP protocol. Install it with `pip install zttp`, then select it "
+                    "with `http='zttp'`. See https://uvicorn.dev/concepts/http2/ for more information."
+                )
+            http_protocol_class = import_from_string("uvicorn.protocols.http.auto_zttp_impl:AutoZttpProtocol")
+            self.http_protocol_class: type[asyncio.Protocol] = http_protocol_class
+        elif isinstance(self.http, str):
+            self.http_protocol_class = import_from_string(HTTP_PROTOCOLS.get(self.http, self.http))
+        else:
+            self.http_protocol_class = self.http
+
+        alpn_protocols: list[str] | None = getattr(self.http_protocol_class, "alpn_protocols", None)
+
+        if self.ssl_context_factory is not None:
+
+            def default_factory() -> ssl.SSLContext:
+                if not self.ssl_certfile:
+                    raise RuntimeError(
+                        "`default_ssl_context_factory()` requires `ssl_certfile` to be set on `Config`. "
+                        "Either pass `ssl_certfile` (and optionally `ssl_keyfile`) or build the `SSLContext` "
+                        "directly inside `ssl_context_factory` without calling the default factory."
+                    )
+                return create_ssl_context(
+                    keyfile=self.ssl_keyfile,
+                    certfile=self.ssl_certfile,
+                    password=self.ssl_keyfile_password,
+                    ssl_version=self.ssl_version,
+                    cert_reqs=self.ssl_cert_reqs,
+                    ca_certs=self.ssl_ca_certs,
+                    ciphers=self.ssl_ciphers,
+                    alpn_protocols=alpn_protocols,
+                )
+
+            context = self.ssl_context_factory(self, default_factory)
+            if not isinstance(context, ssl.SSLContext):
+                raise TypeError(f"`ssl_context_factory` must return an `ssl.SSLContext`, got {type(context).__name__}")
+            self.ssl: ssl.SSLContext | None = context
+        elif self.is_ssl:
             assert self.ssl_certfile
-            self.ssl: ssl.SSLContext | None = create_ssl_context(
+            self.ssl = create_ssl_context(
                 keyfile=self.ssl_keyfile,
                 certfile=self.ssl_certfile,
                 password=self.ssl_keyfile_password,
@@ -412,6 +488,7 @@ class Config:
                 cert_reqs=self.ssl_cert_reqs,
                 ca_certs=self.ssl_ca_certs,
                 ciphers=self.ssl_ciphers,
+                alpn_protocols=alpn_protocols,
             )
         else:
             self.ssl = None
@@ -423,12 +500,6 @@ class Config:
             else encoded_headers
         )
 
-        if isinstance(self.http, str):
-            http_protocol_class = import_from_string(HTTP_PROTOCOLS.get(self.http, self.http))
-            self.http_protocol_class: type[asyncio.Protocol] = http_protocol_class
-        else:
-            self.http_protocol_class = self.http
-
         if isinstance(self.ws, str):
             ws_protocol_class = import_from_string(WS_PROTOCOLS.get(self.ws, self.ws))
             self.ws_protocol_class: type[asyncio.Protocol] | None = ws_protocol_class
@@ -437,18 +508,14 @@ class Config:
 
         self.lifespan_class = import_from_string(LIFESPAN[self.lifespan])
 
-        try:
-            self.loaded_app = import_from_string(self.app)
-        except ImportFromStringError as exc:
-            logger.error("Error loading ASGI app. %s" % exc)
-            sys.exit(1)
+        self.loaded_app = self.load_app()
 
         try:
             self.loaded_app = self.loaded_app()
         except TypeError as exc:
             if self.factory:
                 logger.error("Error loading ASGI app factory: %s", exc)
-                sys.exit(1)
+                sys.exit(STARTUP_FAILURE)
         else:
             if not self.factory:
                 logger.warning(
@@ -493,14 +560,14 @@ class Config:
                 return import_from_string(self.loop)
             except ImportFromStringError as exc:
                 logger.error("Error loading custom loop setup function. %s" % exc)
-                sys.exit(1)
+                sys.exit(STARTUP_FAILURE)
         if loop_factory is None:
             return None
         return loop_factory(use_subprocess=self.use_subprocess)
 
     def bind_socket(self) -> socket.socket:
         logger_args: list[str | int]
-        if self.uds:  # pragma: py-win32
+        if self.uds is not None:  # pragma: py-win32
             path = self.uds
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             try:
@@ -509,17 +576,17 @@ class Config:
                 os.chmod(self.uds, uds_perms)
             except OSError as exc:  # pragma: full coverage
                 logger.error(exc)
-                sys.exit(1)
+                sys.exit(STARTUP_FAILURE)
 
             message = "Uvicorn running on unix socket %s (Press CTRL+C to quit)"
             sock_name_format = "%s"
-            color_message = "Uvicorn running on " + click.style(sock_name_format, bold=True) + " (Press CTRL+C to quit)"
+            color_message = "Uvicorn running on " + style(sock_name_format, bold=True) + " (Press CTRL+C to quit)"
             logger_args = [self.uds]
-        elif self.fd:  # pragma: py-win32
+        elif self.fd is not None:  # pragma: py-win32
             sock = socket.fromfd(self.fd, socket.AF_UNIX, socket.SOCK_STREAM)
             message = "Uvicorn running on socket %s (Press CTRL+C to quit)"
             fd_name_format = "%s"
-            color_message = "Uvicorn running on " + click.style(fd_name_format, bold=True) + " (Press CTRL+C to quit)"
+            color_message = "Uvicorn running on " + style(fd_name_format, bold=True) + " (Press CTRL+C to quit)"
             logger_args = [sock.getsockname()]
         else:
             family = socket.AF_INET
@@ -536,10 +603,10 @@ class Config:
                 sock.bind((self.host, self.port))
             except OSError as exc:  # pragma: full coverage
                 logger.error(exc)
-                sys.exit(1)
+                sys.exit(STARTUP_FAILURE)
 
             message = f"Uvicorn running on {addr_format} (Press CTRL+C to quit)"
-            color_message = "Uvicorn running on " + click.style(addr_format, bold=True) + " (Press CTRL+C to quit)"
+            color_message = "Uvicorn running on " + style(addr_format, bold=True) + " (Press CTRL+C to quit)"
             protocol_name = "https" if self.is_ssl else "http"
             logger_args = [protocol_name, self.host, sock.getsockname()[1]]
         logger.info(message, *logger_args, extra={"color_message": color_message})

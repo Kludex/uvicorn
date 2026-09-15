@@ -1,9 +1,9 @@
 # Event Loop
 
-Uvicorn provides two event loop implementations that you can choose from using the [`--loop`](../settings.md#implementation) option:
+Uvicorn provides three event loop implementations that you can choose from using the [`--loop`](../settings.md#implementation) option:
 
 ```bash
-uvicorn main:app --loop <auto|asyncio|uvloop>
+uvicorn main:app --loop <auto|asyncio|uvloop|zuvloop>
 ```
 
 By default, Uvicorn uses `--loop auto`, which automatically selects:
@@ -13,11 +13,35 @@ By default, Uvicorn uses `--loop auto`, which automatically selects:
 
 Since `uvloop` is not compatible with Windows or PyPy, it is not available on these platforms.
 
-On Windows, the asyncio implementation uses [`ProactorEventLoop`][asyncio.ProactorEventLoop] if running with multiple workers,
-otherwise it uses the standard [`SelectorEventLoop`][asyncio.SelectorEventLoop] for better performance.
+On Windows, the asyncio implementation uses the standard [`ProactorEventLoop`][asyncio.ProactorEventLoop] in single-process mode.
+When running with `--reload` or multiple workers, it uses [`SelectorEventLoop`][asyncio.SelectorEventLoop] instead.
 
-??? info "Why does `SelectorEventLoop` not work with multiple processes on Windows?"
+??? info "Why can `ProactorEventLoop` fail with multiple processes on Windows?"
     If you want to know more about it, you can read the issue [#cpython/122240](https://github.com/python/cpython/issues/122240).
+
+## zuvloop
+
+[`zuvloop`](https://zuvloop.marcelotryle.com/) is an `asyncio` event loop powered by libuv and written in Zig.
+It requires CPython 3.14 or newer.
+
+Install `zuvloop` separately:
+
+=== "pip"
+    ```bash
+    pip install zuvloop
+    ```
+=== "uv"
+    ```bash
+    uv add zuvloop
+    ```
+
+Then select it explicitly:
+
+```bash
+uvicorn main:app --loop zuvloop
+```
+
+Uvicorn does not include `zuvloop` in the `standard` extra or select it with `--loop auto`.
 
 ## Custom Event Loop
 

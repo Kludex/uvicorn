@@ -4,8 +4,9 @@ import asyncio
 import contextvars
 import http
 import logging
+import sys
 from collections.abc import Callable
-from typing import Any, Literal, cast
+from typing import Any, Literal
 from urllib.parse import unquote
 
 import h11
@@ -62,6 +63,7 @@ class H11Protocol(asyncio.Protocol):
         )
         self.ws_protocol_class = config.ws_protocol_class
         self.root_path = config.root_path
+        self.asgi_version = config.asgi_version
         self.limit_concurrency = config.limit_concurrency
         self.app_state = app_state
 
@@ -195,6 +197,9 @@ class H11Protocol(asyncio.Protocol):
                 break
 
             elif isinstance(event, h11.Request):
+                # Pipelined HTTP requests and WebSocket upgrades may be processed after the keep-alive timer is armed.
+                self._unset_keepalive_if_required()
+
                 self.headers = [(key.lower(), value) for key, value in event.headers]
                 raw_path, _, query_string = event.target.partition(b"?")
                 path = unquote(raw_path.decode("ascii"))
@@ -202,7 +207,7 @@ class H11Protocol(asyncio.Protocol):
                 full_raw_path = self.root_path.encode("ascii") + raw_path
                 self.scope = {
                     "type": "http",
-                    "asgi": {"version": self.config.asgi_version, "spec_version": "2.3"},
+                    "asgi": {"version": self.asgi_version, "spec_version": "2.3"},
                     "http_version": event.http_version.decode("ascii"),
                     "server": self.server,
                     "client": self.client,
@@ -229,14 +234,6 @@ class H11Protocol(asyncio.Protocol):
                 else:
                     app = self.app
 
-                # When starting to process a request, disable the keep-alive
-                # timeout. Normally we disable this when receiving data from
-                # client and set back when finishing processing its request.
-                # However, for pipelined requests processing finishes after
-                # already receiving the next request and thus the timer may
-                # be set here, which we don't want.
-                self._unset_keepalive_if_required()
-
                 self.cycle = RequestResponseCycle(
                     scope=self.scope,
                     conn=self.conn,
@@ -249,12 +246,16 @@ class H11Protocol(asyncio.Protocol):
                     message_event=asyncio.Event(),
                     on_response=self.on_response_complete,
                 )
-                # For the asyncio loop, we need to explicitly start with an empty context
-                # as it can be polluted from previous ASGI runs.
-                # See https://github.com/python/cpython/issues/140947 for details.
-                task = contextvars.Context().run(self.loop.create_task, self.cycle.run_asgi(app))
-                # TODO: Replace the line above with the line below for Python >= 3.11
-                # task = self.loop.create_task(self.cycle.run_asgi(app), context=contextvars.Context())
+                if self.config.reset_contextvars:
+                    # Opt-in workaround for https://github.com/python/cpython/issues/140947:
+                    # asyncio can leak context vars between tasks. Hides context set in the
+                    # lifespan or by external instrumentation.
+                    if sys.version_info >= (3, 11):  # pragma: py-lt-311
+                        task = self.loop.create_task(self.cycle.run_asgi(app), context=contextvars.Context())
+                    else:  # pragma: py-gte-311
+                        task = contextvars.Context().run(self.loop.create_task, self.cycle.run_asgi(app))
+                else:
+                    task = self.loop.create_task(self.cycle.run_asgi(app))
                 task.add_done_callback(self.tasks.discard)
                 self.tasks.add(task)
 
@@ -397,7 +398,7 @@ class RequestResponseCycle:
         self.waiting_for_100_continue = conn.they_are_waiting_for_100_continue
 
         # Request state
-        self.body = b""
+        self.body = bytearray()
         self.more_body = True
 
         # Response state
@@ -452,8 +453,6 @@ class RequestResponseCycle:
 
     # ASGI interface
     async def send(self, message: ASGISendEvent) -> None:
-        message_type = message["type"]
-
         if self.flow.write_paused and not self.disconnected:
             await self.flow.drain()  # pragma: full coverage
 
@@ -462,10 +461,8 @@ class RequestResponseCycle:
 
         if not self.response_started:
             # Sending response status line and headers
-            if message_type != "http.response.start":
-                msg = "Expected ASGI message 'http.response.start', but got '%s'."
-                raise RuntimeError(msg % message_type)
-            message = cast("HTTPResponseStartEvent", message)
+            if message["type"] != "http.response.start":
+                raise RuntimeError(f"Expected ASGI message 'http.response.start', but got '{message['type']}'.")
 
             self.response_started = True
             self.waiting_for_100_continue = False
@@ -494,10 +491,8 @@ class RequestResponseCycle:
 
         elif not self.response_complete:
             # Sending response body
-            if message_type != "http.response.body":
-                msg = "Expected ASGI message 'http.response.body', but got '%s'."
-                raise RuntimeError(msg % message_type)
-            message = cast("HTTPResponseBodyEvent", message)
+            if message["type"] != "http.response.body":
+                raise RuntimeError(f"Expected ASGI message 'http.response.body', but got '{message['type']}'.")
 
             body = message.get("body", b"")
             more_body = message.get("more_body", False)
@@ -516,8 +511,7 @@ class RequestResponseCycle:
 
         else:
             # Response already sent
-            msg = "Unexpected ASGI message '%s' sent, after response already completed."
-            raise RuntimeError(msg % message_type)
+            raise RuntimeError(f"Unexpected ASGI message '{message['type']}' sent, after response already completed.")
 
         if self.response_complete:
             if self.conn.our_state is h11.MUST_CLOSE or not self.keep_alive:
@@ -541,10 +535,6 @@ class RequestResponseCycle:
         if self.disconnected or self.response_complete:
             return {"type": "http.disconnect"}
 
-        message: HTTPRequestEvent = {
-            "type": "http.request",
-            "body": self.body,
-            "more_body": self.more_body,
-        }
-        self.body = b""
+        message: HTTPRequestEvent = {"type": "http.request", "body": bytes(self.body), "more_body": self.more_body}
+        self.body = bytearray()
         return message
