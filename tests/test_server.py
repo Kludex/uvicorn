@@ -122,6 +122,60 @@ async def test_shutdown_on_early_exit_during_startup(unused_tcp_port: int):
     assert shutdown_complete, "lifespan.shutdown was not called despite startup completing"
 
 
+async def test_handle_exit_cancels_frozen_lifespan_startup(unused_tcp_port: int):
+    """Regression test for https://github.com/encode/uvicorn/issues/2751.
+
+    If the application never yields control back to uvicorn while processing
+    the lifespan startup event, a signal (e.g. Ctrl+C) must still be able to
+    interrupt the process, instead of the server hanging forever.
+    """
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        if scope["type"] == "lifespan":
+            message = await receive()
+            assert message["type"] == "lifespan.startup"
+            await asyncio.sleep(30)  # Simulates an app that never yields control.
+
+    config = Config(app=app, port=unused_tcp_port)
+    server = Server(config=config)
+
+    def lifespan_not_ready() -> bool:
+        return getattr(server, "lifespan", None) is None or server.lifespan.main_lifespan_task is None
+
+    async def interrupt_during_startup() -> None:
+        while lifespan_not_ready():  # pragma: no cover
+            await asyncio.sleep(0.01)
+        await asyncio.sleep(0.05)
+        server.handle_exit(signal.SIGINT, None)
+
+    asyncio.create_task(interrupt_during_startup())
+
+    # Guard against the process's own re-raise of the captured signal once
+    # `capture_signals()` exits normally (see `Server.capture_signals`).
+    with capture_signal_sync(signal.SIGINT):
+        # Don't use asyncio.wait_for() here: on Python <3.12 it runs the
+        # coroutine in a child task, and a SystemExit raised there can race
+        # past wait_for's own result handling. Cancel the current task
+        # instead so server.serve() runs on this task directly.
+        # When 3.10 is not supported anymore, use `async with asyncio.timeout(3):`.
+        loop = asyncio.get_running_loop()
+        current_task = asyncio.current_task()
+        assert current_task is not None
+        timeout_handle = loop.call_later(3, current_task.cancel)
+        try:
+            # The interrupted startup is reported like any other failed startup,
+            # so `Server.startup()` exits the process with `STARTUP_FAILURE`
+            # instead of hanging or silently reporting success.
+            with pytest.raises(SystemExit) as exc_info:
+                await server.serve()
+        finally:
+            timeout_handle.cancel()
+        assert exc_info.value.code == STARTUP_FAILURE
+
+    assert server.should_exit
+    assert server.lifespan.error_occurred
+
+
 def test_run_exits_with_startup_failure_on_unloadable_app() -> None:
     """A server exits with the dedicated startup-failure code when the app can't load.
 
