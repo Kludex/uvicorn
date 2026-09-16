@@ -95,6 +95,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.scope: HTTPScope = None  # type: ignore[assignment]
         self.headers: list[tuple[bytes, bytes]] = None  # type: ignore[assignment]
         self.expect_100_continue = False
+        self.upgrade_request = False
         self.cycle: RequestResponseCycle = None  # type: ignore[assignment]
 
     # Protocol interface
@@ -168,7 +169,9 @@ class HttpToolsProtocol(asyncio.Protocol):
         return upgrade == b"websocket" and self._should_upgrade_to_ws()
 
     def data_received(self, data: bytes) -> None:
-        self._unset_keepalive_if_required()
+        # Guarded here as well, to avoid a method call for every chunk of a fragmented body.
+        if self.timeout_keep_alive_task is not None:
+            self._unset_keepalive_if_required()
 
         try:
             self.parser.feed_data(data)
@@ -222,6 +225,7 @@ class HttpToolsProtocol(asyncio.Protocol):
     def on_message_begin(self) -> None:
         self.url = b""
         self.expect_100_continue = False
+        self.upgrade_request = False
         self.headers = []
         self.scope = {  # type: ignore[typeddict-item]
             "type": "http",
@@ -251,7 +255,9 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.scope["method"] = method.decode("ascii")
         if http_version != "1.1":
             self.scope["http_version"] = http_version
-        if self.parser.should_upgrade() and self._should_upgrade():
+        # Cached, so that the per-chunk `on_body()` callback doesn't have to redo this check.
+        self.upgrade_request = self.parser.should_upgrade() and self._should_upgrade()
+        if self.upgrade_request:
             return
         parsed_url = httptools.parse_url(self.url)
         raw_path = parsed_url.path
@@ -311,18 +317,20 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.tasks.add(task)
 
     def on_body(self, body: bytes) -> None:
-        if (self.parser.should_upgrade() and self._should_upgrade()) or self.cycle.response_complete:
+        cycle = self.cycle
+        if self.upgrade_request or cycle.response_complete:
             return
-        self.cycle.body += body
-        if len(self.cycle.body) > HIGH_WATER_LIMIT:
+        cycle.body += body
+        if len(cycle.body) > HIGH_WATER_LIMIT:
             self.flow.pause_reading()
-        self.cycle.message_event.set()
+        cycle.message_event.set()
 
     def on_message_complete(self) -> None:
-        if (self.parser.should_upgrade() and self._should_upgrade()) or self.cycle.response_complete:
+        cycle = self.cycle
+        if self.upgrade_request or cycle.response_complete:
             return
-        self.cycle.more_body = False
-        self.cycle.message_event.set()
+        cycle.more_body = False
+        cycle.message_event.set()
 
     def on_response_complete(self) -> None:
         # Callback for pipelined HTTP requests to be started.
