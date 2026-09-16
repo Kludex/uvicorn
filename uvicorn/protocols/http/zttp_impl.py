@@ -25,6 +25,14 @@ from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT, FlowControl, s
 from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
 from uvicorn.server import ServerState
 
+# Bound at import time and compared against `type(event)` in the hot `handle_events()` loop.
+# Every `zttp` event class is final, so an exact type check is equivalent to `isinstance()`
+# while avoiding both the module attribute lookups and the `isinstance()` call per event.
+_NEED_DATA = zttp.NEED_DATA
+_Request = zttp.Request
+_Data = zttp.Data
+_EndOfMessage = zttp.EndOfMessage
+
 
 class ZttpProtocol(asyncio.Protocol):
     def __init__(
@@ -136,15 +144,28 @@ class ZttpProtocol(asyncio.Protocol):
         return False
 
     def data_received(self, data: bytes) -> None:
-        self._unset_keepalive_if_required()
+        # Checked inline so that the chunks of a fragmented body don't each pay for a method call.
+        if self.timeout_keep_alive_task is not None:
+            self._unset_keepalive_if_required()
         try:
             self.handle_events(self.conn.receive_event(data))
         except zttp.RemoteProtocolError:
             self.handle_remote_protocol_error()
 
     def handle_events(self, event: zttp.Event) -> None:
-        while event is not zttp.NEED_DATA:
-            if isinstance(event, zttp.Request):
+        conn = self.conn
+        while event is not _NEED_DATA:
+            # `Data` is by far the most frequent event on a connection carrying a body,
+            # so it is dispatched first.
+            if type(event) is _Data:
+                cycle = self.cycle
+                if cycle is not None and not cycle.response_complete:
+                    cycle.body += event.data
+                    if len(cycle.body) > HIGH_WATER_LIMIT:
+                        self.flow.pause_reading()
+                    cycle.message_event.set()
+
+            elif type(event) is _Request:
                 # Pipelined HTTP requests and WebSocket upgrades may be processed after the keep-alive timer is armed.
                 self._unset_keepalive_if_required()
 
@@ -186,7 +207,7 @@ class ZttpProtocol(asyncio.Protocol):
 
                 self.cycle = RequestResponseCycle(
                     scope=self.scope,
-                    conn=self.conn,
+                    conn=conn,
                     transport=self.transport,
                     flow=self.flow,
                     logger=self.logger,
@@ -210,21 +231,15 @@ class ZttpProtocol(asyncio.Protocol):
                 task.add_done_callback(self.tasks.discard)
                 self.tasks.add(task)
 
-            elif isinstance(event, zttp.Data):
-                if self.cycle is not None and not self.cycle.response_complete:
-                    self.cycle.body += event.data
-                    if len(self.cycle.body) > HIGH_WATER_LIMIT:
-                        self.flow.pause_reading()
-                    self.cycle.message_event.set()
+            elif type(event) is _EndOfMessage:
+                cycle = self.cycle
+                if cycle is not None:
+                    cycle.more_body = False
+                    cycle.message_event.set()
+                    if cycle.response_complete:
+                        conn.start_next_cycle()
 
-            elif isinstance(event, zttp.EndOfMessage):
-                if self.cycle is not None:
-                    self.cycle.more_body = False
-                    self.cycle.message_event.set()
-                    if self.cycle.response_complete:
-                        self.conn.start_next_cycle()
-
-            event = self.conn.next_event()
+            event = conn.next_event()
 
     def handle_remote_protocol_error(self) -> None:
         msg = "Invalid HTTP request received."
