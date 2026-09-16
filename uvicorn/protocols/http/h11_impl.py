@@ -172,8 +172,62 @@ class H11Protocol(asyncio.Protocol):
     def data_received(self, data: bytes) -> None:
         self._unset_keepalive_if_required()
 
+        if self._feed_streaming_body(data):
+            return
+
         self.conn.receive_data(data)
         self.handle_events()
+
+    def _feed_streaming_body(self, data: bytes) -> bool:
+        """Append a chunk of a streamed request body without running an `h11` parse cycle.
+
+        While the client is streaming a `Content-Length` body, every socket read costs a
+        full round trip through `h11` (`next_event()` -> `Data`, then `next_event()` ->
+        `NEED_DATA`), which only slices the bytes back out of `h11`'s receive buffer and
+        walks a state machine that cannot change on a `Data` event.
+
+        When `h11` has no buffered bytes left, the peer is in `SEND_BODY` with a
+        content-length reader, and the chunk does not complete the body, the result of
+        that parse is known up front: a single `Data` event carrying exactly `data`. In
+        that case the chunk is handed to the request/response cycle directly and the
+        reader's remaining byte count is kept in sync, so `h11` resumes as if it had
+        parsed the chunk itself. Every other case (the final chunk, chunked encoding,
+        HTTP/1.0 bodies, pipelining, protocol upgrades, `100-continue`) falls through to
+        the regular `next_event()` loop.
+
+        Returns `True` when the chunk was handled here.
+        """
+        cycle = self.cycle
+        if cycle is None or not data:
+            return False
+
+        conn = self.conn
+        try:
+            reader: Any = conn._reader
+            buffered = conn._receive_buffer
+        except AttributeError:  # pragma: no cover
+            # A future `h11` renamed its internals: keep going through `next_event()`.
+            return False
+
+        # Only `ContentLengthReader` has `_remaining`, and it is the only reader that
+        # knows up front that the whole chunk is body data.
+        remaining = getattr(reader, "_remaining", None)
+        if (
+            remaining is None
+            or remaining <= len(data)  # this chunk completes the body
+            or buffered  # `h11` still holds bytes that need parsing
+            or conn.their_state is not h11.SEND_BODY
+            or conn.our_state is h11.DONE  # the response is already complete
+            or conn.client_is_waiting_for_100_continue
+        ):
+            return False
+
+        reader._remaining = remaining - len(data)
+        cycle.body += data
+        if len(cycle.body) > HIGH_WATER_LIMIT:
+            self.flow.pause_reading()
+        cycle.message_event.set()
+        return True
 
     def handle_events(self) -> None:
         while True:
