@@ -251,6 +251,11 @@ class Config:
     ):
         self.app = app
         self.host = host
+        # bool subclasses int; port=True would bind privileged port 1
+        if isinstance(port, bool) or not isinstance(port, int):
+            raise TypeError(f"port must be an integer, not {type(port).__name__}")
+        if not 0 <= port <= 65535:
+            raise ValueError(f"port must be in 0..65535, got {port}")
         self.port = port
         self.uds = uds
         self.fd = fd

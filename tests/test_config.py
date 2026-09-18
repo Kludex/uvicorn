@@ -682,3 +682,20 @@ def test_setup_event_loop_is_removed(caplog: pytest.LogCaptureFixture) -> None:
         AttributeError, match="The `setup_event_loop` method was replaced by `get_loop_factory` in uvicorn 0.36.0."
     ):
         config.setup_event_loop()
+
+
+
+@pytest.mark.parametrize("port", [True, False, 1.5, "8000", None])
+def test_config_rejects_bool_port(port: object) -> None:
+    with pytest.raises(TypeError, match="port must be an integer"):
+        Config(app=lambda: None, port=port, log_config=None)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("port", [-1, 65536, 99999])
+def test_config_rejects_out_of_range_port(port: int) -> None:
+    with pytest.raises(ValueError, match="port must be in 0..65535"):
+        Config(app=lambda: None, port=port, log_config=None)
+
+
+def test_config_allows_ephemeral_port_zero() -> None:
+    assert Config(app=lambda: None, port=0, log_config=None).port == 0
