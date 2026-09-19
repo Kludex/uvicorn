@@ -213,7 +213,7 @@ class ZttpH2Protocol(asyncio.Protocol):
             "query_string": event.query,
             "headers": headers,
             "state": self.app_state.copy(),
-            "extensions": {"http.response.trailers": {}},
+            "extensions": {"http.response.early_hint": {}, "http.response.trailers": {}},
         }
 
         # Refuse new streams once a shutdown began, and handle 503 responses
@@ -440,10 +440,19 @@ class RequestResponseCycle:
         if self.disconnected:
             return
 
+        if message["type"] == "http.response.early_hint" and not self.response_started:
+            hint_headers = [(b"link", link) for link in message["links"]]
+            self.stream.send_informational(103, hint_headers)
+            self.transport.write(self.conn.data_to_send())
+            return
+
         if not self.response_started:
             # Sending response status line and headers
             if message["type"] != "http.response.start":
-                raise RuntimeError(f"Expected ASGI message 'http.response.start', but got '{message['type']}'.")
+                raise RuntimeError(
+                    "Expected ASGI message 'http.response.start' or 'http.response.early_hint', "
+                    f"but got '{message['type']}'."
+                )
 
             self.response_started = True
             self.trailers_expected = message.get("trailers", False)
@@ -510,13 +519,16 @@ class RequestResponseCycle:
             if message["type"] != "http.response.trailers":
                 raise RuntimeError(f"Expected ASGI message 'http.response.trailers', but got '{message['type']}'.")
 
-            if any(name == b"te" and value.lower().strip() == b"trailers" for name, value in self.scope["headers"]):
-                for name, value in message["headers"]:
-                    name = name.lower()
-                    if name.startswith(b":"):
-                        raise RuntimeError("Pseudo headers are not allowed in HTTP response trailers")
-                    if name in FORBIDDEN_HEADERS or name == b"te":
-                        continue
+            send_trailers = any(
+                name == b"te" and value.lower().strip() == b"trailers" for name, value in self.scope["headers"]
+            )
+            for name, value in message["headers"]:
+                name = name.lower()
+                if name.startswith(b":"):
+                    raise RuntimeError("Pseudo headers are not allowed in HTTP response trailers")
+                if name in FORBIDDEN_HEADERS or name == b"te":
+                    continue
+                if send_trailers:
                     self.trailers.append((name, value))
 
             if not message.get("more_trailers", False):

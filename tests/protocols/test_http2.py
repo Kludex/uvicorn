@@ -261,7 +261,7 @@ async def test_response_trailers(te: bytes | None, caplog: pytest.LogCaptureFixt
         protocol.transport.clear_buffer()
         assert b"".join(event.data for event in events if isinstance(event, zttp.Data)) == b"hello"
         assert not any(isinstance(event, zttp.EndOfMessage) for event in events)
-        await send({"type": "http.response.trailers", "headers": [(b"x-result", b"two")]})
+        await send({"type": "http.response.trailers", "headers": [(b"x-result", b"two")], "more_trailers": False})
         assert await receive() == {"type": "http.disconnect"}
 
     protocol = get_connected_protocol(app)
@@ -282,7 +282,10 @@ async def test_response_trailers(te: bytes | None, caplog: pytest.LogCaptureFixt
     ("message", "error"),
     [
         ({"type": "http.response.body", "body": b"extra"}, "Expected ASGI message 'http.response.trailers'"),
-        ({"type": "http.response.trailers", "headers": [(b":status", b"200")]}, "Pseudo headers are not allowed"),
+        (
+            {"type": "http.response.trailers", "headers": [(b":status", b"200")], "more_trailers": False},
+            "Pseudo headers are not allowed",
+        ),
         (None, "ASGI callable returned without completing response"),
     ],
 )
@@ -299,10 +302,12 @@ async def test_invalid_response_trailers(
 
     protocol = get_connected_protocol(app)
     client = H2Client()
-    client.request(headers=[(b"host", b"example.org"), (b"te", b"trailers")])
+    stream = client.request(headers=[(b"host", b"example.org")])
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
-    assert any(isinstance(event, zttp.RstStream) for event in client.events(protocol.transport.buffer))
+    assert [
+        event.stream_id for event in client.events(protocol.transport.buffer) if isinstance(event, zttp.RstStream)
+    ] == [stream.stream_id]
     assert error in caplog.text
     assert not protocol.transport.is_closing()
 
@@ -357,6 +362,37 @@ async def test_request_scope():
     assert received_scope["raw_path"] == b"/api/path%2Fitem"
     assert received_scope["query_string"] == b"a=1&b=2"
     assert (b"host", b"example.org") in received_scope["headers"]
+    assert received_scope["extensions"] == {"http.response.early_hint": {}, "http.response.trailers": {}}
+
+
+async def test_early_hints():
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert scope["type"] == "http"
+        assert "http.response.early_hint" in scope["extensions"]
+        await send(
+            {
+                "type": "http.response.early_hint",
+                "links": [b"</style.css>; rel=preload; as=style", b"</script.js>; rel=preload; as=script"],
+            }
+        )
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"OK"})
+
+    protocol = get_connected_protocol(app)
+    client = H2Client()
+
+    client.request(b"GET", b"/")
+    protocol.data_received(client.data_to_send())
+    await protocol.loop.run_one()
+
+    responses = [event for event in client.events(protocol.transport.buffer) if isinstance(event, zttp.Response)]
+    assert [(event.status_code, list(event.headers)) for event in responses] == [
+        (
+            103,
+            [(b"link", b"</style.css>; rel=preload; as=style"), (b"link", b"</script.js>; rel=preload; as=script")],
+        ),
+        (200, []),
+    ]
 
 
 async def test_multiplexed_requests():
@@ -1149,7 +1185,7 @@ async def test_server_sends_http2_trailers_over_tcp(unused_tcp_port: int) -> Non
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
         await send({"type": "http.response.start", "status": 200, "trailers": True})
         await send({"type": "http.response.body", "body": body})
-        await send({"type": "http.response.trailers", "headers": [(b"x-result", b"ok")]})
+        await send({"type": "http.response.trailers", "headers": [(b"x-result", b"ok")], "more_trailers": False})
 
     config = Config(app=app, http="zttp", http2=True, loop="asyncio", lifespan="off", port=unused_tcp_port)
     client = H2Client()

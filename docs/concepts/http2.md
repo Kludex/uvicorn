@@ -14,10 +14,10 @@ HTTP/2 introduces several key features:
 
 ## Enabling HTTP/2
 
-HTTP/2 support requires `zttp` 0.0.34 or later:
+HTTP/2 support requires the `zttp` package:
 
 ```bash
-pip install "zttp>=0.0.34"
+pip install zttp
 ```
 
 To enable it, select the `zttp` HTTP implementation and pass `--http2`:
@@ -156,6 +156,27 @@ async def app(scope, receive, send):
     print(f"HTTP Version: {scope['http_version']}")  # "2" for HTTP/2
 ```
 
+## Early Hints
+
+Uvicorn advertises the `http.response.early_hint` ASGI extension for HTTP/2 requests. You can send one or more
+`103 Early Hints` responses before the final response:
+
+```python title="main.py"
+async def app(scope, receive, send):
+    if "http.response.early_hint" in scope.get("extensions", {}):
+        await send(
+            {
+                "type": "http.response.early_hint",
+                "links": [b"</style.css>; rel=preload; as=style"],
+            }
+        )
+
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    await send({"type": "http.response.body", "body": b"ok"})
+```
+
+Each value in `links` becomes a separate `Link` header in the `103` response.
+
 ## Using with Reverse Proxies
 
 In production, Uvicorn is typically deployed behind a reverse proxy like Nginx, Caddy, or HAProxy.
@@ -210,25 +231,18 @@ recommended default for most deployments.
 ## Response Trailers
 
 ```python
-import hashlib
-
 import uvicorn
-from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 
 
-async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
-    assert scope["type"] == "http"
-    body = b"Hello, world!"
+async def app(scope, receive, send):
     trailers = "http.response.trailers" in scope.get("extensions", {})
-    headers = [(b"content-type", b"text/plain")]
-    if trailers:
-        headers.append((b"trailer", b"x-checksum"))
-    await send({"type": "http.response.start", "status": 200, "headers": headers, "trailers": trailers})
-    await send({"type": "http.response.body", "body": body})
+    await send({"type": "http.response.start", "status": 200, "trailers": trailers})
+    await send({"type": "http.response.body", "body": b"Hello, world!"})
     if trailers:
         await send({
             "type": "http.response.trailers",
-            "headers": [(b"x-checksum", hashlib.sha256(body).hexdigest().encode())],
+            "headers": [(b"x-result", b"ok")],
+            "more_trailers": False,
         })
 
 
@@ -236,20 +250,9 @@ if __name__ == "__main__":
     uvicorn.run(app, http="zttp", http2=True, lifespan="off")
 ```
 
-Trailers are headers you send after the response body. You can use them for values
-that become available while you stream a response, such as a checksum.
-
-Check for `http.response.trailers` in `scope["extensions"]` before sending trailers.
-Set `trailers=True` in `http.response.start`, then send `http.response.trailers` after
-the final body message. Uvicorn keeps the response open until the trailers are complete.
-
-You can send several trailer messages by setting `more_trailers=True`. Uvicorn combines
-their headers into one trailing HTTP/2 header block. The final message defaults to
-`more_trailers=False`.
-
-Your client must send `TE: trailers` to receive the trailing headers. Uvicorn consumes
-trailer messages without transmitting their headers when the client does not opt in.
-You declare the trailer names in the `Trailer` response header, as in the example.
+Trailers are headers you send after the response body. Your client must send
+`TE: trailers` to receive them. Set `more_trailers=True` to send more than one
+trailer message; Uvicorn combines their headers and completes the response on the last message.
 
 ## Current Limitations
 
