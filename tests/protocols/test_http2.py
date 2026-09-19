@@ -1193,11 +1193,8 @@ async def test_server_sends_http2_trailers_over_tcp(unused_tcp_port: int) -> Non
     events: list[Any] = []
     with anyio.fail_after(5):
         async with run_server(config), await anyio.connect_tcp("127.0.0.1", unused_tcp_port) as stream:
-            await stream.send(client.data_to_send())
-            async for data in stream:
-                events.extend(client.events(data))
-                if any(isinstance(event, zttp.EndOfMessage) for event in events):
-                    break
+            while not any(isinstance(event, zttp.EndOfMessage) for event in events):
                 await stream.send(client.data_to_send())
+                events.extend(client.events(await stream.receive()))
     assert b"".join(event.data for event in events if isinstance(event, zttp.Data)) == body
     assert [event.trailers for event in events if isinstance(event, zttp.EndOfMessage)] == [[(b"x-result", b"ok")]]

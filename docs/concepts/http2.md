@@ -230,6 +230,8 @@ recommended default for most deployments.
 
 ## Response Trailers
 
+Trailers are headers you send after the response body.
+
 ```python
 import uvicorn
 
@@ -250,9 +252,8 @@ if __name__ == "__main__":
     uvicorn.run(app, http="zttp", http2=True, lifespan="off")
 ```
 
-Trailers are headers you send after the response body. Your client must send
-`TE: trailers` to receive them. Set `more_trailers=True` to send more than one
-trailer message; Uvicorn combines their headers and completes the response on the last message.
+Your client must send `TE: trailers` to receive them. Set `more_trailers=True`
+to send more than one trailer message; Uvicorn combines their headers and completes the response on the last message.
 
 ## Current Limitations
 
