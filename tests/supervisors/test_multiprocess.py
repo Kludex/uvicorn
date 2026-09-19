@@ -89,6 +89,7 @@ def test_multiprocess_run() -> None:
         for process in supervisor.processes:
             if process.exitcode is None:
                 process.kill()
+                process.join()
         thread.join(timeout=10)
     assert not thread.is_alive(), "Supervisor did not shut down in time"
 
