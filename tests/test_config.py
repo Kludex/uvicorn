@@ -254,9 +254,9 @@ def test_concrete_http_class() -> None:
     assert config.http_protocol_class is H11Protocol
 
 
-def test_http2_requires_zttp_protocol() -> None:
+def test_http2_requires_supported_protocol() -> None:
     config = Config(app=asgi_app, http="h11", http2=True)
-    with pytest.raises(ValueError, match="HTTP/2 requires the `zttp` HTTP protocol"):
+    with pytest.raises(ValueError, match="HTTP/2 requires the `httpunk` or `zttp` HTTP protocol"):
         config.load()
 
 

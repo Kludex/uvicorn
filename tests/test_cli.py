@@ -151,16 +151,17 @@ def test_cli_event_size() -> None:
     assert mock_run.call_args[1]["h11_max_incomplete_event_size"] == 32768
 
 
-def test_cli_http2() -> None:
+@pytest.mark.parametrize("http", ["httpunk", "zttp"])
+def test_cli_http2(http: str) -> None:
     runner = CliRunner()
 
     with mock.patch.object(main, "run") as mock_run:
-        result = runner.invoke(cli, ["tests.test_cli:App", "--http", "zttp", "--http2"])
+        result = runner.invoke(cli, ["tests.test_cli:App", "--http", http, "--http2"])
 
     assert result.output == ""
     assert result.exit_code == 0
     mock_run.assert_called_once()
-    assert mock_run.call_args[1]["http"] == "zttp"
+    assert mock_run.call_args[1]["http"] == http
     assert mock_run.call_args[1]["http2"] is True
 
 
