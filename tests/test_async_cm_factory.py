@@ -1,16 +1,20 @@
 import contextlib
+
 import pytest
+
 from uvicorn.config import Config
-from uvicorn.server import Server
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+from uvicorn.server import Server
 
 entered = False
 exited = False
+
 
 async def dummy_asgi_app(scope, receive, send):
     if scope["type"] == "http":
         await send({"type": "http.response.start", "status": 200, "headers": []})
         await send({"type": "http.response.body", "body": b"OK"})
+
 
 @contextlib.asynccontextmanager
 async def async_cm_factory():
@@ -20,6 +24,7 @@ async def async_cm_factory():
         yield dummy_asgi_app
     finally:
         exited = True
+
 
 @pytest.mark.anyio
 async def test_asynccontextmanager_factory():
@@ -40,6 +45,7 @@ async def test_asynccontextmanager_factory():
 
     await server.lifespan.shutdown()
     assert exited is True
+
 
 def test_asynccontextmanager_factory_lifespan_off():
     config = Config(app=async_cm_factory, factory=True, lifespan="off")
