@@ -2,6 +2,7 @@ import contextlib
 import pytest
 from uvicorn.config import Config
 from uvicorn.server import Server
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 entered = False
 exited = False
@@ -22,6 +23,10 @@ async def async_cm_factory():
 
 @pytest.mark.anyio
 async def test_asynccontextmanager_factory():
+    global entered, exited
+    entered = False
+    exited = False
+
     config = Config(app=async_cm_factory, factory=True, lifespan="on")
     config.load()
     server = Server(config=config)
@@ -30,7 +35,13 @@ async def test_asynccontextmanager_factory():
     await server.lifespan.startup()
     assert entered is True
     assert exited is False
-    assert config.loaded_app is dummy_asgi_app
+    assert isinstance(config.loaded_app, ProxyHeadersMiddleware)
+    assert config.loaded_app.app is dummy_asgi_app
 
     await server.lifespan.shutdown()
     assert exited is True
+
+def test_asynccontextmanager_factory_lifespan_off():
+    config = Config(app=async_cm_factory, factory=True, lifespan="off")
+    with pytest.raises(SystemExit):
+        config.load()

@@ -49,6 +49,7 @@ class LifespanOn:
         if getattr(self.config, "app_context", None) is not None:
             try:
                 self.config.loaded_app = await self.config.app_context.__aenter__()
+                self.config.setup_app()
             except Exception:
                 self.logger.error("Error starting app context manager factory", exc_info=True)
                 self.startup_failed = True
