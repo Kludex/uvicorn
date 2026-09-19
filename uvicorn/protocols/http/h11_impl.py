@@ -196,7 +196,7 @@ class H11Protocol(asyncio.Protocol):
                 self.flow.pause_reading()
                 break
 
-            elif isinstance(event, h11.Request):
+            elif type(event) is h11.Request:
                 # Pipelined HTTP requests and WebSocket upgrades may be processed after the keep-alive timer is armed.
                 self._unset_keepalive_if_required()
 
@@ -259,7 +259,7 @@ class H11Protocol(asyncio.Protocol):
                 task.add_done_callback(self.tasks.discard)
                 self.tasks.add(task)
 
-            elif isinstance(event, h11.Data):
+            elif type(event) is h11.Data:
                 if self.conn.our_state is h11.DONE:
                     continue
                 self.cycle.body += event.data
@@ -267,7 +267,7 @@ class H11Protocol(asyncio.Protocol):
                     self.flow.pause_reading()
                 self.cycle.message_event.set()
 
-            elif isinstance(event, h11.EndOfMessage):
+            elif type(event) is h11.EndOfMessage:
                 if self.conn.our_state is h11.DONE:
                     self.transport.resume_reading()
                     self.conn.start_next_cycle()
