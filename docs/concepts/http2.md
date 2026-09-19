@@ -228,6 +228,39 @@ For internal, low-latency connections (like proxy to backend), HTTP/1.1 with kee
 performs comparably to HTTP/2. It is simpler to configure and debug, which is why it remains the
 recommended default for most deployments.
 
+## Response Trailers
+
+Trailers are headers you send after the response body. You can use them for values that
+become available while streaming, such as a checksum or final processing statistics,
+without buffering the entire response first.
+
+They also let you serve ASGI applications that implement
+[gRPC](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md), which reports
+call results through `grpc-status` and optional `grpc-message` trailers.
+
+```python
+import uvicorn
+
+
+async def app(scope, receive, send):
+    trailers = "http.response.trailers" in scope.get("extensions", {})
+    await send({"type": "http.response.start", "status": 200, "trailers": trailers})
+    await send({"type": "http.response.body", "body": b"Hello, world!"})
+    if trailers:
+        await send({
+            "type": "http.response.trailers",
+            "headers": [(b"x-result", b"ok")],
+            "more_trailers": False,
+        })
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, http="zttp", http2=True, lifespan="off")
+```
+
+Your client must send `TE: trailers` to receive them. Set `more_trailers=True`
+to send more than one trailer message; Uvicorn combines their headers and completes the response on the last message.
+
 ## Current Limitations
 
 The implementation is young, and some protocol features are not complete yet:
