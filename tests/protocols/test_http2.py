@@ -5,6 +5,7 @@ import ssl
 from collections.abc import Callable
 from typing import Any, ClassVar
 
+import anyio
 import httpx2
 import pytest
 
@@ -240,6 +241,134 @@ async def test_get_request():
     assert (b"content-type", b"text/plain; charset=utf-8") in headers
     assert body == b"Hello, world"
     assert ended
+
+
+@pytest.mark.parametrize("te", [None, b"trailers"])
+@pytest.mark.parametrize("body", [b"", b"hello"])
+async def test_response_trailers(te: bytes | None, body: bytes) -> None:
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        assert scope["type"] == "http"
+        assert "http.response.trailers" in scope["extensions"]
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "trailers": True,
+                "headers": [(b"content-length", str(len(body)).encode())],
+            }
+        )
+        await send({"type": "http.response.body", "body": body, "more_body": True})
+        await send({"type": "http.response.body", "body": b""})
+        await send({"type": "http.response.trailers", "headers": [(b"X-Result", b"one")], "more_trailers": True})
+        events = client.events(protocol.transport.buffer)
+        protocol.transport.clear_buffer()
+        assert not any(isinstance(event, zttp.EndOfMessage) for event in events)
+        assert b"".join(event.data for event in events if isinstance(event, zttp.Data)) == body
+        assert protocol.timeout_keep_alive_task is None
+        await send({"type": "http.response.trailers", "headers": [(b"x-result", b"two")]})
+        assert await receive() == {"type": "http.disconnect"}
+
+    protocol = get_connected_protocol(app)
+    client = H2Client()
+    headers = [(b"host", b"example.org")]
+    if te is not None:
+        headers.append((b"te", te))
+    client.request(headers=headers)
+    protocol.data_received(client.data_to_send())
+    await protocol.loop.run_one()
+    events = client.events(protocol.transport.buffer)
+    endings = [event for event in events if isinstance(event, zttp.EndOfMessage)]
+    assert len(endings) == 1
+    assert endings[0].trailers == ([(b"x-result", b"one"), (b"x-result", b"two")] if te else [])
+    assert not protocol.transport.is_closing()
+    assert protocol.timeout_keep_alive_task is not None
+
+
+async def test_response_trailers_filter_connection_headers() -> None:
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        await send({"type": "http.response.start", "status": 200, "trailers": True})
+        await send({"type": "http.response.body", "body": b""})
+        await send(
+            {
+                "type": "http.response.trailers",
+                "headers": [
+                    (b"Connection", b"close"),
+                    (b"transfer-encoding", b"chunked"),
+                    (b"te", b"gzip"),
+                    (b"te", b"trailers"),
+                    (b"x-result", b"ok"),
+                ],
+            }
+        )
+
+    protocol = get_connected_protocol(app)
+    client = H2Client()
+    client.request(headers=[(b"host", b"example.org"), (b"te", b"trailers")])
+    protocol.data_received(client.data_to_send())
+    await protocol.loop.run_one()
+    endings = [event for event in client.events(protocol.transport.buffer) if isinstance(event, zttp.EndOfMessage)]
+    assert len(endings) == 1
+    assert endings[0].trailers == [(b"x-result", b"ok")]
+
+
+@pytest.mark.parametrize("failure", ["early", "unannounced", "missing", "body", "pseudo", "content-length", "extra"])
+async def test_invalid_response_trailers_reset_only_the_stream(failure: str) -> None:
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        assert scope["type"] == "http"
+        if scope["path"] == "/ok":
+            await Response("ok")(scope, receive, send)
+            return
+        await send({"type": "http.response.start", "status": 200, "trailers": failure != "unannounced"})
+        if failure != "early":
+            await send({"type": "http.response.body", "body": b""})
+        if failure == "missing":
+            return
+        if failure == "body":
+            await send({"type": "http.response.body", "body": b"extra"})
+        await send(
+            {
+                "type": "http.response.trailers",
+                "headers": [
+                    ({"pseudo": b":status", "content-length": b"content-length"}.get(failure, b"x-result"), b"ok"),
+                ],
+            }
+        )
+        if failure == "extra":
+            await send({"type": "http.response.trailers", "headers": []})
+
+    protocol = get_connected_protocol(app)
+    client = H2Client()
+    stream = client.request(headers=[(b"host", b"example.org"), (b"te", b"trailers")])
+    sibling = client.request(target=b"/ok")
+    protocol.data_received(client.data_to_send())
+    await protocol.loop.run_one()
+    await protocol.loop.run_one()
+    events = client.events(protocol.transport.buffer)
+    assert any(isinstance(event, zttp.RstStream) and event.stream_id == stream.stream_id for event in events)
+    assert any(isinstance(event, zttp.EndOfMessage) and event.stream_id == sibling.stream_id for event in events)
+    assert not protocol.transport.is_closing()
+
+
+async def test_response_trailers_follow_flow_controlled_body() -> None:
+    body = b"x" * 100_000
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        await send({"type": "http.response.start", "status": 200, "trailers": True})
+        await send({"type": "http.response.body", "body": body})
+        await send({"type": "http.response.trailers", "headers": [(b"x-result", b"ok")]})
+
+    protocol = get_connected_protocol(app)
+    client = H2Client()
+    client.request(headers=[(b"host", b"example.org"), (b"te", b"trailers")])
+    protocol.data_received(client.data_to_send())
+    await protocol.loop.run_one()
+    events = client.events(protocol.transport.buffer)
+    protocol.transport.clear_buffer()
+    assert not any(isinstance(event, zttp.EndOfMessage) for event in events)
+    protocol.data_received(client.data_to_send())
+    events += client.events(protocol.transport.buffer)
+    assert b"".join(event.data for event in events if isinstance(event, zttp.Data)) == body
+    assert [event.trailers for event in events if isinstance(event, zttp.EndOfMessage)] == [[(b"x-result", b"ok")]]
 
 
 async def test_post_request():
@@ -1076,3 +1205,27 @@ async def test_config_http_protocol_offers_alpn_protocols(
     assert client_done and server_done
     assert client.selected_alpn_protocol() == "h2"
     assert server.selected_alpn_protocol() == "h2"
+
+
+async def test_server_sends_http2_trailers_over_tcp(unused_tcp_port: int) -> None:
+    body = b"x" * 100_000
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        await send({"type": "http.response.start", "status": 200, "trailers": True})
+        await send({"type": "http.response.body", "body": body})
+        await send({"type": "http.response.trailers", "headers": [(b"x-result", b"ok")]})
+
+    config = Config(app=app, http="zttp", http2=True, loop="asyncio", lifespan="off", port=unused_tcp_port)
+    client = H2Client()
+    client.request(headers=[(b"host", b"example.org"), (b"te", b"trailers")])
+    events: list[Any] = []
+    with anyio.fail_after(5):
+        async with run_server(config), await anyio.connect_tcp("127.0.0.1", unused_tcp_port) as stream:
+            await stream.send(client.data_to_send())
+            async for data in stream:
+                events.extend(client.events(data))
+                if any(isinstance(event, zttp.EndOfMessage) for event in events):
+                    break
+                await stream.send(client.data_to_send())
+    assert b"".join(event.data for event in events if isinstance(event, zttp.Data)) == body
+    assert [event.trailers for event in events if isinstance(event, zttp.EndOfMessage)] == [[(b"x-result", b"ok")]]

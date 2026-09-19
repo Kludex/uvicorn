@@ -14,10 +14,10 @@ HTTP/2 introduces several key features:
 
 ## Enabling HTTP/2
 
-HTTP/2 support requires the `zttp` package:
+HTTP/2 support requires `zttp` 0.0.34 or later:
 
 ```bash
-pip install zttp
+pip install "zttp>=0.0.34"
 ```
 
 To enable it, select the `zttp` HTTP implementation and pass `--http2`:
@@ -206,6 +206,50 @@ HTTP/2 provides the most benefit when:
 For internal, low-latency connections (like proxy to backend), HTTP/1.1 with keepalive often
 performs comparably to HTTP/2. It is simpler to configure and debug, which is why it remains the
 recommended default for most deployments.
+
+## Response Trailers
+
+```python
+import hashlib
+
+import uvicorn
+from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
+
+
+async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+    assert scope["type"] == "http"
+    body = b"Hello, world!"
+    trailers = "http.response.trailers" in scope.get("extensions", {})
+    headers = [(b"content-type", b"text/plain")]
+    if trailers:
+        headers.append((b"trailer", b"x-checksum"))
+    await send({"type": "http.response.start", "status": 200, "headers": headers, "trailers": trailers})
+    await send({"type": "http.response.body", "body": body})
+    if trailers:
+        await send({
+            "type": "http.response.trailers",
+            "headers": [(b"x-checksum", hashlib.sha256(body).hexdigest().encode())],
+        })
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, http="zttp", http2=True, lifespan="off")
+```
+
+Trailers are headers you send after the response body. You can use them for values
+that become available while you stream a response, such as a checksum.
+
+Check for `http.response.trailers` in `scope["extensions"]` before sending trailers.
+Set `trailers=True` in `http.response.start`, then send `http.response.trailers` after
+the final body message. Uvicorn keeps the response open until the trailers are complete.
+
+You can send several trailer messages by setting `more_trailers=True`. Uvicorn combines
+their headers into one trailing HTTP/2 header block. The final message defaults to
+`more_trailers=False`.
+
+Your client must send `TE: trailers` to receive the trailing headers. Uvicorn consumes
+trailer messages without transmitting their headers when the client does not opt in.
+You declare the trailer names in the `Trailer` response header, as in the example.
 
 ## Current Limitations
 
