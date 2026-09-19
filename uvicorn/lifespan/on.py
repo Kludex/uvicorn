@@ -53,6 +53,12 @@ class LifespanOn:
             except Exception:
                 self.logger.error("Error starting app context manager factory", exc_info=True)
                 self.startup_failed = True
+        if getattr(self.config, "app_context", None) is not None:
+            try:
+                self.config.loaded_app = await self.config.app_context.__aenter__()
+            except Exception:
+                self.logger.error("Error starting app context manager factory", exc_info=True)
+                self.startup_failed = True
                 self.startup_event.set()
                 self.shutdown_event.set()
                 return
@@ -72,6 +78,12 @@ class LifespanOn:
             self.logger.info("Application startup complete.")
 
     async def shutdown(self) -> None:
+        if getattr(self.config, "app_context", None) is not None:
+            try:
+                await self.config.app_context.__aexit__(None, None, None)
+            except Exception:
+                self.shutdown_failed = True
+                self.logger.error("Error shutting down app context manager factory", exc_info=True)
         if getattr(self.config, "app_context", None) is not None:
             try:
                 await self.config.app_context.__aexit__(None, None, None)
