@@ -53,14 +53,9 @@ class LifespanOn:
             except Exception:
                 self.logger.error("Error starting app context manager factory", exc_info=True)
                 self.startup_failed = True
-        if getattr(self.config, "app_context", None) is not None:
-            try:
-                self.config.loaded_app = await self.config.app_context.__aenter__()
-            except Exception:
-                self.logger.error("Error starting app context manager factory", exc_info=True)
-                self.startup_failed = True
-                self.startup_event.set()
-                self.shutdown_event.set()
+                self.error_occurred = True
+                self.logger.error("Application startup failed. Exiting.")
+                self.should_exit = True
                 return
 
         loop = asyncio.get_event_loop()
@@ -78,24 +73,20 @@ class LifespanOn:
             self.logger.info("Application startup complete.")
 
     async def shutdown(self) -> None:
-        if getattr(self.config, "app_context", None) is not None:
-            try:
-                await self.config.app_context.__aexit__(None, None, None)
-            except Exception:
-                self.shutdown_failed = True
-                self.logger.error("Error shutting down app context manager factory", exc_info=True)
-        if getattr(self.config, "app_context", None) is not None:
-            try:
-                await self.config.app_context.__aexit__(None, None, None)
-            except Exception:
-                self.logger.error("Error shutting down app context manager factory", exc_info=True)
-
         if self.error_occurred:
             return
         self.logger.info("Waiting for application shutdown.")
-        shutdown_event: LifespanShutdownEvent = {"type": "lifespan.shutdown"}
-        await self.receive_queue.put(shutdown_event)
-        await self.shutdown_event.wait()
+        try:
+            shutdown_event: LifespanShutdownEvent = {"type": "lifespan.shutdown"}
+            await self.receive_queue.put(shutdown_event)
+            await self.shutdown_event.wait()
+        finally:
+            if getattr(self.config, "app_context", None) is not None:
+                try:
+                    await self.config.app_context.__aexit__(None, None, None)
+                except Exception:
+                    self.shutdown_failed = True
+                    self.logger.error("Error shutting down app context manager factory", exc_info=True)
 
         if self.shutdown_failed or (self.error_occurred and self.config.lifespan == "on"):
             self.logger.error("Application shutdown failed. Exiting.")
@@ -108,58 +99,49 @@ class LifespanOn:
             app = self.config.loaded_app
             scope: LifespanScope = {
                 "type": "lifespan",
-                "asgi": {"version": self.config.asgi_version, "spec_version": "2.0"},
+                "asgi": {"version": "3.0", "spec_version": "2.0"},
                 "state": self.state,
             }
             await app(scope, self.receive, self.send)
-        except BaseException as exc:
-            self.asgi = None
+        except BaseException:
             self.error_occurred = True
             if self.startup_failed or self.shutdown_failed:
                 return
-            if self.config.lifespan == "auto":
-                msg = "ASGI 'lifespan' protocol appears unsupported."
-                self.logger.info(msg)
-            else:
-                msg = "Exception in 'lifespan' protocol\n"
-                self.logger.error(msg, exc_info=exc)
-        finally:
-            self.startup_event.set()
-            self.shutdown_event.set()
+            if not self.startup_event.is_set():
+                self.logger.exception("Exception in 'lifespan' protocol")
+                self.startup_event.set()
+            elif not self.shutdown_event.is_set():
+                self.logger.exception("Exception in 'lifespan' protocol")
+                self.shutdown_event.set()
 
     async def send(self, message: LifespanSendMessage) -> None:
-        assert message["type"] in (
-            "lifespan.startup.complete",
-            "lifespan.startup.failed",
-            "lifespan.shutdown.complete",
-            "lifespan.shutdown.failed",
-        )
+        message_type = message["type"]
 
-        if message["type"] == "lifespan.startup.complete":
-            assert not self.startup_event.is_set(), STATE_TRANSITION_ERROR
-            assert not self.shutdown_event.is_set(), STATE_TRANSITION_ERROR
-            self.startup_event.set()
+        if not self.startup_event.is_set():
+            if message_type == "lifespan.startup.complete":
+                self.startup_event.set()
+            elif message_type == "lifespan.startup.failed":
+                self.startup_failed = True
+                self.startup_event.set()
+            else:
+                self.logger.error(STATE_TRANSITION_ERROR)
+                self.error_occurred = True
+                self.startup_event.set()
 
-        elif message["type"] == "lifespan.startup.failed":
-            assert not self.startup_event.is_set(), STATE_TRANSITION_ERROR
-            assert not self.shutdown_event.is_set(), STATE_TRANSITION_ERROR
-            self.startup_event.set()
-            self.startup_failed = True
-            if message.get("message"):
-                self.logger.error(message["message"])
+        elif not self.shutdown_event.is_set():
+            if message_type == "lifespan.shutdown.complete":
+                self.shutdown_event.set()
+            elif message_type == "lifespan.shutdown.failed":
+                self.shutdown_failed = True
+                self.shutdown_event.set()
+            else:
+                self.logger.error(STATE_TRANSITION_ERROR)
+                self.error_occurred = True
+                self.shutdown_event.set()
 
-        elif message["type"] == "lifespan.shutdown.complete":
-            assert self.startup_event.is_set(), STATE_TRANSITION_ERROR
-            assert not self.shutdown_event.is_set(), STATE_TRANSITION_ERROR
-            self.shutdown_event.set()
-
-        elif message["type"] == "lifespan.shutdown.failed":
-            assert self.startup_event.is_set(), STATE_TRANSITION_ERROR
-            assert not self.shutdown_event.is_set(), STATE_TRANSITION_ERROR
-            self.shutdown_event.set()
-            self.shutdown_failed = True
-            if message.get("message"):
-                self.logger.error(message["message"])
+        else:
+            self.logger.error(STATE_TRANSITION_ERROR)
+            self.error_occurred = True
 
     async def receive(self) -> LifespanReceiveMessage:
         return await self.receive_queue.get()

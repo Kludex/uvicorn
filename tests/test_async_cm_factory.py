@@ -11,7 +11,15 @@ exited = False
 
 
 async def dummy_asgi_app(scope, receive, send):
-    if scope["type"] == "http":
+    if scope["type"] == "lifespan":
+        while True:
+            message = await receive()
+            if message["type"] == "lifespan.startup":
+                await send({"type": "lifespan.startup.complete"})
+            elif message["type"] == "lifespan.shutdown":
+                await send({"type": "lifespan.shutdown.complete"})
+                return
+    elif scope["type"] == "http":
         await send({"type": "http.response.start", "status": 200, "headers": []})
         await send({"type": "http.response.body", "body": b"OK"})
 
@@ -38,11 +46,12 @@ async def test_asynccontextmanager_factory():
     server.lifespan = config.lifespan_class(config)
 
     await server.lifespan.startup()
+    assert server.lifespan.startup_failed is False
+    assert server.lifespan.should_exit is False
     assert entered is True
     assert exited is False
     assert isinstance(config.loaded_app, ProxyHeadersMiddleware)
 
-    # Call the app to cover the dummy_asgi_app body
     response_events = []
 
     async def mock_send(event):
@@ -52,6 +61,7 @@ async def test_asynccontextmanager_factory():
     assert len(response_events) == 2
 
     await server.lifespan.shutdown()
+    assert server.lifespan.shutdown_failed is False
     assert exited is True
 
 
@@ -75,6 +85,7 @@ async def test_asynccontextmanager_startup_error():
 
     await server.lifespan.startup()
     assert server.lifespan.startup_failed is True
+    assert server.lifespan.should_exit is True
 
 
 @pytest.mark.anyio
@@ -92,5 +103,7 @@ async def test_asynccontextmanager_shutdown_error():
     server.lifespan = config.lifespan_class(config)
 
     await server.lifespan.startup()
+    assert server.lifespan.startup_failed is False
     await server.lifespan.shutdown()
     assert server.lifespan.shutdown_failed is True
+    assert server.lifespan.should_exit is True
