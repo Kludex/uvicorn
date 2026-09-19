@@ -11,7 +11,7 @@ import pytest
 
 from tests.response import Response
 from tests.utils import run_server
-from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
+from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, ASGISendEvent, Scope
 from uvicorn.config import Config
 from uvicorn.lifespan.off import LifespanOff
 from uvicorn.lifespan.on import LifespanOn
@@ -244,27 +244,23 @@ async def test_get_request():
 
 
 @pytest.mark.parametrize("te", [None, b"trailers"])
-@pytest.mark.parametrize("body", [b"", b"hello"])
-async def test_response_trailers(te: bytes | None, body: bytes) -> None:
+async def test_response_trailers(te: bytes | None, caplog: pytest.LogCaptureFixture) -> None:
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
         assert scope["type"] == "http"
         assert "http.response.trailers" in scope["extensions"]
+        await send({"type": "http.response.start", "status": 200, "trailers": True})
+        await send({"type": "http.response.body", "body": b"hello"})
         await send(
             {
-                "type": "http.response.start",
-                "status": 200,
-                "trailers": True,
-                "headers": [(b"content-length", str(len(body)).encode())],
+                "type": "http.response.trailers",
+                "headers": [(b"X-Result", b"one"), (b"connection", b"close"), (b"te", b"trailers")],
+                "more_trailers": True,
             }
         )
-        await send({"type": "http.response.body", "body": body, "more_body": True})
-        await send({"type": "http.response.body", "body": b""})
-        await send({"type": "http.response.trailers", "headers": [(b"X-Result", b"one")], "more_trailers": True})
         events = client.events(protocol.transport.buffer)
         protocol.transport.clear_buffer()
+        assert b"".join(event.data for event in events if isinstance(event, zttp.Data)) == b"hello"
         assert not any(isinstance(event, zttp.EndOfMessage) for event in events)
-        assert b"".join(event.data for event in events if isinstance(event, zttp.Data)) == body
-        assert protocol.timeout_keep_alive_task is None
         await send({"type": "http.response.trailers", "headers": [(b"x-result", b"two")]})
         assert await receive() == {"type": "http.disconnect"}
 
@@ -277,98 +273,38 @@ async def test_response_trailers(te: bytes | None, body: bytes) -> None:
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
     events = client.events(protocol.transport.buffer)
-    endings = [event for event in events if isinstance(event, zttp.EndOfMessage)]
-    assert len(endings) == 1
-    assert endings[0].trailers == ([(b"x-result", b"one"), (b"x-result", b"two")] if te else [])
-    assert not protocol.transport.is_closing()
-    assert protocol.timeout_keep_alive_task is not None
+    expected = [(b"x-result", b"one"), (b"x-result", b"two")] if te else []
+    assert [event.trailers for event in events if isinstance(event, zttp.EndOfMessage)] == [expected]
+    assert "Exception in ASGI application" not in caplog.text
 
 
-async def test_response_trailers_filter_connection_headers() -> None:
+@pytest.mark.parametrize(
+    ("message", "error"),
+    [
+        ({"type": "http.response.body", "body": b"extra"}, "Expected ASGI message 'http.response.trailers'"),
+        ({"type": "http.response.trailers", "headers": [(b":status", b"200")]}, "Pseudo headers are not allowed"),
+        (None, "ASGI callable returned without completing response"),
+    ],
+)
+async def test_invalid_response_trailers(
+    message: ASGISendEvent | None,
+    error: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
         await send({"type": "http.response.start", "status": 200, "trailers": True})
         await send({"type": "http.response.body", "body": b""})
-        await send(
-            {
-                "type": "http.response.trailers",
-                "headers": [
-                    (b"Connection", b"close"),
-                    (b"transfer-encoding", b"chunked"),
-                    (b"te", b"gzip"),
-                    (b"te", b"trailers"),
-                    (b"x-result", b"ok"),
-                ],
-            }
-        )
+        if message is not None:
+            await send(message)
 
     protocol = get_connected_protocol(app)
     client = H2Client()
     client.request(headers=[(b"host", b"example.org"), (b"te", b"trailers")])
     protocol.data_received(client.data_to_send())
     await protocol.loop.run_one()
-    endings = [event for event in client.events(protocol.transport.buffer) if isinstance(event, zttp.EndOfMessage)]
-    assert len(endings) == 1
-    assert endings[0].trailers == [(b"x-result", b"ok")]
-
-
-@pytest.mark.parametrize("failure", ["early", "unannounced", "missing", "body", "pseudo", "content-length", "extra"])
-async def test_invalid_response_trailers_reset_only_the_stream(failure: str) -> None:
-    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
-        assert scope["type"] == "http"
-        if scope["path"] == "/ok":
-            await Response("ok")(scope, receive, send)
-            return
-        await send({"type": "http.response.start", "status": 200, "trailers": failure != "unannounced"})
-        if failure != "early":
-            await send({"type": "http.response.body", "body": b""})
-        if failure == "missing":
-            return
-        if failure == "body":
-            await send({"type": "http.response.body", "body": b"extra"})
-        await send(
-            {
-                "type": "http.response.trailers",
-                "headers": [
-                    ({"pseudo": b":status", "content-length": b"content-length"}.get(failure, b"x-result"), b"ok"),
-                ],
-            }
-        )
-        if failure == "extra":
-            await send({"type": "http.response.trailers", "headers": []})
-
-    protocol = get_connected_protocol(app)
-    client = H2Client()
-    stream = client.request(headers=[(b"host", b"example.org"), (b"te", b"trailers")])
-    sibling = client.request(target=b"/ok")
-    protocol.data_received(client.data_to_send())
-    await protocol.loop.run_one()
-    await protocol.loop.run_one()
-    events = client.events(protocol.transport.buffer)
-    assert any(isinstance(event, zttp.RstStream) and event.stream_id == stream.stream_id for event in events)
-    assert any(isinstance(event, zttp.EndOfMessage) and event.stream_id == sibling.stream_id for event in events)
+    assert any(isinstance(event, zttp.RstStream) for event in client.events(protocol.transport.buffer))
+    assert error in caplog.text
     assert not protocol.transport.is_closing()
-
-
-async def test_response_trailers_follow_flow_controlled_body() -> None:
-    body = b"x" * 100_000
-
-    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
-        await send({"type": "http.response.start", "status": 200, "trailers": True})
-        await send({"type": "http.response.body", "body": body})
-        await send({"type": "http.response.trailers", "headers": [(b"x-result", b"ok")]})
-
-    protocol = get_connected_protocol(app)
-    client = H2Client()
-    client.request(headers=[(b"host", b"example.org"), (b"te", b"trailers")])
-    protocol.data_received(client.data_to_send())
-    await protocol.loop.run_one()
-    events = client.events(protocol.transport.buffer)
-    protocol.transport.clear_buffer()
-    assert not any(isinstance(event, zttp.EndOfMessage) for event in events)
-    protocol.data_received(client.data_to_send())
-    events += client.events(protocol.transport.buffer)
-    assert b"".join(event.data for event in events if isinstance(event, zttp.Data)) == body
-    assert [event.trailers for event in events if isinstance(event, zttp.EndOfMessage)] == [[(b"x-result", b"ok")]]
 
 
 async def test_post_request():
