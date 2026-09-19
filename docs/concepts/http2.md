@@ -230,7 +230,9 @@ recommended default for most deployments.
 
 ## Response Trailers
 
-Trailers are headers you send after the response body.
+Trailers are headers you send after the response body. They let you serve ASGI applications
+that implement [gRPC](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md),
+which reports call results through `grpc-status` and optional `grpc-message` trailers.
 
 ```python
 import uvicorn
