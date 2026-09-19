@@ -1,11 +1,13 @@
+from __future__ import annotations
+
 import asyncio
 import contextlib
 
 import pytest
 
 from uvicorn.config import Config
+from uvicorn.lifespan.on import LifespanOn
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
-from uvicorn.server import Server
 
 
 async def dummy_asgi_app(scope, receive, send):
@@ -23,7 +25,7 @@ async def dummy_asgi_app(scope, receive, send):
 
 
 def test_asynccontextmanager_factory():
-    events = []
+    events: list[str] = []
 
     @contextlib.asynccontextmanager
     async def async_cm_factory():
@@ -33,19 +35,17 @@ def test_asynccontextmanager_factory():
         finally:
             events.append("exit")
 
-    async def run_test():
+    async def test():
         config = Config(app=async_cm_factory, factory=True, lifespan="on")
-        config.load()
-        server = Server(config=config)
-        server.lifespan = config.lifespan_class(config)
+        lifespan = LifespanOn(config)
 
-        await server.lifespan.startup()
-        assert server.lifespan.startup_failed is False
-        assert server.lifespan.should_exit is False
+        await lifespan.startup()
+        assert lifespan.startup_failed is False
+        assert lifespan.should_exit is False
         assert events == ["enter"]
         assert isinstance(config.loaded_app, ProxyHeadersMiddleware)
 
-        response_events = []
+        response_events: list[dict] = []
 
         async def mock_receive():
             return {"type": "http.request"}
@@ -56,15 +56,13 @@ def test_asynccontextmanager_factory():
         await config.loaded_app({"type": "http"}, mock_receive, mock_send)
         assert len(response_events) == 2
 
-        await server.lifespan.shutdown()
-        assert server.lifespan.shutdown_failed is False
+        await lifespan.shutdown()
+        assert lifespan.shutdown_failed is False
         assert events == ["enter", "exit"]
 
     loop = asyncio.new_event_loop()
-    try:
-        loop.run_until_complete(run_test())
-    finally:
-        loop.close()
+    loop.run_until_complete(test())
+    loop.close()
 
 
 def test_asynccontextmanager_factory_lifespan_off():
@@ -83,21 +81,18 @@ def test_asynccontextmanager_startup_error():
         raise RuntimeError("Startup fail")
         yield dummy_asgi_app  # pragma: no cover
 
-    async def run_test():
+    async def test():
         config = Config(app=broken_startup_factory, factory=True, lifespan="on")
-        config.load()
-        server = Server(config=config)
-        server.lifespan = config.lifespan_class(config)
+        lifespan = LifespanOn(config)
 
-        await server.lifespan.startup()
-        assert server.lifespan.startup_failed is True
-        assert server.lifespan.should_exit is True
+        await lifespan.startup()
+        assert lifespan.startup_failed is True
+        assert lifespan.should_exit is True
+        await lifespan.shutdown()
 
     loop = asyncio.new_event_loop()
-    try:
-        loop.run_until_complete(run_test())
-    finally:
-        loop.close()
+    loop.run_until_complete(test())
+    loop.close()
 
 
 def test_asynccontextmanager_shutdown_error():
@@ -108,20 +103,16 @@ def test_asynccontextmanager_shutdown_error():
         finally:
             raise RuntimeError("Shutdown fail")
 
-    async def run_test():
+    async def test():
         config = Config(app=broken_shutdown_factory, factory=True, lifespan="on")
-        config.load()
-        server = Server(config=config)
-        server.lifespan = config.lifespan_class(config)
+        lifespan = LifespanOn(config)
 
-        await server.lifespan.startup()
-        assert server.lifespan.startup_failed is False
-        await server.lifespan.shutdown()
-        assert server.lifespan.shutdown_failed is True
-        assert server.lifespan.should_exit is True
+        await lifespan.startup()
+        assert lifespan.startup_failed is False
+        await lifespan.shutdown()
+        assert lifespan.shutdown_failed is True
+        assert lifespan.should_exit is True
 
     loop = asyncio.new_event_loop()
-    try:
-        loop.run_until_complete(run_test())
-    finally:
-        loop.close()
+    loop.run_until_complete(test())
+    loop.close()
