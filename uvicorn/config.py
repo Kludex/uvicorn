@@ -511,12 +511,17 @@ class Config:
         self.loaded_app = self.load_app()
 
         try:
-            self.loaded_app = self.loaded_app()
+            res = self.loaded_app()
         except TypeError as exc:
             if self.factory:
                 logger.error("Error loading ASGI app factory: %s", exc)
                 sys.exit(STARTUP_FAILURE)
         else:
+            if hasattr(res, "__aenter__") and hasattr(res, "__aexit__"):
+                self.app_context = res
+                self.loaded_app = None  # Will be entered during lifespan startup
+            else:
+                self.loaded_app = res
             if not self.factory:
                 logger.warning(
                     "ASGI app factory detected. Using it, but please consider setting the --factory flag explicitly."

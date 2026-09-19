@@ -46,6 +46,15 @@ class LifespanOn:
 
     async def startup(self) -> None:
         self.logger.info("Waiting for application startup.")
+        if getattr(self.config, "app_context", None) is not None:
+            try:
+                self.config.loaded_app = await self.config.app_context.__aenter__()
+            except Exception:
+                self.logger.error("Error starting app context manager factory", exc_info=True)
+                self.startup_failed = True
+                self.startup_event.set()
+                self.shutdown_event.set()
+                return
 
         loop = asyncio.get_event_loop()
         main_lifespan_task = loop.create_task(self.main())  # noqa: F841
@@ -62,6 +71,12 @@ class LifespanOn:
             self.logger.info("Application startup complete.")
 
     async def shutdown(self) -> None:
+        if getattr(self.config, "app_context", None) is not None:
+            try:
+                await self.config.app_context.__aexit__(None, None, None)
+            except Exception:
+                self.logger.error("Error shutting down app context manager factory", exc_info=True)
+
         if self.error_occurred:
             return
         self.logger.info("Waiting for application shutdown.")
