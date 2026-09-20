@@ -2,6 +2,12 @@
 toc_depth: 2
 ---
 
+## Unreleased
+
+### Fixed
+
+* Deliver the request body after a rejected HTTP/1.1 `Upgrade: h2c` when using httptools (#2722)
+
 ## 0.53.0 (September 14, 2026)
 
 This release adds experimental HTTP/2 support through `zttp`. Enable it with `--http zttp --http2`.

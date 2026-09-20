@@ -134,6 +134,59 @@ UPGRADE_HTTP2_REQUEST = b"\r\n".join(
     ]
 )
 
+UPGRADE_HTTP2_CHUNKED_POST_REQUEST = b"\r\n".join(
+    [
+        b"POST / HTTP/1.1",
+        b"Host: example.org",
+        b"Connection: Upgrade, HTTP2-Settings",
+        b"Upgrade: h2c",
+        b"Transfer-Encoding: chunked",
+        b"Content-Type: application/json",
+        b"",
+        b"3\r\nabc\r\n0\r\n\r\n",
+    ]
+)
+
+UPGRADE_HTTP2_CONTENT_LENGTH_POST_REQUEST = b"\r\n".join(
+    [
+        b"POST / HTTP/1.1",
+        b"Host: example.org",
+        b"Connection: Upgrade, HTTP2-Settings",
+        b"Upgrade: h2c",
+        b"Content-Length: 5",
+        b"Content-Type: application/json",
+        b"",
+        b"hello",
+    ]
+)
+
+UPGRADE_HTTP2_CHUNKED_POST_HEADERS = b"\r\n".join(
+    [
+        b"POST / HTTP/1.1",
+        b"Host: example.org",
+        b"Connection: Upgrade",
+        b"Upgrade: h2c",
+        b"Transfer-Encoding: chunked",
+        b"",
+        b"",
+    ]
+)
+
+UPGRADE_HTTP2_INVALID_CHUNKED_POST_REQUEST = UPGRADE_HTTP2_CHUNKED_POST_HEADERS + b"xyz\r\n"
+
+UPGRADE_HTTP2_LARGE_POST_REQUEST = b"\r\n".join(
+    [
+        b"POST / HTTP/1.1",
+        b"Host: example.org",
+        b"Connection: Upgrade, HTTP2-Settings",
+        b"Upgrade: h2c",
+        b"Content-Type: text/plain",
+        b"Content-Length: 100000",
+        b"",
+        b"x" * 100000,
+    ]
+)
+
 INVALID_REQUEST_TEMPLATE = b"\r\n".join(
     [
         b"%s",
@@ -920,6 +973,108 @@ async def test_http2_upgrade_request(http_protocol_cls: type[HTTPProtocol], ws_p
     await protocol.loop.run_one()
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
     assert b"Hello, world" in protocol.transport.buffer
+
+
+async def _echo_request_body(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+    body = b""
+    more_body = True
+    while more_body:
+        message = await receive()
+        if message["type"] == "http.disconnect":
+            return
+        assert message["type"] == "http.request"
+        body += message.get("body", b"")
+        more_body = message.get("more_body", False)
+    text = b"Body: " + body if scope["method"] == "POST" else b"Hello, world"
+    await Response(text, media_type="text/plain")(scope, receive, send)
+
+
+async def test_http2_upgrade_chunked_body_is_preserved(http_protocol_cls: type[HTTPProtocol]):
+    protocol = get_connected_protocol(_echo_request_body, http_protocol_cls)
+    protocol.data_received(UPGRADE_HTTP2_CHUNKED_POST_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Body: abc" in protocol.transport.buffer
+
+
+async def test_http2_upgrade_content_length_body_is_preserved(http_protocol_cls: type[HTTPProtocol]):
+    protocol = get_connected_protocol(_echo_request_body, http_protocol_cls)
+    protocol.data_received(UPGRADE_HTTP2_CONTENT_LENGTH_POST_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Body: hello" in protocol.transport.buffer
+
+
+async def test_http2_upgrade_body_split_across_packets(http_protocol_cls: type[HTTPProtocol]):
+    protocol = get_connected_protocol(_echo_request_body, http_protocol_cls)
+    protocol.data_received(UPGRADE_HTTP2_CONTENT_LENGTH_POST_REQUEST[:-2])
+    protocol.data_received(UPGRADE_HTTP2_CONTENT_LENGTH_POST_REQUEST[-2:])
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Body: hello" in protocol.transport.buffer
+
+
+async def test_http2_upgrade_keepalive_request_after_body(http_protocol_cls: type[HTTPProtocol]):
+    protocol = get_connected_protocol(_echo_request_body, http_protocol_cls)
+    protocol.data_received(UPGRADE_HTTP2_CONTENT_LENGTH_POST_REQUEST)
+    await protocol.loop.run_one()
+    assert b"Body: hello" in protocol.transport.buffer
+    assert not protocol.transport.is_closing()
+
+    protocol.transport.clear_buffer()
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Hello, world" in protocol.transport.buffer
+
+
+async def test_http2_upgrade_pipelined_request_after_body(http_protocol_cls: type[HTTPProtocol]):
+    protocol = get_connected_protocol(_echo_request_body, http_protocol_cls)
+    protocol.data_received(UPGRADE_HTTP2_CONTENT_LENGTH_POST_REQUEST + SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    assert b"Body: hello" in protocol.transport.buffer
+    protocol.transport.clear_buffer()
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Hello, world" in protocol.transport.buffer
+
+
+async def test_http2_upgrade_pipelined_upgrade_requests(http_protocol_cls: type[HTTPProtocol]):
+    protocol = get_connected_protocol(_echo_request_body, http_protocol_cls)
+    protocol.data_received(UPGRADE_HTTP2_CONTENT_LENGTH_POST_REQUEST + UPGRADE_HTTP2_CHUNKED_POST_REQUEST)
+    await protocol.loop.run_one()
+    assert b"Body: hello" in protocol.transport.buffer
+    protocol.transport.clear_buffer()
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Body: abc" in protocol.transport.buffer
+
+
+async def test_http2_upgrade_invalid_chunked_body(http_protocol_cls: type[HTTPProtocol]):
+    protocol = get_connected_protocol(_echo_request_body, http_protocol_cls)
+    protocol.data_received(UPGRADE_HTTP2_INVALID_CHUNKED_POST_REQUEST)
+    assert b"HTTP/1.1 400 Bad Request" in protocol.transport.buffer
+    assert b"Invalid HTTP request received." in protocol.transport.buffer
+    assert protocol.transport.is_closing()
+
+
+async def test_http2_upgrade_invalid_body_after_early_response(http_protocol_cls: type[HTTPProtocol]):
+    protocol = get_connected_protocol(Response("Hello, world", media_type="text/plain"), http_protocol_cls)
+    protocol.data_received(UPGRADE_HTTP2_CHUNKED_POST_HEADERS)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    protocol.data_received(b"xyz\r\n")
+    assert protocol.transport.is_closing()
+
+
+async def test_http2_upgrade_large_body_pauses_reading(http_protocol_cls: type[HTTPProtocol]):
+    protocol = get_connected_protocol(_echo_request_body, http_protocol_cls)
+    protocol.data_received(UPGRADE_HTTP2_LARGE_POST_REQUEST)
+    assert protocol.transport.read_paused
+    await protocol.loop.run_one()
+    assert not protocol.transport.read_paused
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Body: " + b"x" * 100000 in protocol.transport.buffer
 
 
 async def asgi3app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):

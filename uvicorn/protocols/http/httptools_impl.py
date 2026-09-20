@@ -59,14 +59,8 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.logger = logging.getLogger("uvicorn.error")
         self.access_logger = logging.getLogger("uvicorn.access")
         self.access_log = self.access_logger.hasHandlers()
-        self.parser = httptools.HttpRequestParser(self)
-
-        try:
-            # Enable dangerous leniencies to allow server to a response on the first request from a pipelined request.
-            self.parser.set_dangerous_leniencies(lenient_data_after_close=True)
-        except AttributeError:  # pragma: no cover
-            # httptools < 0.6.3
-            pass
+        self._skip_next_request_cycle = False
+        self._bind_parser()
 
         self.ws_protocol_class = config.ws_protocol_class
         self.root_path = config.root_path
@@ -167,6 +161,69 @@ class HttpToolsProtocol(asyncio.Protocol):
         upgrade = self._get_upgrade()
         return upgrade == b"websocket" and self._should_upgrade_to_ws()
 
+    def _bind_parser(self) -> None:
+        self.parser = httptools.HttpRequestParser(self)
+        try:
+            # Enable dangerous leniencies to allow server to a response on the first request from a pipelined request.
+            self.parser.set_dangerous_leniencies(lenient_data_after_close=True)
+        except AttributeError:  # pragma: no cover
+            # httptools < 0.6.3
+            pass
+
+    def _on_parser_upgrade(self, data: bytes, exc: httptools.HttpParserUpgrade) -> None:
+        if self._should_upgrade():
+            self.handle_websocket_upgrade()
+            return
+        self._unsupported_upgrade_warning()
+        # httptools pauses at the end of the headers and raises before any body
+        # event. Per RFC 7230 §6.7 we ignore an unsupported Upgrade and keep
+        # processing the request as HTTP/1.1 (see #2722).
+        self._resume_after_rejected_upgrade(data[exc.args[0] :])
+
+    def _request_bytes_without_upgrade(self) -> bytes:
+        method = self.scope["method"].encode("ascii")
+        http_version = self.scope.get("http_version", "1.1").encode("ascii")
+        parts = [method, b" ", self.url, b" HTTP/", http_version, b"\r\n"]
+        for name, value in self.headers:
+            if name == b"upgrade":
+                continue
+            if name == b"connection":
+                kept = [token.strip() for token in value.split(b",") if token.strip().lower() != b"upgrade"]
+                if not kept:
+                    continue
+                value = b", ".join(kept)
+            parts.extend((name, b": ", value, b"\r\n"))
+        parts.append(b"\r\n")
+        return b"".join(parts)
+
+    def _reject_recovered_request(self) -> None:
+        msg = "Invalid HTTP request received."
+        self.logger.warning(msg)
+        self.cycle.disconnected = True
+        self.cycle.more_body = False
+        self.cycle.message_event.set()
+        if self.cycle.response_started:
+            self.transport.close()
+            return
+        self.send_400_response(msg)
+
+    def _resume_after_rejected_upgrade(self, leftover: bytes) -> None:
+        if self.cycle is None:  # pragma: full coverage
+            return
+        # Replay on a fresh HttpRequestParser targeting this protocol so body
+        # events reuse the existing cycle. After this request ends the same
+        # parser can dispatch keep-alive / pipelined requests (unlike a
+        # body-only callback target left installed).
+        data = self._request_bytes_without_upgrade() + leftover
+        self._skip_next_request_cycle = True
+        self._bind_parser()
+        try:
+            self.parser.feed_data(data)
+        except httptools.HttpParserError:
+            self._reject_recovered_request()
+        except httptools.HttpParserUpgrade as exc:
+            self._on_parser_upgrade(data, exc)
+
     def data_received(self, data: bytes) -> None:
         self._unset_keepalive_if_required()
 
@@ -177,11 +234,8 @@ class HttpToolsProtocol(asyncio.Protocol):
             self.logger.warning(msg)
             self.send_400_response(msg)
             return
-        except httptools.HttpParserUpgrade:
-            if self._should_upgrade():
-                self.handle_websocket_upgrade()
-            else:
-                self._unsupported_upgrade_warning()
+        except httptools.HttpParserUpgrade as exc:
+            self._on_parser_upgrade(data, exc)
 
     def handle_websocket_upgrade(self) -> None:
         if self.logger.level <= TRACE_LOG_LEVEL:
@@ -246,6 +300,9 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.headers.append((name, value))
 
     def on_headers_complete(self) -> None:
+        if self._skip_next_request_cycle:
+            self._skip_next_request_cycle = False
+            return
         http_version = self.parser.get_http_version()
         method = self.parser.get_method()
         self.scope["method"] = method.decode("ascii")
@@ -311,7 +368,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.tasks.add(task)
 
     def on_body(self, body: bytes) -> None:
-        if (self.parser.should_upgrade() and self._should_upgrade()) or self.cycle.response_complete:
+        if self.parser.should_upgrade() or self.cycle.response_complete:
             return
         self.cycle.body += body
         if len(self.cycle.body) > HIGH_WATER_LIMIT:
@@ -319,7 +376,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.cycle.message_event.set()
 
     def on_message_complete(self) -> None:
-        if (self.parser.should_upgrade() and self._should_upgrade()) or self.cycle.response_complete:
+        if self.parser.should_upgrade() or self.cycle.response_complete:
             return
         self.cycle.more_body = False
         self.cycle.message_event.set()
