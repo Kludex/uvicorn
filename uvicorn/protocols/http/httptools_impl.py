@@ -60,6 +60,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.access_logger = logging.getLogger("uvicorn.access")
         self.access_log = self.access_logger.hasHandlers()
         self._skip_next_request_cycle = False
+        self.parser: httptools.HttpRequestParser
         self._bind_parser()
 
         self.ws_protocol_class = config.ws_protocol_class
@@ -202,9 +203,6 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.cycle.disconnected = True
         self.cycle.more_body = False
         self.cycle.message_event.set()
-        if self.cycle.response_started:
-            self.transport.close()
-            return
         self.send_400_response(msg)
 
     def _resume_after_rejected_upgrade(self, leftover: bytes) -> None:

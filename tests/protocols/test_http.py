@@ -985,7 +985,7 @@ async def _echo_request_body(scope: Scope, receive: ASGIReceiveCallable, send: A
         assert message["type"] == "http.request"
         body += message.get("body", b"")
         more_body = message.get("more_body", False)
-    text = b"Body: " + body if scope["method"] == "POST" else b"Hello, world"
+    text = b"Body: " + body if scope.get("method") == "POST" else b"Hello, world"
     await Response(text, media_type="text/plain")(scope, receive, send)
 
 
@@ -1050,16 +1050,20 @@ async def test_http2_upgrade_pipelined_upgrade_requests(http_protocol_cls: type[
     assert b"Body: abc" in protocol.transport.buffer
 
 
-async def test_http2_upgrade_invalid_chunked_body(http_protocol_cls: type[HTTPProtocol]):
-    protocol = get_connected_protocol(_echo_request_body, http_protocol_cls)
+@skip_if_no_httptools
+async def test_http2_upgrade_invalid_chunked_body() -> None:
+    protocol = get_connected_protocol(_echo_request_body, HttpToolsProtocol)
     protocol.data_received(UPGRADE_HTTP2_INVALID_CHUNKED_POST_REQUEST)
     assert b"HTTP/1.1 400 Bad Request" in protocol.transport.buffer
     assert b"Invalid HTTP request received." in protocol.transport.buffer
     assert protocol.transport.is_closing()
+    if protocol.loop._tasks:
+        await protocol.loop.run_one()
 
 
-async def test_http2_upgrade_invalid_body_after_early_response(http_protocol_cls: type[HTTPProtocol]):
-    protocol = get_connected_protocol(Response("Hello, world", media_type="text/plain"), http_protocol_cls)
+@skip_if_no_httptools
+async def test_http2_upgrade_invalid_body_after_early_response() -> None:
+    protocol = get_connected_protocol(Response("Hello, world", media_type="text/plain"), HttpToolsProtocol)
     protocol.data_received(UPGRADE_HTTP2_CHUNKED_POST_HEADERS)
     await protocol.loop.run_one()
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer

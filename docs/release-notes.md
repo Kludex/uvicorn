@@ -6,7 +6,7 @@ toc_depth: 2
 
 ### Fixed
 
-* Deliver the request body after a rejected HTTP/1.1 `Upgrade: h2c` when using httptools (#2722)
+* Deliver the request body after a rejected HTTP/1.1 `Upgrade: h2c` when using httptools (#2722, #3148)
 
 ## 0.53.0 (September 14, 2026)
 
