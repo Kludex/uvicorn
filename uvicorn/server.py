@@ -293,10 +293,8 @@ class Server:
         await asyncio.sleep(0.1)
 
         try:
-            await asyncio.wait_for(
-                self._wait_tasks_to_complete(),
-                timeout=self.config.timeout_graceful_shutdown,
-            )
+            async with asyncio.timeout(self.config.timeout_graceful_shutdown):
+                await self._wait_tasks_to_complete()
         except TimeoutError:
             logger.error(
                 "Cancel %s running task(s), timeout graceful shutdown exceeded",
