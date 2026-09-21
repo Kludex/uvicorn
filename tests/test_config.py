@@ -265,6 +265,7 @@ def test_socket_bind() -> None:
     config.load()
     sock = config.bind_socket()
     assert isinstance(sock, socket.socket)
+    assert sock.proto == socket.IPPROTO_TCP
     sock.close()
 
 
@@ -573,6 +574,21 @@ def test_bind_fd_works_with_reload_or_workers(reload: bool, workers: int):  # pr
     assert sock.getsockname() == ""
     sock.close()
     fdsock.close()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
+def test_bind_fd_picks_up_prebound_tcp_socket():  # pragma: py-win32
+    prebound = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
+    prebound.bind(("127.0.0.1", 0))
+    prebound.listen(1)
+    fd = prebound.fileno()
+    config = Config(app=asgi_app, fd=fd)
+    config.load()
+    sock = config.bind_socket()
+    assert isinstance(sock, socket.socket)
+    assert sock.getsockname() == prebound.getsockname()
+    sock.close()
+    prebound.close()
 
 
 @pytest.fixture
