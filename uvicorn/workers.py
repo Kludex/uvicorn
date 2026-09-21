@@ -10,7 +10,6 @@ from typing import Any
 from gunicorn.arbiter import Arbiter
 from gunicorn.workers.base import Worker
 
-from uvicorn._compat import asyncio_run
 from uvicorn.config import Config
 from uvicorn.server import Server
 
@@ -101,7 +100,7 @@ class UvicornWorker(Worker):
             sys.exit(Arbiter.WORKER_BOOT_ERROR)
 
     def run(self) -> None:
-        return asyncio_run(self._serve(), loop_factory=self.config.get_loop_factory())
+        return asyncio.run(self._serve(), loop_factory=self.config.get_loop_factory())
 
     async def callback_notify(self) -> None:
         self.notify()

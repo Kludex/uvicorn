@@ -12,13 +12,12 @@
     uv add uvicorn
     ```
 
+Uvicorn requires Python 3.12 or later.
+
 The above will install Uvicorn with the minimal set of dependencies:
 
 - [`h11`](https://github.com/python-hyper/h11) — Pure Python sans-io HTTP/1.1 implementation.
 - [`click`](https://github.com/pallets/click) — Command line interface library.
-
-If you are running on Python 3.10 or early versions,
-[`typing_extensions`](https://github.com/python/typing_extensions) will also be installed.
 
 ## Optional Dependencies
 

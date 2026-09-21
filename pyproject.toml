@@ -9,7 +9,7 @@ description = "The lightning-fast ASGI server."
 readme = "README.md"
 license = "BSD-3-Clause"
 license-files = ["LICENSE.md"]
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 authors = [
     { name = "Tom Christie", email = "tom@tomchristie.com" },
 ]
@@ -22,8 +22,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
@@ -34,7 +32,6 @@ classifiers = [
 dependencies = [
     "click>=7.0",
     "h11>=0.8",
-    "typing_extensions>=4.0; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
@@ -106,7 +103,7 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "FA", "UP"]
-ignore = ["B904", "B028", "UP031"]
+ignore = ["B904", "B028", "UP031", "UP040"]
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
@@ -180,9 +177,3 @@ py-not-win32 = "sys_platform != 'win32'"
 py-linux = "sys_platform == 'linux'"
 py-not-linux = "sys_platform != 'linux'"
 py-darwin = "sys_platform == 'darwin'"
-py-gte-39 = "sys_version_info >= (3, 9)"
-py-lt-39 = "sys_version_info < (3, 9)"
-py-gte-310 = "sys_version_info >= (3, 10)"
-py-lt-310 = "sys_version_info < (3, 10)"
-py-gte-311 = "sys_version_info >= (3, 11)"
-py-lt-311 = "sys_version_info < (3, 11)"

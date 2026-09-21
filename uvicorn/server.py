@@ -18,7 +18,6 @@ from types import FrameType
 from typing import TYPE_CHECKING, TypeAlias
 
 from uvicorn._ansi import style
-from uvicorn._compat import asyncio_run
 from uvicorn.config import STARTUP_FAILURE, Config
 
 if TYPE_CHECKING:
@@ -83,7 +82,7 @@ class Server:
         return self.config.limit_max_requests + random.randint(0, self.config.limit_max_requests_jitter)
 
     def run(self, sockets: list[socket.socket] | None = None) -> None:
-        return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+        return asyncio.run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
 
     async def serve(self, sockets: list[socket.socket] | None = None) -> None:
         with self.capture_signals():
@@ -292,13 +291,12 @@ class Server:
             connection.shutdown()
         await asyncio.sleep(0.1)
 
-        # When 3.10 is not supported anymore, use `async with asyncio.timeout(...):`.
         try:
             await asyncio.wait_for(
                 self._wait_tasks_to_complete(),
                 timeout=self.config.timeout_graceful_shutdown,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(
                 "Cancel %s running task(s), timeout graceful shutdown exceeded",
                 len(self.server_state.tasks),
