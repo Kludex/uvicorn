@@ -12,7 +12,7 @@
     uv add uvicorn
     ```
 
-Uvicorn requires Python 3.12 or later.
+Uvicorn requires Python 3.11 or later.
 
 The above will install Uvicorn with the minimal set of dependencies:
 

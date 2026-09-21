@@ -18,6 +18,7 @@ from types import FrameType
 from typing import TYPE_CHECKING, TypeAlias
 
 from uvicorn._ansi import style
+from uvicorn._compat import asyncio_run
 from uvicorn.config import STARTUP_FAILURE, Config
 
 if TYPE_CHECKING:
@@ -82,7 +83,7 @@ class Server:
         return self.config.limit_max_requests + random.randint(0, self.config.limit_max_requests_jitter)
 
     def run(self, sockets: list[socket.socket] | None = None) -> None:
-        return asyncio.run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+        return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
 
     async def serve(self, sockets: list[socket.socket] | None = None) -> None:
         with self.capture_signals():
