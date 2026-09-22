@@ -413,6 +413,15 @@ class RequestResponseCycle:
         # Response state
         self.response_started = False
         self.response_complete = False
+        # Set when a `send()` call itself fails because the app violated the
+        # ASGI response protocol (e.g. sent a body longer/shorter than the
+        # declared Content-Length, or sent another message after the
+        # response was already complete). Unlike an exception raised by
+        # unrelated application code *after* a response was successfully
+        # and fully sent, these indicate the HTTP framing on this
+        # connection can no longer be trusted, so the connection must be
+        # closed even though `response_complete` may already be True.
+        self.response_send_failed = False
         self.chunked_encoding: bool | None = None
         self.expected_content_length = 0
 
@@ -427,7 +436,7 @@ class RequestResponseCycle:
             self.logger.error(msg, exc_info=exc)
             if not self.response_started:
                 await self.send_500_response()
-            else:
+            elif not self.response_complete or self.response_send_failed:
                 self.transport.close()
         else:
             if result is not None:
@@ -553,6 +562,7 @@ class RequestResponseCycle:
             # Handle response completion
             if not more_body:
                 if self.expected_content_length != 0:
+                    self.response_send_failed = True
                     raise RuntimeError("Response content shorter than Content-Length")
                 self.response_complete = True
                 self.message_event.set()
@@ -562,6 +572,7 @@ class RequestResponseCycle:
 
         else:
             # Response already sent
+            self.response_send_failed = True
             raise RuntimeError(f"Unexpected ASGI message '{message['type']}' sent, after response already completed.")
 
     async def receive(self) -> ASGIReceiveEvent:

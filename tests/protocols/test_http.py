@@ -599,6 +599,79 @@ async def test_exception_during_response(http_protocol_cls: type[HTTPProtocol]):
     assert protocol.transport.is_closing()
 
 
+async def test_exception_after_response_complete_does_not_close_connection(http_protocol_cls: type[HTTPProtocol]):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send({"type": "http.response.start", "status": 200})
+        await send({"type": "http.response.body", "body": b""})
+        raise Exception()
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert not protocol.transport.is_closing()
+
+
+async def test_exception_after_response_complete_does_not_close_pipelined_requests_connection(
+    http_protocol_cls: type[HTTPProtocol],
+):
+    """
+    Regression test for https://github.com/Kludex/uvicorn/discussions/3153.
+
+    An ASGI application that raises *after* it has already sent a complete
+    response -- e.g. a Starlette/FastAPI ``BackgroundTask`` failing -- must
+    not tear down the connection while a second, pipelined request on the
+    same connection is still being processed by its own task.
+    """
+    second_request_started = asyncio.Event()
+    let_second_request_finish = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        if scope["path"] == "/slow":
+            second_request_started.set()
+            await let_second_request_finish.wait()
+        await send({"type": "http.response.start", "status": 200, "headers": [(b"content-length", b"2")]})
+        await send({"type": "http.response.body", "body": b"ok"})
+        if scope["path"] == "/boom":
+            await second_request_started.wait()
+            raise Exception("simulated post-response failure, e.g. a failing BackgroundTask")
+
+    loop = asyncio.get_running_loop()
+    transport = MockTransport()
+    config = Config(app=app)
+    lifespan = LifespanOff(config)
+    server_state = ServerState()
+    protocol = http_protocol_cls(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)
+    protocol.connection_made(transport)
+
+    boom_request = b"\r\n".join([b"GET /boom HTTP/1.1", b"Host: example.org", b"", b""])
+    slow_request = b"\r\n".join([b"GET /slow HTTP/1.1", b"Host: example.org", b"", b""])
+
+    # Both requests arrive pipelined on the same connection. The second one
+    # is queued until the first cycle's response is complete.
+    protocol.data_received(boom_request)
+    protocol.data_received(slow_request)
+
+    # Let the first request run far enough to send its response (which
+    # starts the second, pipelined request's task) and then block on
+    # `second_request_started`, confirming the second request's task has
+    # actually started -- and is genuinely still in flight -- before we let
+    # the first request raise.
+    await asyncio.wait_for(second_request_started.wait(), timeout=1)
+    assert transport.buffer.count(b"HTTP/1.1 200 OK") == 1
+
+    # Now let the second request finish sending its own response while the
+    # first request's task is still suspended, about to raise.
+    let_second_request_finish.set()
+    await asyncio.sleep(0.05)
+
+    assert transport.buffer.count(b"HTTP/1.1 200 OK") == 2, (
+        "the second, pipelined request's response must not be lost when the "
+        "first request's task raises after its own response was complete"
+    )
+    assert not transport.is_closing()
+
+
 async def test_no_response_returned(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable): ...
 

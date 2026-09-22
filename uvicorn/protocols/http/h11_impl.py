@@ -404,6 +404,15 @@ class RequestResponseCycle:
         # Response state
         self.response_started = False
         self.response_complete = False
+        # Set when a `send()` call itself fails because the app violated the
+        # ASGI response protocol (e.g. sent a body longer/shorter than the
+        # declared Content-Length, or sent another message after the
+        # response was already complete). Unlike an exception raised by
+        # unrelated application code *after* a response was successfully
+        # and fully sent, these indicate the HTTP framing on this
+        # connection can no longer be trusted, so the connection must be
+        # closed even though `response_complete` may already be True.
+        self.response_send_failed = False
 
     # ASGI exception wrapper
     async def run_asgi(self, app: ASGI3Application) -> None:
@@ -416,7 +425,7 @@ class RequestResponseCycle:
             self.logger.error(msg, exc_info=exc)
             if not self.response_started:
                 await self.send_500_response()
-            else:
+            elif not self.response_complete or self.response_send_failed:
                 self.transport.close()
         else:
             if result is not None:
@@ -504,13 +513,21 @@ class RequestResponseCycle:
 
             # Handle response completion
             if not more_body:
+                try:
+                    output = self.conn.send(event=h11.EndOfMessage())
+                except BaseException:
+                    # e.g. h11.LocalProtocolError if the body written so far
+                    # doesn't match the declared Content-Length -- the
+                    # response was never actually completed.
+                    self.response_send_failed = True
+                    raise
+                self.transport.write(output)
                 self.response_complete = True
                 self.message_event.set()
-                output = self.conn.send(event=h11.EndOfMessage())
-                self.transport.write(output)
 
         else:
             # Response already sent
+            self.response_send_failed = True
             raise RuntimeError(f"Unexpected ASGI message '{message['type']}' sent, after response already completed.")
 
         if self.response_complete:
