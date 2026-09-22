@@ -12,8 +12,6 @@
     uv add uvicorn
     ```
 
-Uvicorn requires Python 3.11 or later.
-
 The above will install Uvicorn with the minimal set of dependencies:
 
 - [`h11`](https://github.com/python-hyper/h11) — Pure Python sans-io HTTP/1.1 implementation.
