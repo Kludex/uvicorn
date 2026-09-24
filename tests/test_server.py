@@ -10,6 +10,7 @@ import sys
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
 
+import anyio
 import httpx2
 import pytest
 
@@ -147,7 +148,10 @@ async def test_request_than_limit_max_requests_warn_log(
             tasks = [client.get(f"http://127.0.0.1:{unused_tcp_port}") for _ in range(2)]
             responses = await asyncio.gather(*tasks)
             assert len(responses) == 2
-    assert "Maximum request limit of 1 exceeded. Terminating process." in caplog.text
+        with anyio.fail_after(5):
+            while "Maximum request limit of 1 exceeded. Terminating process." not in caplog.text:
+                await anyio.sleep(0.01)
+    assert caplog.messages.count("Shutting down") == 1
 
 
 async def test_limit_max_requests_jitter(
@@ -164,7 +168,10 @@ async def test_limit_max_requests_jitter(
         async with httpx2.AsyncClient() as client:
             tasks = [client.get(f"http://127.0.0.1:{unused_tcp_port}") for _ in range(limit + 1)]
             await asyncio.gather(*tasks)
-    assert f"Maximum request limit of {limit} exceeded. Terminating process." in caplog.text
+        with anyio.fail_after(5):
+            while f"Maximum request limit of {limit} exceeded. Terminating process." not in caplog.text:
+                await anyio.sleep(0.01)
+    assert caplog.messages.count("Shutting down") == 1
 
 
 @contextlib.asynccontextmanager

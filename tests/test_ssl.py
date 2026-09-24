@@ -30,7 +30,6 @@ async def test_run(
     config = Config(
         app=app,
         loop="asyncio",
-        limit_max_requests=1,
         ssl_keyfile=tls_certificate_private_key_path,
         ssl_certfile=tls_certificate_server_cert_path,
         ssl_ca_certs=tls_ca_certificate_pem_path,
@@ -52,7 +51,6 @@ async def test_run_chain(
     config = Config(
         app=app,
         loop="asyncio",
-        limit_max_requests=1,
         ssl_certfile=tls_certificate_key_and_chain_path,
         ssl_ca_certs=tls_ca_certificate_pem_path,
         port=unused_tcp_port,
@@ -68,7 +66,6 @@ async def test_run_chain_only(tls_ca_ssl_context, tls_certificate_key_and_chain_
     config = Config(
         app=app,
         loop="asyncio",
-        limit_max_requests=1,
         ssl_certfile=tls_certificate_key_and_chain_path,
         port=unused_tcp_port,
     )
@@ -89,7 +86,6 @@ async def test_run_password(
     config = Config(
         app=app,
         loop="asyncio",
-        limit_max_requests=1,
         ssl_keyfile=tls_certificate_private_key_encrypted_path,
         ssl_certfile=tls_certificate_server_cert_path,
         ssl_keyfile_password="uvicorn password for the win",
@@ -117,7 +113,6 @@ async def test_run_ssl_context_factory_default(
     config = Config(
         app=app,
         loop="asyncio",
-        limit_max_requests=1,
         ssl_keyfile=tls_certificate_private_key_path,
         ssl_certfile=tls_certificate_server_cert_path,
         ssl_context_factory=ssl_context_factory,
@@ -146,7 +141,6 @@ async def test_run_ssl_context_factory_custom(
     config = Config(
         app=app,
         loop="asyncio",
-        limit_max_requests=1,
         ssl_context_factory=ssl_context_factory,
         port=unused_tcp_port,
     )
