@@ -73,8 +73,6 @@ class TestBaseReload:
     ) -> list[Path] | None:
         reloader.restart()
         if WatchFilesReload is not None and isinstance(reloader, WatchFilesReload):
-            # Start the lazy watcher before scheduling file changes.
-            next(reloader)
             touch_soon(*files)
             # Poll until the touched files are reported, ignoring unrelated churn.
             expected = set(files)

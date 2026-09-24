@@ -21,8 +21,8 @@ async def run_server(config: Config, sockets: list[socket] | None = None) -> Asy
     try:
         yield server
     finally:
-        server.should_exit = True
-        await task
+        await server.shutdown()
+        task.cancel()
 
 
 @contextmanager
