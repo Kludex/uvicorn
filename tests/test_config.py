@@ -173,6 +173,7 @@ def test_reload_includes_exclude_dir_patterns_are_matched(
         second_app_dir = reload_directory_structure / "app_second" / "src"
 
         with as_cwd(reload_directory_structure):
+            caplog.clear()
             config = Config(
                 app="tests.test_config:asgi_app",
                 reload=True,
