@@ -2,6 +2,15 @@
 toc_depth: 2
 ---
 
+## 0.54.0 (September 24, 2026)
+
+HTTP/2 support remains experimental. Install `zttp>=0.0.34` and enable it with `--http zttp --http2`.
+
+### Added
+
+* Add HTTP/2 response trailers through the ASGI `http.response.trailers` extension. Clients must send `TE: trailers` to receive them ([#3146](https://github.com/Kludex/uvicorn/pull/3146))
+* Add HTTP/2 `103 Early Hints` through the ASGI `http.response.early_hint` extension ([#3137](https://github.com/Kludex/uvicorn/pull/3137))
+
 ## 0.53.0 (September 14, 2026)
 
 This release adds experimental HTTP/2 support through `zttp`. Enable it with `--http zttp --http2`.
