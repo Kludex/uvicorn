@@ -260,11 +260,15 @@ def test_http2_requires_zttp_protocol() -> None:
         config.load()
 
 
-def test_socket_bind() -> None:
-    config = Config(app=asgi_app)
+@pytest.mark.parametrize("host, family", [("127.0.0.1", socket.AF_INET), ("::1", socket.AF_INET6)])
+def test_socket_bind(host: str, family: int) -> None:
+    config = Config(app=asgi_app, host=host, port=0)
     config.load()
     sock = config.bind_socket()
     assert isinstance(sock, socket.socket)
+    assert sock.family == family
+    assert sock.type == socket.SOCK_STREAM
+    assert sock.proto == socket.IPPROTO_TCP
     sock.close()
 
 
