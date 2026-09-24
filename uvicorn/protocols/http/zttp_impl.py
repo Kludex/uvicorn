@@ -22,7 +22,14 @@ from uvicorn._types import (
 from uvicorn.config import Config
 from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT, FlowControl, service_unavailable
-from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
+from uvicorn.protocols.utils import (
+    ClientDisconnected,
+    get_client_addr,
+    get_local_addr,
+    get_path_with_query_string,
+    get_remote_addr,
+    is_ssl,
+)
 from uvicorn.server import ServerState
 
 
@@ -157,7 +164,7 @@ class ZttpProtocol(asyncio.Protocol):
                 full_raw_path = self.root_path.encode("ascii") + event.path
                 self.scope = {
                     "type": "http",
-                    "asgi": {"version": self.asgi_version, "spec_version": "2.3"},
+                    "asgi": {"version": self.asgi_version, "spec_version": "2.5"},
                     "http_version": event.http_version.decode("ascii"),
                     "server": self.server,
                     "client": self.client,
@@ -365,13 +372,16 @@ class RequestResponseCycle:
             result = await app(  # type: ignore[func-returns-value]
                 self.scope, self.receive, self.send
             )
+        except ClientDisconnected:
+            pass
         except BaseException as exc:
             msg = "Exception in ASGI application\n"
             self.logger.error(msg, exc_info=exc)
-            if not self.response_started:
-                await self.send_500_response()
-            else:
-                self.transport.close()
+            if not self.disconnected:
+                if not self.response_started:
+                    await self.send_500_response()
+                else:
+                    self.transport.close()
         else:
             if result is not None:
                 msg = "ASGI callable should return None, but returned '%s'."
@@ -397,13 +407,18 @@ class RequestResponseCycle:
                 (b"connection", b"close"),
             ],
         }
-        await self.send(response_start_event)
         response_body_event: HTTPResponseBodyEvent = {
             "type": "http.response.body",
             "body": b"Internal Server Error",
             "more_body": False,
         }
-        await self.send(response_body_event)
+        try:
+            await self.send(response_start_event)
+            await self.send(response_body_event)
+        except ClientDisconnected:
+            # The client may disconnect while the response is draining for flow
+            # control; sending the error is best-effort, so give up silently.
+            pass
 
     # ASGI interface
     async def send(self, message: ASGISendEvent) -> None:
@@ -411,7 +426,7 @@ class RequestResponseCycle:
             await self.flow.drain()  # pragma: no cover
 
         if self.disconnected:
-            return  # pragma: no cover
+            raise ClientDisconnected
 
         if not self.response_started:
             # Sending response status line and headers

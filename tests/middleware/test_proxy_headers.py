@@ -559,7 +559,7 @@ async def test_proxy_headers_empty_x_forwarded_for() -> None:
 def _make_http_scope(headers: list[tuple[bytes, bytes]], scheme: str = "http") -> HTTPScope:
     return {
         "type": "http",
-        "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "asgi": {"version": "3.0", "spec_version": "2.5"},
         "http_version": "1.1",
         "method": "GET",
         "scheme": scheme,

@@ -69,7 +69,7 @@ sequenceDiagram
 
 - `websocket.connect`: Sent when a client requests a WebSocket upgrade
 - `websocket.receive`: Sent when a message is received from the client
-- `websocket.disconnect`: Sent when the connection is closed
+- `websocket.disconnect`: Sent when the connection is closed, carrying the close `code` and, where the peer supplied one, a `reason` string
 
 The ASGI app can respond with:
 
