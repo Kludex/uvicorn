@@ -260,7 +260,33 @@ def test_http2_requires_zttp_protocol() -> None:
         config.load()
 
 
-@pytest.mark.parametrize("host, family", [("127.0.0.1", socket.AF_INET), ("::1", socket.AF_INET6)])
+def _has_ipv6(host: str = "::1") -> bool:
+    sock = None
+    has_ipv6 = False
+    if socket.has_ipv6:
+        try:
+            sock = socket.socket(socket.AF_INET6)
+            sock.bind((host, 0))
+            has_ipv6 = True
+        except Exception:  # pragma: no cover
+            pass
+    if sock:
+        sock.close()
+    return has_ipv6
+
+
+@pytest.mark.parametrize(
+    "host, family",
+    [
+        pytest.param("127.0.0.1", socket.AF_INET, id="ipv4"),
+        pytest.param(
+            "::1",
+            socket.AF_INET6,
+            id="ipv6",
+            marks=pytest.mark.skipif(not _has_ipv6("::1"), reason="IPV6 not enabled"),
+        ),
+    ],
+)
 def test_socket_bind(host: str, family: int) -> None:
     config = Config(app=asgi_app, host=host, port=0)
     config.load()
