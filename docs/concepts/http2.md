@@ -14,11 +14,14 @@ HTTP/2 introduces several key features:
 
 ## Enabling HTTP/2
 
-HTTP/2 support requires the `zttp` package:
+HTTP/2 support requires `zttp` 0.0.32 or later:
 
 ```bash
-pip install zttp
+pip install 'zttp>=0.0.32'
 ```
+
+Uvicorn checks for the required extended `CONNECT` API when loading the configuration.
+An older installation fails at startup with an upgrade instruction, rather than failing on a request.
 
 To enable it, select the `zttp` HTTP implementation and pass `--http2`:
 
@@ -266,7 +269,7 @@ to send more than one trailer message; Uvicorn combines their headers and comple
 Install `wsproto` alongside `zttp`:
 
 ```bash
-pip install 'uvicorn[standard]' 'zttp>=0.0.34' wsproto
+pip install 'uvicorn[standard]' 'zttp>=0.0.32' wsproto
 ```
 
 ```python title="main.py"

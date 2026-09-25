@@ -35,6 +35,11 @@ if TYPE_CHECKING:
 # or middleware tuned for HTTP/1.1 may still emit them, so strip them on the
 # way out.
 FORBIDDEN_HEADERS = frozenset({b"connection", b"keep-alive", b"proxy-connection", b"transfer-encoding", b"upgrade"})
+WS_TRANSPORT_CLASS: type[H2WebSocketTransport] | None = None
+if find_spec("wsproto"):
+    from uvicorn.protocols.websockets.wsproto_h2_impl import H2WebSocketTransport
+
+    WS_TRANSPORT_CLASS = H2WebSocketTransport
 
 
 class ZttpH2Protocol(asyncio.Protocol):
@@ -82,11 +87,9 @@ class ZttpH2Protocol(asyncio.Protocol):
         # Per-stream state, keyed by HTTP/2 stream id
         self.cycles: dict[int, RequestResponseCycle] = {}
         self.websockets: dict[int, H2WebSocketTransport] = {}
-        self.ws_transport_class: type[H2WebSocketTransport] | None = None
-        if config.ws in ("auto", "wsproto") and config.ws_protocol_class is not None and find_spec("wsproto"):
-            from uvicorn.protocols.websockets.wsproto_h2_impl import H2WebSocketTransport
-
-            self.ws_transport_class = H2WebSocketTransport
+        self.ws_transport_class = (
+            WS_TRANSPORT_CLASS if config.ws in ("auto", "wsproto") and config.ws_protocol_class is not None else None
+        )
 
     # Protocol interface
     def connection_made(  # type: ignore[override]
@@ -186,8 +189,7 @@ class ZttpH2Protocol(asyncio.Protocol):
             elif isinstance(event, zttp.Data):
                 websocket = self.websockets.get(event.stream_id)
                 if websocket is not None:
-                    if not websocket.closed:
-                        websocket.data_received(event.data)
+                    websocket.data_received(event.data)
                     continue
                 cycle = self.cycles.get(event.stream_id)
                 if cycle is None or cycle.response_complete:
@@ -201,8 +203,7 @@ class ZttpH2Protocol(asyncio.Protocol):
             elif isinstance(event, zttp.EndOfMessage):
                 websocket = self.websockets.get(event.stream_id)
                 if websocket is not None:
-                    if not websocket.closed:
-                        websocket.data_received(None)
+                    websocket.data_received(None)
                     continue
                 cycle = self.cycles.get(event.stream_id)
                 if cycle is None or cycle.response_complete:
@@ -288,7 +289,6 @@ class ZttpH2Protocol(asyncio.Protocol):
         self.tasks.add(task)
 
     def handle_websocket(self, event: zttp.Request, headers: list[tuple[bytes, bytes]]) -> None:
-        status = 0
         if self.shutdown_requested or (
             self.limit_concurrency is not None
             and (len(self.connections) >= self.limit_concurrency or len(self.tasks) >= self.limit_concurrency)
@@ -297,27 +297,10 @@ class ZttpH2Protocol(asyncio.Protocol):
         elif event.protocol != b"websocket" or self.ws_transport_class is None:
             status = 501
         else:
-            versions = [value for name, value in headers if name == b"sec-websocket-version"]
-            if event.end_stream or len(versions) != 1:
-                status = 400
-            elif versions != [b"13"]:
-                status = 426
-        if not status:
-            assert self.ws_transport_class is not None
-            try:
-                websocket = self.ws_transport_class(self, event, headers)
-            except UnicodeDecodeError:
-                status = 400
-            else:
-                self.websockets[event.stream_id] = websocket
-                websocket.update_writable()
-                if self.config.reset_contextvars:
-                    contextvars.Context().run(websocket.protocol.handle_connect, websocket.request)
-                else:
-                    websocket.protocol.handle_connect(websocket.request)
-                return
+            self.ws_transport_class.start(self, event, headers)
+            return
         stream = self.conn.stream(event.stream_id)
-        stream.send_response(status, [(b"sec-websocket-version", b"13")] if status == 426 else [])
+        stream.send_response(status)
         stream.end_message()
 
     def handle_rst_stream(self, event: zttp.RstStream) -> None:
@@ -383,8 +366,7 @@ class ZttpH2Protocol(asyncio.Protocol):
         """
         self.shutdown_requested = True
         for websocket in list(self.websockets.values()):
-            if not websocket.closed:
-                websocket.protocol.shutdown()
+            websocket.shutdown()
         if not self.cycles and not self.websockets:
             self._close_connection()
 
@@ -392,7 +374,7 @@ class ZttpH2Protocol(asyncio.Protocol):
         """
         Called by the transport when the write buffer exceeds the high water mark.
         """
-        self.flow.pause_writing()  # pragma: no cover
+        self.flow.pause_writing()
         for websocket in list(self.websockets.values()):
             websocket.update_writable()
 
@@ -400,7 +382,7 @@ class ZttpH2Protocol(asyncio.Protocol):
         """
         Called by the transport when the write buffer drops below the low water mark.
         """
-        self.flow.resume_writing()  # pragma: no cover
+        self.flow.resume_writing()
         for websocket in list(self.websockets.values()):
             websocket.update_writable()
 

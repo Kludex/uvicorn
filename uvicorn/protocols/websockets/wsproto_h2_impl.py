@@ -1,75 +1,19 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Generator
+import contextvars
 from typing import TYPE_CHECKING, Any
 
 import zttp
-from wsproto import ConnectionType, events
-from wsproto.connection import Connection, ConnectionState
-from wsproto.events import Event
-from wsproto.handshake import server_extensions_handshake
-from wsproto.utilities import LocalProtocolError, RemoteProtocolError, split_comma_header
+from wsproto import events
+from wsproto.utilities import split_comma_header
 
+from uvicorn.protocols.websockets.wsproto_connection import H2WebSocketConnection
 from uvicorn.protocols.websockets.wsproto_impl import WSProtocol
+from uvicorn.server import ServerState
 
 if TYPE_CHECKING:
     from uvicorn.protocols.http.zttp_h2_impl import ZttpH2Protocol
-
-
-class H2WebSocketConnection:
-    def __init__(self, stream: zttp.Stream, request: events.Request) -> None:
-        self.stream = stream
-        self.request = request
-        self.connection: Connection | None = None
-        self.response_started = False
-
-    @property
-    def state(self) -> ConnectionState:
-        return self.connection.state if self.connection is not None else ConnectionState.CONNECTING
-
-    def receive_data(self, data: bytes | None) -> None:
-        if self.connection is None:
-            raise RemoteProtocolError("WebSocket data received before acceptance", event_hint=events.RejectConnection())
-        self.connection.receive_data(data)
-
-    def events(self) -> Generator[Event]:
-        if self.connection is not None:
-            yield from self.connection.events()
-
-    def send(self, event: Event) -> bytes:
-        if isinstance(event, events.AcceptConnection):
-            headers = list(event.extra_headers)
-            if event.subprotocol is not None:
-                if event.subprotocol not in self.request.subprotocols:
-                    raise LocalProtocolError(f"Unexpected subprotocol {event.subprotocol}")
-                headers.append((b"sec-websocket-protocol", event.subprotocol.encode("ascii")))
-            offers = [str(offer) for offer in self.request.extensions]
-            extensions = server_extensions_handshake(offers, event.extensions)
-            if extensions:
-                headers.append((b"sec-websocket-extensions", extensions))
-            self.send_response(200, headers)
-            self.connection = Connection(ConnectionType.SERVER, event.extensions)
-            return b""
-        if isinstance(event, events.RejectConnection):
-            if not 300 <= event.status_code < 600:
-                raise LocalProtocolError("A WebSocket denial must use a 3xx, 4xx, or 5xx status")
-            self.send_response(event.status_code, list(event.headers))
-            return b""
-        if isinstance(event, events.RejectData):
-            return event.data
-        assert self.connection is not None
-        return self.connection.send(event)
-
-    def send_response(self, status: int, headers: list[tuple[bytes, bytes]]) -> None:
-        from uvicorn.protocols.http.zttp_h2_impl import FORBIDDEN_HEADERS
-
-        forbidden = FORBIDDEN_HEADERS | {b"sec-websocket-accept", b"sec-websocket-key", b"te"}
-        if status == 200:
-            forbidden = forbidden | {b"content-length"}
-        headers = [(name.lower(), value) for name, value in headers if name.lower() not in forbidden]
-        self.stream.send_response(status, headers)
-        self.response_started = True
 
 
 class H2WebSocketTransport(asyncio.Transport):
@@ -95,13 +39,39 @@ class H2WebSocketTransport(asyncio.Transport):
             extra_headers=[(name, value) for name, value in headers if name != b"host"],
         )
         self.connection = H2WebSocketConnection(self.stream, request)
-        self.protocol = WSProtocol(parent.config, parent.server_state, parent.app_state, parent.loop)
+        # Keep stream registrations local, but track application tasks on the server.
+        state = ServerState()
+        state.tasks = parent.server_state.tasks
+        state.default_headers = parent.server_state.default_headers
+        self.protocol = WSProtocol(parent.config, state, parent.app_state, parent.loop)
         self.protocol.conn = self.connection
         self.protocol.http_version = "2"
         self.protocol.connection_made(self)
-        # Only the parent TCP connection belongs in the server's connection registry.
-        self.protocol.connections.discard(self.protocol)
-        self.request = request
+
+    @classmethod
+    def start(cls, parent: ZttpH2Protocol, event: zttp.Request, headers: list[tuple[bytes, bytes]]) -> None:
+        versions = [value for name, value in headers if name == b"sec-websocket-version"]
+        status = 0
+        if event.end_stream or len(versions) != 1:
+            status = 400
+        elif versions != [b"13"]:
+            status = 426
+        if not status:
+            try:
+                websocket = cls(parent, event, headers)
+            except UnicodeDecodeError:
+                status = 400
+            else:
+                parent.websockets[event.stream_id] = websocket
+                websocket.update_writable()
+                if parent.config.reset_contextvars:
+                    contextvars.Context().run(websocket.protocol.handle_connect, websocket.connection.request)
+                else:
+                    websocket.protocol.handle_connect(websocket.connection.request)
+                return
+        stream = parent.conn.stream(event.stream_id)
+        stream.send_response(status, [(b"sec-websocket-version", b"13")] if status == 426 else [])
+        stream.end_message()
 
     def get_extra_info(self, name: str, default: Any = None) -> Any:
         return self.parent.transport.get_extra_info(name) or default
@@ -117,8 +87,14 @@ class H2WebSocketTransport(asyncio.Transport):
         self.parent.flush()
 
     def data_received(self, data: bytes | None) -> None:
+        if self.closed or self.protocol.response_started:
+            return
         self.protocol.data_received(data)
-        if not self.closed and self.protocol.queue.qsize() > self.parent.config.ws_max_queue:
+        if (
+            not self.closed
+            and not self.protocol.close_sent
+            and self.protocol.queue.qsize() > self.parent.config.ws_max_queue
+        ):
             while not self.protocol.queue.empty():
                 self.protocol.queue.get_nowait()
             self.protocol.queue.put_nowait({"type": "websocket.disconnect", "code": 1013})
@@ -143,7 +119,6 @@ class H2WebSocketTransport(asyncio.Transport):
         self.closed = True
         self.protocol.connection_lost(None)
         self.parent.flush()
-        self.parent.on_stream_closed()
 
     def disconnect(self) -> None:
         if not self.closed:
@@ -151,6 +126,11 @@ class H2WebSocketTransport(asyncio.Transport):
             self.closed = True
             self.protocol.connection_lost(None)
         self.parent.websockets.pop(self.stream.stream_id, None)
+
+    def shutdown(self) -> None:
+        # A denial is an HTTP response; let its body finish during shutdown.
+        if not self.closed and not self.protocol.response_started:
+            self.protocol.shutdown()
 
     def update_writable(self) -> None:
         if self.closed:

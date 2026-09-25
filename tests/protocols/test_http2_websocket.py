@@ -21,11 +21,7 @@ from tests.utils import run_server
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.config import Config
 
-pytestmark = [
-    pytest.mark.anyio,
-    skip_if_no_zttp_h2,
-    pytest.mark.skipif(not hasattr(zttp.Request, "protocol"), reason="zttp >= 0.0.32 is required"),
-]
+pytestmark = [pytest.mark.anyio, skip_if_no_zttp_h2]
 
 
 def connect(
@@ -218,6 +214,43 @@ async def test_rejection(denial: bool) -> None:
     assert not protocol.transport.closed
 
 
+@pytest.mark.parametrize("shutdown", [False, True])
+@pytest.mark.parametrize("end", [False, True])
+async def test_pending_denial_preserves_sibling_streams(shutdown: bool, end: bool) -> None:
+    started = anyio.Event()
+    finish = anyio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        if scope["type"] == "http":
+            await Response("sibling")(scope, receive, send)
+            return
+        await receive()
+        await send({"type": "websocket.http.response.start", "status": 401, "headers": []})
+        started.set()
+        await finish.wait()
+        await send({"type": "websocket.http.response.body", "body": b"denied"})
+
+    protocol = get_connected_protocol(app, ws="wsproto")
+    client = H2Client()
+    stream, opening = connect(client)
+    protocol.data_received(opening)
+    with anyio.fail_after(5):
+        async with anyio.create_task_group() as tasks:
+            tasks.start_soon(protocol.loop.run_one)
+            await started.wait()
+            sibling = client.request()
+            protocol.data_received(client.data_to_send())
+            if shutdown:
+                protocol.shutdown()
+            protocol.data_received(frame(0, int(end), stream.stream_id, b"" if end else b"late data"))
+            await protocol.loop.run_one()
+            finish.set()
+    response = client.parse_responses(protocol.transport.buffer)
+    assert response[stream.stream_id] == (401, [], b"denied", True)
+    assert response[sibling.stream_id][2:] == (b"sibling", True)
+    assert protocol.transport.closed == shutdown
+
+
 @pytest.mark.parametrize(
     ("kwargs", "headers", "extended", "end", "status"),
     [
@@ -309,6 +342,48 @@ async def test_server_close(reply: bool) -> None:
     else:
         protocol.loop.run_later(10)
     assert any(isinstance(event, zttp.EndOfMessage) for event in client.events(protocol.transport.buffer))
+
+
+@pytest.mark.parametrize("inflight", [events.Ping(payload=b"late"), events.TextMessage(data="late")])
+async def test_full_queue_during_close_preserves_sibling_streams(inflight: events.Event) -> None:
+    accepted = anyio.Event()
+    close_requested = anyio.Event()
+    close_sent = anyio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        if scope["type"] == "http":
+            await Response("sibling")(scope, receive, send)
+            return
+        await receive()
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        await close_requested.wait()
+        await send({"type": "websocket.close", "code": 1000})
+        close_sent.set()
+
+    protocol = get_connected_protocol(app, ws="wsproto", ws_max_queue=1)
+    client = H2Client()
+    stream, opening = connect(client)
+    protocol.data_received(opening)
+    websocket = Connection(ConnectionType.CLIENT)
+    with anyio.fail_after(5):
+        async with anyio.create_task_group() as tasks:
+            tasks.start_soon(protocol.loop.run_one)
+            await accepted.wait()
+            protocol.data_received(frame(0, 0, stream.stream_id, websocket.send(events.TextMessage(data="unread"))))
+            close_requested.set()
+            await close_sent.wait()
+            sibling = client.request()
+            protocol.data_received(frame(0, 0, stream.stream_id, websocket.send(inflight)) + client.data_to_send())
+            await protocol.loop.run_one()
+    protocol.data_received(frame(0, 0, stream.stream_id, websocket.send(events.CloseConnection(code=1000))))
+    response = client.events(protocol.transport.buffer)
+    assert any(
+        isinstance(event, zttp.Data) and event.stream_id == sibling.stream_id and event.data == b"sibling"
+        for event in response
+    )
+    assert any(isinstance(event, zttp.EndOfMessage) and event.stream_id == stream.stream_id for event in response)
+    assert not protocol.transport.closed
 
 
 @pytest.mark.parametrize("failure", ["return", "raise", "subprotocol", "status"])
@@ -434,6 +509,7 @@ async def test_shutdown_drains_pending_data() -> None:
     assert not any(isinstance(event, (zttp.Data, zttp.EndOfMessage)) for event in response)
     protocol.shutdown()
     assert not protocol.transport.closed
+    protocol.data_received(frame(0, 1, 1, b""))
     protocol.data_received(frame(8, 0, 1, (1024).to_bytes(4, "big")))
     response = client.events(protocol.transport.buffer)
     assert any(isinstance(event, zttp.Data) and b"pending" in event.data for event in response)

@@ -35,7 +35,7 @@ from uvicorn.protocols.utils import (
 from uvicorn.server import ServerState
 
 if TYPE_CHECKING:
-    from uvicorn.protocols.websockets.wsproto_h2_impl import H2WebSocketConnection
+    from uvicorn.protocols.websockets.wsproto_connection import WebSocketConnection
 
 
 class FrameTooLargeError(Exception):
@@ -109,9 +109,7 @@ class WSProtocol(asyncio.Protocol):
         # Rejection state
         self.response_started = False
 
-        self.conn: wsproto.WSConnection | H2WebSocketConnection = wsproto.WSConnection(
-            connection_type=ConnectionType.SERVER
-        )
+        self.conn: WebSocketConnection = wsproto.WSConnection(connection_type=ConnectionType.SERVER)
         self.http_version = "1.1"
 
         self.read_paused = False
@@ -147,7 +145,7 @@ class WSProtocol(asyncio.Protocol):
         self.stop_keepalive()
         code = 1005 if self.handshake_complete else 1006
         self.queue.put_nowait({"type": "websocket.disconnect", "code": code})
-        self.connections.discard(self)
+        self.connections.remove(self)
 
         if self.logger.level <= TRACE_LOG_LEVEL:
             prefix = "%s:%d - " % self.client if self.client else ""

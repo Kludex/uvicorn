@@ -445,6 +445,10 @@ class Config:
                     "HTTP/2 requires the `zttp` HTTP protocol. Install it with `pip install zttp`, then select it "
                     "with `http='zttp'`. See https://uvicorn.dev/concepts/http2/ for more information."
                 )
+            import zttp
+
+            if not hasattr(zttp.Request, "protocol"):
+                raise ImportError("HTTP/2 requires zttp>=0.0.32. Upgrade with `pip install 'zttp>=0.0.32'`.")
             http_protocol_class = import_from_string("uvicorn.protocols.http.auto_zttp_impl:AutoZttpProtocol")
             self.http_protocol_class: type[asyncio.Protocol] = http_protocol_class
         elif isinstance(self.http, str):
