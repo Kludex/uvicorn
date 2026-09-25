@@ -594,6 +594,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#early-hints" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Early Hints
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#using-with-reverse-proxies" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -629,6 +640,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#response-trailers" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Response Trailers
+      </span>
+    </span>
+  </a>
   
 </li>
       
@@ -1048,6 +1070,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#early-hints" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Early Hints
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#using-with-reverse-proxies" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1083,6 +1116,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#response-trailers" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Response Trailers
+      </span>
+    </span>
+  </a>
   
 </li>
       
@@ -1292,6 +1336,22 @@ they only speak HTTP/2 over TLS.</p>
     <span class="k">assert</span> <span class="n">scope</span><span class="p">[</span><span class="s2">&quot;type&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;http&quot;</span>
     <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;HTTP Version: </span><span class="si">{</span><span class="n">scope</span><span class="p">[</span><span class="s1">&#39;http_version&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>  <span class="c1"># &quot;2&quot; for HTTP/2</span>
 </code></pre></div>
+<h2 id="early-hints">Early Hints<a class="headerlink" href="#early-hints" title="Permanent link">&para;</a></h2>
+<p>Uvicorn advertises the <code>http.response.early_hint</code> ASGI extension for HTTP/2 requests. You can send one or more
+<code>103 Early Hints</code> responses before the final response:</p>
+<div class="highlight"><span class="filename">main.py</span><pre><span></span><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">app</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">receive</span><span class="p">,</span> <span class="n">send</span><span class="p">):</span>
+    <span class="k">if</span> <span class="s2">&quot;http.response.early_hint&quot;</span> <span class="ow">in</span> <span class="n">scope</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;extensions&quot;</span><span class="p">,</span> <span class="p">{}):</span>
+        <span class="k">await</span> <span class="n">send</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;http.response.early_hint&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;links&quot;</span><span class="p">:</span> <span class="p">[</span><span class="sa">b</span><span class="s2">&quot;&lt;/style.css&gt;; rel=preload; as=style&quot;</span><span class="p">],</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+
+    <span class="k">await</span> <span class="n">send</span><span class="p">({</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;http.response.start&quot;</span><span class="p">,</span> <span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="mi">200</span><span class="p">,</span> <span class="s2">&quot;headers&quot;</span><span class="p">:</span> <span class="p">[]})</span>
+    <span class="k">await</span> <span class="n">send</span><span class="p">({</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;http.response.body&quot;</span><span class="p">,</span> <span class="s2">&quot;body&quot;</span><span class="p">:</span> <span class="sa">b</span><span class="s2">&quot;ok&quot;</span><span class="p">})</span>
+</code></pre></div>
+<p>Each value in <code>links</code> becomes a separate <code>Link</code> header in the <code>103</code> response.</p>
 <h2 id="using-with-reverse-proxies">Using with Reverse Proxies<a class="headerlink" href="#using-with-reverse-proxies" title="Permanent link">&para;</a></h2>
 <p>In production, Uvicorn is typically deployed behind a reverse proxy like Nginx, Caddy, or HAProxy.
 The proxy can terminate TLS and serve HTTP/2 to clients, while talking either HTTP/1.1 or
@@ -1377,6 +1437,33 @@ via ALPN when the proxy-to-Uvicorn hop uses TLS.</p>
 <p>For internal, low-latency connections (like proxy to backend), HTTP/1.1 with keepalive often
 performs comparably to HTTP/2. It is simpler to configure and debug, which is why it remains the
 recommended default for most deployments.</p>
+<h2 id="response-trailers">Response Trailers<a class="headerlink" href="#response-trailers" title="Permanent link">&para;</a></h2>
+<p>Trailers are headers you send after the response body. You can use them for values that
+become available while streaming, such as a checksum or final processing statistics,
+without buffering the entire response first.</p>
+<p>They also let you serve ASGI applications that implement
+<a href="https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md">gRPC</a>, which reports
+call results through <code>grpc-status</code> and optional <code>grpc-message</code> trailers.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">uvicorn</span>
+
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">app</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">receive</span><span class="p">,</span> <span class="n">send</span><span class="p">):</span>
+    <span class="n">trailers</span> <span class="o">=</span> <span class="s2">&quot;http.response.trailers&quot;</span> <span class="ow">in</span> <span class="n">scope</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;extensions&quot;</span><span class="p">,</span> <span class="p">{})</span>
+    <span class="k">await</span> <span class="n">send</span><span class="p">({</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;http.response.start&quot;</span><span class="p">,</span> <span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="mi">200</span><span class="p">,</span> <span class="s2">&quot;trailers&quot;</span><span class="p">:</span> <span class="n">trailers</span><span class="p">})</span>
+    <span class="k">await</span> <span class="n">send</span><span class="p">({</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;http.response.body&quot;</span><span class="p">,</span> <span class="s2">&quot;body&quot;</span><span class="p">:</span> <span class="sa">b</span><span class="s2">&quot;Hello, world!&quot;</span><span class="p">})</span>
+    <span class="k">if</span> <span class="n">trailers</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">send</span><span class="p">({</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;http.response.trailers&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;headers&quot;</span><span class="p">:</span> <span class="p">[(</span><span class="sa">b</span><span class="s2">&quot;x-result&quot;</span><span class="p">,</span> <span class="sa">b</span><span class="s2">&quot;ok&quot;</span><span class="p">)],</span>
+            <span class="s2">&quot;more_trailers&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="p">})</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">uvicorn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">app</span><span class="p">,</span> <span class="n">http</span><span class="o">=</span><span class="s2">&quot;zttp&quot;</span><span class="p">,</span> <span class="n">http2</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">lifespan</span><span class="o">=</span><span class="s2">&quot;off&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>Your client must send <code>TE: trailers</code> to receive them. Set <code>more_trailers=True</code>
+to send more than one trailer message; Uvicorn combines their headers and completes the response on the last message.</p>
 <h2 id="current-limitations">Current Limitations<a class="headerlink" href="#current-limitations" title="Permanent link">&para;</a></h2>
 <p>The implementation is young, and some protocol features are not complete yet:</p>
 <ul>
