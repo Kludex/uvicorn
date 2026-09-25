@@ -393,8 +393,21 @@ class Config:
 
             if isinstance(self.log_config, dict):
                 if self.use_colors in (True, False):
-                    self.log_config["formatters"]["default"]["use_colors"] = self.use_colors
-                    self.log_config["formatters"]["access"]["use_colors"] = self.use_colors
+                    # Rebuild rather than mutate. `log_config` defaults to the
+                    # module-level LOGGING_CONFIG, so writing into it leaked the
+                    # value into every later Config in the process, and a
+                    # caller-owned mapping was modified as a side effect of
+                    # being passed in. A dictConfig mapping is also free to
+                    # name its formatters differently, so only the ones that
+                    # are actually present can be updated.
+                    formatters = self.log_config.get("formatters", {})
+                    updated = {
+                        name: {**formatters[name], "use_colors": self.use_colors}
+                        for name in ("default", "access")
+                        if name in formatters
+                    }
+                    if updated:
+                        self.log_config = {**self.log_config, "formatters": {**formatters, **updated}}
                 logging.config.dictConfig(self.log_config)
             elif isinstance(self.log_config, str) and self.log_config.endswith(".json"):
                 with open(self.log_config) as file:
