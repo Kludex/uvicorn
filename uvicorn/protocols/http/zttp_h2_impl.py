@@ -5,7 +5,8 @@ import contextvars
 import logging
 import sys
 from collections.abc import Callable, Generator
-from typing import Any, ClassVar, Literal
+from importlib.util import find_spec
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 from urllib.parse import unquote
 
 import zttp
@@ -26,11 +27,19 @@ from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT, FlowControl, s
 from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
 from uvicorn.server import ServerState
 
+if TYPE_CHECKING:
+    from uvicorn.protocols.websockets.wsproto_h2_impl import H2WebSocketTransport
+
 # RFC 9113 section 8.2.2: connection-specific headers MUST NOT appear in
 # HTTP/2 messages. zttp rejects them with LocalProtocolError, and an ASGI app
 # or middleware tuned for HTTP/1.1 may still emit them, so strip them on the
 # way out.
 FORBIDDEN_HEADERS = frozenset({b"connection", b"keep-alive", b"proxy-connection", b"transfer-encoding", b"upgrade"})
+WS_TRANSPORT_CLASS: type[H2WebSocketTransport] | None = None
+if find_spec("wsproto"):
+    from uvicorn.protocols.websockets.wsproto_h2_impl import H2WebSocketTransport
+
+    WS_TRANSPORT_CLASS = H2WebSocketTransport
 
 
 class ZttpH2Protocol(asyncio.Protocol):
@@ -77,6 +86,10 @@ class ZttpH2Protocol(asyncio.Protocol):
 
         # Per-stream state, keyed by HTTP/2 stream id
         self.cycles: dict[int, RequestResponseCycle] = {}
+        self.websockets: dict[int, H2WebSocketTransport] = {}
+        self.ws_transport_class = (
+            WS_TRANSPORT_CLASS if config.ws in ("auto", "wsproto") and config.ws_protocol_class is not None else None
+        )
 
     # Protocol interface
     def connection_made(  # type: ignore[override]
@@ -104,6 +117,8 @@ class ZttpH2Protocol(asyncio.Protocol):
             prefix = "%s:%d - " % self.client if self.client else ""
             self.logger.log(TRACE_LOG_LEVEL, "%sHTTP/2 connection lost", prefix)
 
+        for websocket in list(self.websockets.values()):
+            websocket.disconnect()
         for cycle in self.cycles.values():
             if not cycle.response_complete:
                 cycle.disconnected = True
@@ -140,7 +155,12 @@ class ZttpH2Protocol(asyncio.Protocol):
         # Frames that carry no stream-level event (SETTINGS, PING,
         # WINDOW_UPDATE) cancelled the keep-alive timer above but never re-arm
         # it, so re-arm now if the connection is idle.
-        if not self.cycles and self.timeout_keep_alive_task is None and not self.transport.is_closing():
+        if (
+            not self.cycles
+            and not self.websockets
+            and self.timeout_keep_alive_task is None
+            and not self.transport.is_closing()
+        ):
             self.timeout_keep_alive_task = self.loop.call_later(
                 self.timeout_keep_alive, self.timeout_keep_alive_handler
             )
@@ -151,6 +171,8 @@ class ZttpH2Protocol(asyncio.Protocol):
         data = self.conn.data_to_send()
         if data:
             self.transport.write(data)
+        for websocket in list(self.websockets.values()):
+            websocket.update_writable()
 
     def events(self) -> Generator[Event]:
         """Yield every complete event currently available."""
@@ -165,6 +187,10 @@ class ZttpH2Protocol(asyncio.Protocol):
             if isinstance(event, zttp.Request):
                 self.handle_request(event)
             elif isinstance(event, zttp.Data):
+                websocket = self.websockets.get(event.stream_id)
+                if websocket is not None:
+                    websocket.data_received(event.data)
+                    continue
                 cycle = self.cycles.get(event.stream_id)
                 if cycle is None or cycle.response_complete:
                     continue
@@ -175,6 +201,10 @@ class ZttpH2Protocol(asyncio.Protocol):
                     self.flow.pause_reading()
                 cycle.message_event.set()
             elif isinstance(event, zttp.EndOfMessage):
+                websocket = self.websockets.get(event.stream_id)
+                if websocket is not None:
+                    websocket.data_received(None)
+                    continue
                 cycle = self.cycles.get(event.stream_id)
                 if cycle is None or cycle.response_complete:
                     continue
@@ -184,7 +214,7 @@ class ZttpH2Protocol(asyncio.Protocol):
                 self.handle_rst_stream(event)
             elif isinstance(event, zttp.GoAway):
                 self.shutdown_requested = True
-                if not self.cycles:
+                if not self.cycles and not self.websockets:
                     self._close_connection()
             # Settings, Ping and WindowUpdate need no action here: zttp tracks
             # the send windows internally, and `flush` writes whatever bytes
@@ -196,6 +226,9 @@ class ZttpH2Protocol(asyncio.Protocol):
             if isinstance(event.headers, zttp.HeaderBlock)
             else [(name.lower(), value) for name, value in event.headers]
         )
+        if event.protocol is not None:
+            self.handle_websocket(event, headers)
+            return
         path = unquote(event.path.decode("ascii"))
         full_path = self.root_path + path
         full_raw_path = self.root_path.encode("ascii") + event.path
@@ -255,7 +288,27 @@ class ZttpH2Protocol(asyncio.Protocol):
         task.add_done_callback(self.tasks.discard)
         self.tasks.add(task)
 
+    def handle_websocket(self, event: zttp.Request, headers: list[tuple[bytes, bytes]]) -> None:
+        if self.shutdown_requested or (
+            self.limit_concurrency is not None
+            and (len(self.connections) >= self.limit_concurrency or len(self.tasks) >= self.limit_concurrency)
+        ):
+            status = 503
+        elif event.protocol != b"websocket" or self.ws_transport_class is None:
+            status = 501
+        else:
+            self.ws_transport_class.start(self, event, headers)
+            return
+        stream = self.conn.stream(event.stream_id)
+        stream.send_response(status)
+        stream.end_message()
+
     def handle_rst_stream(self, event: zttp.RstStream) -> None:
+        websocket = self.websockets.get(event.stream_id)
+        if websocket is not None:
+            websocket.disconnect()
+            self.on_stream_closed()
+            return
         cycle = self.cycles.pop(event.stream_id, None)
         if cycle is None:
             return
@@ -288,7 +341,7 @@ class ZttpH2Protocol(asyncio.Protocol):
 
         self._unset_keepalive_if_required()
 
-        if not self.cycles:
+        if not self.cycles and not self.websockets:
             if self.shutdown_requested:
                 self._close_connection()
                 return
@@ -312,20 +365,26 @@ class ZttpH2Protocol(asyncio.Protocol):
         503 and the connection closes once the last in-flight stream finishes.
         """
         self.shutdown_requested = True
-        if not self.cycles:
+        for websocket in list(self.websockets.values()):
+            websocket.shutdown()
+        if not self.cycles and not self.websockets:
             self._close_connection()
 
     def pause_writing(self) -> None:
         """
         Called by the transport when the write buffer exceeds the high water mark.
         """
-        self.flow.pause_writing()  # pragma: no cover
+        self.flow.pause_writing()
+        for websocket in list(self.websockets.values()):
+            websocket.update_writable()
 
     def resume_writing(self) -> None:
         """
         Called by the transport when the write buffer drops below the low water mark.
         """
-        self.flow.resume_writing()  # pragma: no cover
+        self.flow.resume_writing()
+        for websocket in list(self.websockets.values()):
+            websocket.update_writable()
 
     def timeout_keep_alive_handler(self) -> None:
         """
