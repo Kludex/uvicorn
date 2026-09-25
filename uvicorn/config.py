@@ -511,17 +511,32 @@ class Config:
         self.loaded_app = self.load_app()
 
         try:
-            self.loaded_app = self.loaded_app()
+            res = self.loaded_app()
         except TypeError as exc:
             if self.factory:
                 logger.error("Error loading ASGI app factory: %s", exc)
                 sys.exit(STARTUP_FAILURE)
         else:
+            if hasattr(res, "__aenter__") and hasattr(res, "__aexit__"):
+                self.app_context = res
+                self.loaded_app = None  # Will be entered during lifespan startup
+            else:
+                self.loaded_app = res
             if not self.factory:
                 logger.warning(
                     "ASGI app factory detected. Using it, but please consider setting the --factory flag explicitly."
                 )
 
+        if getattr(self, "app_context", None) is not None:
+            if self.lifespan == "off":
+                logger.error("Lifespan 'off' is not supported when using an async context manager app factory.")
+                sys.exit(STARTUP_FAILURE)
+        else:
+            self.setup_app()
+
+        self.loaded = True
+
+    def setup_app(self) -> None:
         if self.interface == "auto":
             if inspect.isclass(self.loaded_app):
                 use_asgi_3 = hasattr(self.loaded_app, "__await__")
@@ -542,8 +557,6 @@ class Config:
             self.loaded_app = MessageLoggerMiddleware(self.loaded_app)
         if self.proxy_headers:
             self.loaded_app = ProxyHeadersMiddleware(self.loaded_app, trusted_hosts=self.forwarded_allow_ips)
-
-        self.loaded = True
 
     def setup_event_loop(self) -> None:
         raise AttributeError(
