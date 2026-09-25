@@ -173,6 +173,10 @@ exclude_lines = [
     "uvicorn/protocols/http/auto_zttp_impl.py",
     "uvicorn/protocols/http/zttp_h2_impl.py",
 ]
+"not is_installed('zttp') or package_version('zttp') < (0, 0, 32) or not is_installed('wsproto')" = [
+    "tests/protocols/test_http2_websocket.py",
+    "uvicorn/protocols/websockets/wsproto_h2_impl.py",
+]
 
 [tool.coverage.coverage_conditional_plugin.rules]
 no-zttp-h2 = "not is_installed('zttp') or package_version('zttp') < (0, 0, 13)"

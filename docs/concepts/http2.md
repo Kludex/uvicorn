@@ -261,10 +261,58 @@ if __name__ == "__main__":
 Your client must send `TE: trailers` to receive them. Set `more_trailers=True`
 to send more than one trailer message; Uvicorn combines their headers and completes the response on the last message.
 
+## WebSockets
+
+Install `wsproto` alongside `zttp`:
+
+```bash
+pip install 'uvicorn[standard]' 'zttp>=0.0.34' wsproto
+```
+
+```python title="main.py"
+async def app(scope, receive, send) -> None:
+    if scope["type"] == "http":
+        await send({"type": "http.response.start", "status": 200})
+        await send({"type": "http.response.body", "body": b"ok"})
+        return
+
+    assert await receive() == {"type": "websocket.connect"}
+    await send({"type": "websocket.accept"})
+    while True:
+        message = await receive()
+        if message["type"] == "websocket.disconnect":
+            return
+        if message.get("text") is not None:
+            await send({"type": "websocket.send", "text": message["text"]})
+        else:
+            await send({"type": "websocket.send", "bytes": message["bytes"]})
+```
+
+```bash
+uvicorn main:app --http zttp --http2 --ws wsproto --lifespan off
+```
+
+Uvicorn supports [RFC 8441](https://www.rfc-editor.org/rfc/rfc8441), which opens a WebSocket
+with an extended `CONNECT` request on an HTTP/2 stream. Acceptance returns `200`, not the
+HTTP/1.1 `101` response. Your application receives the usual ASGI WebSocket events, with
+`scope["http_version"]` set to `"2"`. Text, binary messages, subprotocols, compression, and
+HTTP denial responses work on that stream. Closing or resetting it does not close sibling streams.
+
+Your client must support RFC 8441. Ordinary WebSocket clients can still connect over HTTP/1.1
+on the same port. For browser connections over HTTP/2, configure TLS as described above.
+
+With `--ws auto`, Uvicorn also uses `wsproto` for HTTP/2 WebSockets when it is installed.
+The HTTP/1.1 backend selection remains unchanged. The explicit `websockets` and
+`websockets-sansio` backends do not support HTTP/2; use `--ws wsproto` instead.
+
+!!! warning "A full receive queue closes only that WebSocket"
+    `zttp` replenishes HTTP/2 receive windows automatically. Uvicorn keeps reading the shared
+    connection so a slow WebSocket cannot block sibling streams or flow-control updates.
+    If its receive queue exceeds `--ws-max-queue`, Uvicorn closes that WebSocket with code
+    `1013`. Consume messages promptly or increase the queue limit to accommodate bursts.
+
 ## Current Limitations
 
 The implementation is young, and some protocol features are not complete yet:
 
 - HTTP/2 server push and `Expect: 100-continue` are not supported.
-- WebSockets over HTTP/2 (RFC 8441 extended `CONNECT`) are not supported. With `--http zttp --http2`,
-  WebSocket connections still work - they are served over HTTP/1.1.

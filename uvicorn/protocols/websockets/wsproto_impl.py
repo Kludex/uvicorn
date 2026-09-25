@@ -6,7 +6,7 @@ import random
 import struct
 from asyncio import TimerHandle
 from io import BytesIO, StringIO
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import unquote
 
 import wsproto
@@ -33,6 +33,9 @@ from uvicorn.protocols.utils import (
     is_ssl,
 )
 from uvicorn.server import ServerState
+
+if TYPE_CHECKING:
+    from uvicorn.protocols.websockets.wsproto_h2_impl import H2WebSocketConnection
 
 
 class FrameTooLargeError(Exception):
@@ -106,7 +109,10 @@ class WSProtocol(asyncio.Protocol):
         # Rejection state
         self.response_started = False
 
-        self.conn = wsproto.WSConnection(connection_type=ConnectionType.SERVER)
+        self.conn: wsproto.WSConnection | H2WebSocketConnection = wsproto.WSConnection(
+            connection_type=ConnectionType.SERVER
+        )
+        self.http_version = "1.1"
 
         self.read_paused = False
         self.writable = asyncio.Event()
@@ -141,7 +147,7 @@ class WSProtocol(asyncio.Protocol):
         self.stop_keepalive()
         code = 1005 if self.handshake_complete else 1006
         self.queue.put_nowait({"type": "websocket.disconnect", "code": code})
-        self.connections.remove(self)
+        self.connections.discard(self)
 
         if self.logger.level <= TRACE_LOG_LEVEL:
             prefix = "%s:%d - " % self.client if self.client else ""
@@ -160,7 +166,7 @@ class WSProtocol(asyncio.Protocol):
     def eof_received(self) -> None:
         pass
 
-    def data_received(self, data: bytes) -> None:
+    def data_received(self, data: bytes | None) -> None:
         try:
             self.conn.receive_data(data)
         except RemoteProtocolError as err:
@@ -234,7 +240,7 @@ class WSProtocol(asyncio.Protocol):
         self.scope: WebSocketScope = {
             "type": "websocket",
             "asgi": {"version": self.asgi_version, "spec_version": "2.4"},
-            "http_version": "1.1",
+            "http_version": self.http_version,
             "scheme": self.scheme,
             "server": self.server,
             "client": self.client,
