@@ -212,8 +212,9 @@ class ZttpProtocol(asyncio.Protocol):
 
             elif isinstance(event, zttp.Data):
                 if self.cycle is not None and not self.cycle.response_complete:
-                    self.cycle.body += event.data
-                    if len(self.cycle.body) > HIGH_WATER_LIMIT:
+                    self.cycle.body_chunks.append(event.data)
+                    self.cycle.body_size += len(event.data)
+                    if self.cycle.body_size > HIGH_WATER_LIMIT:
                         self.flow.pause_reading()
                     self.cycle.message_event.set()
 
@@ -349,7 +350,8 @@ class RequestResponseCycle:
         self.waiting_for_100_continue = expect_100_continue
 
         # Request state
-        self.body = bytearray()
+        self.body_chunks: list[bytes] = []
+        self.body_size = 0
         self.more_body = True
 
         # Response state
@@ -532,6 +534,10 @@ class RequestResponseCycle:
         if self.disconnected or self.response_complete:
             return {"type": "http.disconnect"}
 
-        message: HTTPRequestEvent = {"type": "http.request", "body": bytes(self.body), "more_body": self.more_body}
-        self.body = bytearray()
+        # Chunks are joined once here, instead of being concatenated on arrival, so that a
+        # fragmented body isn't repeatedly reallocated and copied as it grows.
+        body = b"".join(self.body_chunks)
+        self.body_chunks = []
+        self.body_size = 0
+        message: HTTPRequestEvent = {"type": "http.request", "body": body, "more_body": self.more_body}
         return message
