@@ -274,8 +274,9 @@ class ZttpH2Protocol(asyncio.Protocol):
         self.flow.resume_reading()
 
     def on_response_complete(self, stream_id: int) -> None:
-        self.server_state.total_requests += 1
-        self.cycles.pop(stream_id, None)
+        cycle = self.cycles.pop(stream_id, None)
+        if cycle is not None and cycle.response_complete:
+            self.server_state.total_requests += 1
         self.on_stream_closed()
 
     def on_stream_closed(self) -> None:
