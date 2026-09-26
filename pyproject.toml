@@ -119,6 +119,7 @@ follow_imports = "silent"
 
 [tool.pytest.ini_options]
 addopts = "-rxXs --strict-config --strict-markers -n 8"
+faulthandler_timeout = 60
 xfail_strict = true
 filterwarnings = [
     "error",
