@@ -30,15 +30,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 from __future__ import annotations
 
-import sys
 import types
 from collections.abc import Awaitable, Callable, Iterable, MutableMapping
-from typing import Any, Literal, Protocol, TypedDict
-
-if sys.version_info >= (3, 11):  # pragma: py-lt-311
-    from typing import NotRequired
-else:  # pragma: py-gte-311
-    from typing_extensions import NotRequired
+from typing import Any, Literal, NotRequired, Protocol, TypedDict
 
 # WSGI
 Environ = MutableMapping[str, Any]
