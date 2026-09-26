@@ -177,14 +177,12 @@ if __name__ == "__main__":
 
 [Gunicorn](https://gunicorn.org/) is a mature, fully featured server and process manager.
 
-Uvicorn includes a Gunicorn worker class allowing you to run ASGI applications,
-with all of Uvicorn's performance benefits, while also giving you Gunicorn's
-fully-featured process management.
-
-This allows you to increase or decrease the number of worker processes on the
-fly, restart worker processes gracefully, or perform server upgrades without downtime.
-
-For production deployments we recommend using gunicorn with the uvicorn worker class.
+For production deployments we recommend Uvicorn's [built-in `--workers` process
+manager](deployment/index.md#built-in), which handles scaling workers on the fly
+and graceful, near-zero-downtime restarts without an extra dependency. Gunicorn
+remains a supported option if you already rely on it - Uvicorn includes a Gunicorn
+worker class so you can run ASGI applications with all of Uvicorn's performance
+benefits under Gunicorn's process management.
 
 ```
 gunicorn example:app -w 4 -k uvicorn.workers.UvicornWorker
