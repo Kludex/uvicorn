@@ -2,9 +2,19 @@ from __future__ import annotations
 
 import asyncio
 import socket
+import ssl
 import urllib.parse
+from typing import Protocol, runtime_checkable
 
-from uvicorn._types import WWWScope
+from uvicorn._types import TLSExtension, WWWScope
+
+
+@runtime_checkable
+class _SSLObjectWithVerifiedChain(Protocol):
+    @property
+    def context(self) -> ssl.SSLContext: ...
+
+    def get_verified_chain(self) -> list[bytes]: ...
 
 
 class ClientDisconnected(OSError): ...
@@ -46,6 +56,15 @@ def get_local_addr(transport: asyncio.Transport) -> tuple[str, int | None] | Non
 
 def is_ssl(transport: asyncio.Transport) -> bool:
     return bool(transport.get_extra_info("sslcontext"))
+
+
+def get_tls_extension(transport: asyncio.Transport) -> TLSExtension:
+    ssl_object: object = transport.get_extra_info("ssl_object")
+
+    client_cert_chain: tuple[str, ...] = ()
+    if isinstance(ssl_object, _SSLObjectWithVerifiedChain) and ssl_object.context.verify_mode != ssl.CERT_NONE:
+        client_cert_chain = tuple(ssl.DER_cert_to_PEM_cert(cert) for cert in ssl_object.get_verified_chain())
+    return {"client_cert_chain": client_cert_chain}
 
 
 def get_client_addr(scope: WWWScope) -> str:

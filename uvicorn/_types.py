@@ -53,6 +53,10 @@ class ASGIVersions(TypedDict):
     version: Literal["2.0"] | Literal["3.0"]
 
 
+class TLSExtension(TypedDict):
+    client_cert_chain: tuple[str, ...]
+
+
 class HTTPScope(TypedDict):
     type: Literal["http"]
     asgi: ASGIVersions
@@ -67,7 +71,7 @@ class HTTPScope(TypedDict):
     client: tuple[str, int] | None
     server: tuple[str, int | None] | None
     state: NotRequired[dict[str, Any]]
-    extensions: NotRequired[dict[str, dict[object, object]]]
+    extensions: NotRequired[dict[str, object]]
 
 
 class WebSocketScope(TypedDict):
@@ -84,7 +88,7 @@ class WebSocketScope(TypedDict):
     server: tuple[str, int | None] | None
     subprotocols: Iterable[str]
     state: NotRequired[dict[str, Any]]
-    extensions: NotRequired[dict[str, dict[object, object]]]
+    extensions: NotRequired[dict[str, object]]
 
 
 class LifespanScope(TypedDict):
