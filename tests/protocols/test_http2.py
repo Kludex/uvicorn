@@ -242,6 +242,7 @@ async def test_get_request():
     assert (b"content-type", b"text/plain; charset=utf-8") in headers
     assert body == b"Hello, world"
     assert ended
+    assert protocol.server_state.total_requests == 1
 
 
 @pytest.mark.parametrize("te", [None, b"trailers"])
