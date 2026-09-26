@@ -37,6 +37,18 @@ def _get_status_phrase(status_code: int) -> bytes:
 
 STATUS_PHRASES = {status_code: _get_status_phrase(status_code) for status_code in range(100, 600)}
 
+# Locally bound h11 sentinels and event types, used in the hot `handle_events()` loop.
+# The event classes are compared against `type(event)` rather than with `isinstance()`, since
+# `h11` events derive from `abc.ABC` and `ABCMeta.__instancecheck__` is significantly more
+# expensive than an exact type check.
+_NEED_DATA = h11.NEED_DATA
+_PAUSED = h11.PAUSED
+_DONE = h11.DONE
+_MUST_CLOSE = h11.MUST_CLOSE
+_Request = h11.Request
+_Data = h11.Data
+_EndOfMessage = h11.EndOfMessage
+
 
 class H11Protocol(asyncio.Protocol):
     def __init__(
@@ -170,25 +182,28 @@ class H11Protocol(asyncio.Protocol):
         return False
 
     def data_received(self, data: bytes) -> None:
-        self._unset_keepalive_if_required()
+        # Guarded here as well, to avoid a method call for every chunk of a fragmented body.
+        if self.timeout_keep_alive_task is not None:
+            self._unset_keepalive_if_required()
 
         self.conn.receive_data(data)
         self.handle_events()
 
     def handle_events(self) -> None:
+        conn = self.conn
         while True:
             try:
-                event = self.conn.next_event()
+                event = conn.next_event()
             except h11.RemoteProtocolError:
                 msg = "Invalid HTTP request received."
                 self.logger.warning(msg)
                 self.send_400_response(msg)
                 return
 
-            if event is h11.NEED_DATA:
+            if event is _NEED_DATA:
                 break
 
-            elif event is h11.PAUSED:
+            elif event is _PAUSED:
                 # This case can occur in HTTP pipelining, so we need to
                 # stop reading any more data, and ensure that at the end
                 # of the active request/response cycle we handle any
@@ -196,7 +211,7 @@ class H11Protocol(asyncio.Protocol):
                 self.flow.pause_reading()
                 break
 
-            elif isinstance(event, h11.Request):
+            elif type(event) is _Request:
                 # Pipelined HTTP requests and WebSocket upgrades may be processed after the keep-alive timer is armed.
                 self._unset_keepalive_if_required()
 
@@ -236,7 +251,7 @@ class H11Protocol(asyncio.Protocol):
 
                 self.cycle = RequestResponseCycle(
                     scope=self.scope,
-                    conn=self.conn,
+                    conn=conn,
                     transport=self.transport,
                     flow=self.flow,
                     logger=self.logger,
@@ -259,22 +274,23 @@ class H11Protocol(asyncio.Protocol):
                 task.add_done_callback(self.tasks.discard)
                 self.tasks.add(task)
 
-            elif isinstance(event, h11.Data):
-                if self.conn.our_state is h11.DONE:
+            elif type(event) is _Data:
+                if conn.our_state is _DONE:
                     continue
-                self.cycle.body += event.data
-                if len(self.cycle.body) > HIGH_WATER_LIMIT:
+                cycle = self.cycle
+                cycle.body += event.data
+                if len(cycle.body) > HIGH_WATER_LIMIT:
                     self.flow.pause_reading()
-                self.cycle.message_event.set()
+                cycle.message_event.set()
 
-            elif isinstance(event, h11.EndOfMessage):
-                if self.conn.our_state is h11.DONE:
+            elif type(event) is _EndOfMessage:
+                if conn.our_state is _DONE:
                     self.transport.resume_reading()
-                    self.conn.start_next_cycle()
+                    conn.start_next_cycle()
                     continue
                 self.cycle.more_body = False
                 self.cycle.message_event.set()
-                if self.conn.their_state == h11.MUST_CLOSE:
+                if conn.their_state == _MUST_CLOSE:
                     break
 
     def handle_websocket_upgrade(self, event: h11.Request) -> None:
