@@ -1,6 +1,7 @@
 import importlib
 import inspect
 import socket
+import subprocess
 import sys
 from logging import WARNING
 from pathlib import Path
@@ -23,6 +24,14 @@ async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
     assert scope["type"] == "http"
     await send({"type": "http.response.start", "status": 204, "headers": []})
     await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+
+def test_import_does_not_import_click() -> None:
+    subprocess.run(
+        [sys.executable, "-c", "import sys; import uvicorn; assert 'click' not in sys.modules"],
+        check=True,
+        cwd=Path(__file__).parents[1],
+    )
 
 
 def _has_ipv6(host: str):
@@ -190,6 +199,13 @@ async def test_exit_on_create_server_with_invalid_host() -> None:
         server = Server(config=config)
         await server.serve()
     assert exc_info.value.code == STARTUP_FAILURE
+
+
+def test_deprecated_server_from_main() -> None:
+    with pytest.deprecated_call(match="uvicorn.main.Server is deprecated, use uvicorn.server.Server instead."):
+        from uvicorn.main import Server as DeprecatedServer
+
+    assert DeprecatedServer is uvicorn.server.Server
 
 
 def test_deprecated_server_state_from_main() -> None:

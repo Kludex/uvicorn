@@ -87,7 +87,7 @@ httptools = "2026-05-26"
 zttp = "2026-09-19T23:59:59Z"
 
 [project.scripts]
-uvicorn = "uvicorn.main:main"
+uvicorn = "uvicorn.cli:main"
 
 [project.urls]
 Changelog = "https://uvicorn.dev/release-notes"
