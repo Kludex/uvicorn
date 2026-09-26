@@ -251,6 +251,11 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.scope["method"] = method.decode("ascii")
         if http_version != "1.1":
             self.scope["http_version"] = http_version
+        # RFC 9112, section 3.2: a server must respond with 400 to an HTTP/1.1
+        # request that lacks a Host header or carries more than one. httptools
+        # does not check this, while h11 rejects both.
+        if http_version == "1.1" and sum(name == b"host" for name, _ in self.headers) != 1:
+            raise httptools.HttpParserError("Invalid Host header")
         if self.parser.should_upgrade() and self._should_upgrade():
             return
         parsed_url = httptools.parse_url(self.url)
