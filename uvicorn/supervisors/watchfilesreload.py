@@ -23,6 +23,7 @@ class FileFilter:
         for e in config.reload_excludes:
             p = Path(e)
             try:
+                p = p.resolve()
                 is_dir = p.is_dir()
             except OSError:  # pragma: no cover
                 # gets raised on Windows for values like "*.py"
