@@ -2,6 +2,7 @@ import contextlib
 import importlib
 import os
 import platform
+import socket
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -101,28 +102,53 @@ def test_cli_call_multiprocess_run() -> None:
     mock_run.assert_called_once()
 
 
-@pytest.fixture(params=(True, False))
-def uds_file(tmp_path: Path, request: pytest.FixtureRequest) -> Path:  # pragma: py-win32
-    file = tmp_path / "uvicorn.sock"
-    should_create_file = request.param
-    if should_create_file:
-        file.touch(exist_ok=True)
-    return file
-
-
 @pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
-def test_cli_uds(uds_file: Path) -> None:  # pragma: py-win32
-    runner = CliRunner()
+def test_cli_uds(short_socket_name: str) -> None:  # pragma: py-win32
+    def close_sockets(supervisor: Multiprocess) -> None:
+        for sock in supervisor.sockets:
+            sock.close()
 
-    with mock.patch.object(Config, "bind_socket") as mock_bind_socket:
-        with mock.patch.object(Multiprocess, "run") as mock_run:
-            result = runner.invoke(cli, ["tests.test_cli:App", "--workers=2", "--uds", str(uds_file)])
+    runner = CliRunner()
+    uds_file = Path(short_socket_name)
+
+    with mock.patch.object(Multiprocess, "run", autospec=True, side_effect=close_sockets) as mock_run:
+        result = runner.invoke(
+            cli, ["tests.test_cli:App", "--workers=2", "--uds", str(uds_file), "--log-level=critical"]
+        )
 
     assert result.exit_code == 0
     assert result.output == ""
-    mock_bind_socket.assert_called_once()
     mock_run.assert_called_once()
     assert not uds_file.exists()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
+def test_cli_uds_preserves_existing_file(short_socket_name: str) -> None:  # pragma: py-win32
+    runner = CliRunner()
+    uds_file = Path(short_socket_name)
+    uds_file.write_text("sentinel")
+
+    result = runner.invoke(cli, ["tests.test_cli:App", "--workers=2", "--uds", str(uds_file)])
+
+    assert result.exit_code == STARTUP_FAILURE
+    assert uds_file.read_text() == "sentinel"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
+def test_cli_uds_preserves_active_socket(short_socket_name: str) -> None:  # pragma: py-win32
+    runner = CliRunner()
+    uds_file = Path(short_socket_name)
+
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as owner:
+        owner.bind(str(uds_file))
+        owner.listen()
+
+        result = runner.invoke(cli, ["tests.test_cli:App", "--workers=2", "--uds", str(uds_file)])
+
+        assert result.exit_code == STARTUP_FAILURE
+        assert uds_file.exists()
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.connect(str(uds_file))
 
 
 def test_cli_incomplete_app_parameter() -> None:
