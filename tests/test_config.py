@@ -265,6 +265,20 @@ def test_socket_bind() -> None:
     config.load()
     sock = config.bind_socket()
     assert isinstance(sock, socket.socket)
+    assert sock.proto == socket.IPPROTO_TCP
+    sock.close()
+
+
+def test_socket_bind_ipv6() -> None:
+    config = Config(app=asgi_app, host="::1")
+    config.load()
+    try:
+        sock = config.bind_socket()
+    except OSError:  # pragma: no cover
+        pytest.skip("IPv6 not supported on this host")
+    assert isinstance(sock, socket.socket)
+    assert sock.family == socket.AF_INET6
+    assert sock.proto == socket.IPPROTO_TCP
     sock.close()
 
 
