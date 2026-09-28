@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import logging
-import sys
 from collections.abc import Callable, Generator
 from typing import Any, ClassVar, Literal
 from urllib.parse import unquote
@@ -246,10 +245,7 @@ class ZttpH2Protocol(asyncio.Protocol):
         self.cycles[event.stream_id] = cycle
 
         if self.config.reset_contextvars:
-            if sys.version_info >= (3, 11):  # pragma: py-lt-311
-                task = self.loop.create_task(cycle.run_asgi(app), context=contextvars.Context())
-            else:  # pragma: py-gte-311
-                task = contextvars.Context().run(self.loop.create_task, cycle.run_asgi(app))
+            task = self.loop.create_task(cycle.run_asgi(app), context=contextvars.Context())
         else:
             task = self.loop.create_task(cycle.run_asgi(app))
         task.add_done_callback(self.tasks.discard)

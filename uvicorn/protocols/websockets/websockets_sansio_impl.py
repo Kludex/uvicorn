@@ -5,11 +5,10 @@ import email.utils
 import logging
 import random
 import struct
-import sys
 from asyncio import TimerHandle
 from asyncio.transports import BaseTransport, Transport
 from http import HTTPStatus
-from typing import Any, Literal, cast
+from typing import Any, Literal, assert_never, cast
 from urllib.parse import unquote
 
 from websockets import __version__ as websockets_version
@@ -36,11 +35,6 @@ from uvicorn.protocols.utils import (
     is_ssl,
 )
 from uvicorn.server import ServerState
-
-if sys.version_info >= (3, 11):  # pragma: no cover
-    from typing import assert_never
-else:  # pragma: no cover
-    from typing_extensions import assert_never
 
 
 def _get_status_phrase(status_code: int) -> str:
