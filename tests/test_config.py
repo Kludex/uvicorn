@@ -260,8 +260,8 @@ def test_http2_requires_zttp_protocol() -> None:
         config.load()
 
 
-def test_socket_bind() -> None:
-    config = Config(app=asgi_app)
+def test_socket_bind(unused_tcp_port: int) -> None:
+    config = Config(app=asgi_app, port=unused_tcp_port)
     config.load()
     sock = config.bind_socket()
     assert isinstance(sock, socket.socket)
@@ -271,10 +271,15 @@ def test_socket_bind() -> None:
     sock.close()
 
 
-def test_socket_bind_ipv6() -> None:
-    config = Config(app=asgi_app, host="::1")
+def test_socket_bind_ipv6(unused_tcp_port: int) -> None:
+    if not socket.has_ipv6:
+        pytest.skip("IPv6 not supported")
+    config = Config(app=asgi_app, host="::1", port=unused_tcp_port)
     config.load()
-    sock = config.bind_socket()
+    try:
+        sock = config.bind_socket()
+    except (OSError, SystemExit):
+        pytest.skip("IPv6 loopback not available")
     assert isinstance(sock, socket.socket)
     assert sock.family == socket.AF_INET6
     assert sock.type == socket.SOCK_STREAM
