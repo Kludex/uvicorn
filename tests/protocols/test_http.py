@@ -134,6 +134,22 @@ UPGRADE_HTTP2_REQUEST = b"\r\n".join(
     ]
 )
 
+# Same as UPGRADE_REQUEST, but the `upgrade` token is carried by a `Connection`
+# field line that is not the last one. RFC 9112 section 7.2 requires repeated
+# field lines to be combined, so this must still be treated as an upgrade.
+UPGRADE_REQUEST_WITH_EXTRA_CONNECTION_HEADER = b"\r\n".join(
+    [
+        b"GET / HTTP/1.1",
+        b"Host: example.org",
+        b"Connection: upgrade",
+        b"Connection: keep-alive",
+        b"Upgrade: websocket",
+        b"Sec-WebSocket-Version: 11",
+        b"",
+        b"",
+    ]
+)
+
 INVALID_REQUEST_TEMPLATE = b"\r\n".join(
     [
         b"%s",
@@ -251,6 +267,22 @@ class MockLoop:
 class MockTask:
     def add_done_callback(self, callback: Callable[[], None]):
         pass
+
+
+class _StubWebSocketProtocol(asyncio.Protocol):
+    """Minimal stand-in for a real WebSocket protocol, so upgrade tests do not
+    need an actual WebSocket library installed."""
+
+    upgraded = False
+
+    def __init__(self, **kwargs: Any) -> None:
+        pass
+
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
+        pass
+
+    def data_received(self, data: bytes) -> None:
+        type(self).upgraded = True
 
 
 class MockProtocol(asyncio.Protocol):
@@ -883,6 +915,23 @@ async def test_supported_upgrade_request(http_protocol_cls: type[HTTPProtocol]):
     protocol = get_connected_protocol(app, http_protocol_cls, ws="wsproto")
     protocol.data_received(UPGRADE_REQUEST)
     assert b"HTTP/1.1 426 " in protocol.transport.buffer
+
+
+async def test_upgrade_request_with_multiple_connection_headers(http_protocol_cls: type[HTTPProtocol]):
+    """Multiple `Connection` field lines are combined before the tokens are read.
+
+    See https://www.rfc-editor.org/rfc/rfc9112.html#section-7.2 - a recipient
+    MUST combine repeated field lines, so `Connection: upgrade` followed by
+    `Connection: keep-alive` is equivalent to `Connection: upgrade, keep-alive`
+    and must still select the WebSocket upgrade.
+    """
+    app = Response("Hello, world", media_type="text/plain")
+
+    _StubWebSocketProtocol.upgraded = False
+    protocol = get_connected_protocol(app, http_protocol_cls, ws=_StubWebSocketProtocol)
+    protocol.data_received(UPGRADE_REQUEST_WITH_EXTRA_CONNECTION_HEADER)
+    assert _StubWebSocketProtocol.upgraded
+    assert b"HTTP/1.1 200 OK" not in protocol.transport.buffer
 
 
 async def test_unsupported_ws_upgrade_request(http_protocol_cls: type[HTTPProtocol]):
