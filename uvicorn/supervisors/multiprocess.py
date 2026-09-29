@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import pickle
@@ -31,6 +32,7 @@ class Process:
     ) -> None:
         self.config = config
         self._server: Server | None = None
+        self._sigterm_sent = False
 
         self.parent_conn, self.child_conn = Pipe()
         self.process = get_subprocess(config, self.target, sockets)
@@ -107,6 +109,7 @@ class Process:
                 os.kill(self.process.pid, signal.CTRL_BREAK_EVENT)  # type: ignore[attr-defined]
             else:
                 os.kill(self.process.pid, signal.SIGTERM)
+                self._sigterm_sent = True
             logger.info(f"Terminated child process [{self.process.pid}]")
 
             self.parent_conn.close()
@@ -121,7 +124,20 @@ class Process:
 
     def join(self) -> None:
         logger.info(f"Waiting for child process [{self.process.pid}]")
-        self.process.join()
+        if not self._sigterm_sent:
+            self.process.join()
+            return
+
+        # `start()` returns before the worker calls exec(), and until then a forked worker has the supervisor's signal
+        # handlers, which swallow a SIGTERM. So send it again until the worker exits: a worker that is already
+        # shutting down only sets `should_exit` again.
+        self.process.join(timeout=1)
+        while self.process.exitcode is None:
+            assert self.process.pid is not None
+            # The worker may be exiting already. Its pid can't be reused before we reap it.
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(self.process.pid, signal.SIGTERM)
+            self.process.join(timeout=1)
 
     @property
     def server(self) -> Server:
