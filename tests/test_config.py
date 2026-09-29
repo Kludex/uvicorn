@@ -261,25 +261,26 @@ def test_http2_requires_zttp_protocol() -> None:
 
 
 def test_socket_bind() -> None:
-    config = Config(app=asgi_app)
+    config = Config(app=asgi_app, port=0)
     config.load()
-    sock = config.bind_socket()
-    assert isinstance(sock, socket.socket)
-    assert sock.proto == socket.IPPROTO_TCP
-    sock.close()
+    with closing(config.bind_socket()) as sock:
+        assert isinstance(sock, socket.socket)
+        assert sock.proto == socket.IPPROTO_TCP
 
 
 def test_socket_bind_ipv6() -> None:
-    config = Config(app=asgi_app, host="::1")
-    config.load()
     try:
-        sock = config.bind_socket()
+        with closing(socket.socket(socket.AF_INET6, socket.SOCK_STREAM)) as probe:
+            probe.bind(("::1", 0))
     except OSError:  # pragma: no cover
         pytest.skip("IPv6 not supported on this host")
-    assert isinstance(sock, socket.socket)
-    assert sock.family == socket.AF_INET6
-    assert sock.proto == socket.IPPROTO_TCP
-    sock.close()
+
+    config = Config(app=asgi_app, host="::1", port=0)
+    config.load()
+    with closing(config.bind_socket()) as sock:
+        assert isinstance(sock, socket.socket)
+        assert sock.family == socket.AF_INET6
+        assert sock.proto == socket.IPPROTO_TCP
 
 
 def test_ssl_config(
