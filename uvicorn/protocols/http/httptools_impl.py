@@ -85,6 +85,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         # Per-connection state
         self.transport: asyncio.Transport = None  # type: ignore[assignment]
         self.flow: FlowControl = None  # type: ignore[assignment]
+        self.connection_context: contextvars.Context = None  # type: ignore[assignment]
         self.server: tuple[str, int | None] | None = None
         self.client: tuple[str, int] | None = None
         self.scheme: Literal["http", "https"] | None = None
@@ -104,6 +105,7 @@ class HttpToolsProtocol(asyncio.Protocol):
 
         self.transport = transport
         self.flow = FlowControl(transport)
+        self.connection_context = contextvars.copy_context()
         self.server = get_local_addr(transport)
         self.client = get_remote_addr(transport)
         self.scheme = "https" if is_ssl(transport) else "http"
@@ -321,6 +323,11 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.cycle.message_event.set()
 
     def on_response_complete(self) -> None:
+        # Response completion runs inside the request task. Schedule further work from the
+        # connection context, using a copy so eager tasks can complete another response here.
+        self.connection_context.copy().run(self._on_response_complete)
+
+    def _on_response_complete(self) -> None:
         # Callback for pipelined HTTP requests to be started.
         self.server_state.total_requests += 1
 
