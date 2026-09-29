@@ -272,13 +272,13 @@ def test_socket_bind(unused_tcp_port: int) -> None:
 
 
 def test_socket_bind_ipv6(unused_tcp_port: int) -> None:
-    if not socket.has_ipv6:
+    if not socket.has_ipv6:  # pragma: no cover
         pytest.skip("IPv6 not supported")
     config = Config(app=asgi_app, host="::1", port=unused_tcp_port)
     config.load()
     try:
         sock = config.bind_socket()
-    except (OSError, SystemExit):
+    except (OSError, SystemExit):  # pragma: no cover
         pytest.skip("IPv6 loopback not available")
     assert isinstance(sock, socket.socket)
     assert sock.family == socket.AF_INET6
