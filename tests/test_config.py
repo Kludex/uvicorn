@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import configparser
 import io
 import json
@@ -266,6 +267,44 @@ def test_socket_bind() -> None:
     sock = config.bind_socket()
     assert isinstance(sock, socket.socket)
     sock.close()
+
+
+class _AcceptedSocketReport(asyncio.Protocol):
+    def __init__(self) -> None:
+        self.accepted: list[tuple[int, int]] = []
+        self.connected = asyncio.Event()
+
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
+        raw_socket = transport.get_extra_info("socket")
+        nodelay = raw_socket.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY)
+        self.accepted.append((raw_socket.proto, nodelay))
+        self.connected.set()
+        transport.close()
+
+
+@pytest.mark.anyio
+async def test_bind_socket_keeps_tcp_nodelay_on_accepted_sockets() -> None:
+    # Sockets pre-bound by Config.bind_socket() (used with `--workers N` or
+    # gunicorn) must report proto == IPPROTO_TCP so that asyncio enables
+    # TCP_NODELAY on accepted connections. See issue #3149.
+    config = Config(app=asgi_app)
+    config.load()
+    sock = config.bind_socket()
+    port = sock.getsockname()[1]
+
+    report = _AcceptedSocketReport()
+    server = await asyncio.get_running_loop().create_server(lambda: report, sock=sock)
+    try:
+        _, writer = await asyncio.open_connection("127.0.0.1", port)
+        await asyncio.wait_for(report.connected.wait(), timeout=5)
+        writer.close()
+        await writer.wait_closed()
+    finally:
+        server.close()
+        await server.wait_closed()
+        sock.close()
+
+    assert report.accepted == [(socket.IPPROTO_TCP, 1)]
 
 
 def test_ssl_config(
