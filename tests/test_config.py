@@ -314,9 +314,9 @@ async def test_bind_socket_keeps_tcp_nodelay_on_accepted_sockets() -> None:
 
     (proto, nodelay) = report.accepted[0]
     if sys.platform == "linux":
-        assert (proto, nodelay) == (socket.IPPROTO_TCP, 1)
+        assert (proto, nodelay) == (socket.IPPROTO_TCP, 1)  # pragma: py-not-linux
     else:
-        assert (proto, nodelay) == (0, 0)
+        assert (proto, nodelay) == (0, 0)  # pragma: py-linux
 
 
 def test_ssl_config(
