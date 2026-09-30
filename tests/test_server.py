@@ -123,6 +123,7 @@ async def test_shutdown_on_early_exit_during_startup(unused_tcp_port: int):
     assert shutdown_complete, "lifespan.shutdown was not called despite startup completing"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="--fd requires socket.AF_UNIX, unavailable on Windows")
 async def test_startup_enables_tcp_nodelay_on_fd_listener() -> None:
     """Listeners wrapped from a file descriptor (--fd) keep proto=0, so
     asyncio's own _set_nodelay skips them. Server.startup() must enable
@@ -140,7 +141,7 @@ async def test_startup_enables_tcp_nodelay_on_fd_listener() -> None:
         server.lifespan = config.lifespan_class(config)  # normally set in _serve()
         await server.startup()
         try:
-            assert listener.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY) == 1
+            assert listener.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY) != 0  # macOS reports 4, not 1
         finally:
             await server.shutdown()
     finally:
@@ -163,7 +164,7 @@ async def test_startup_enables_tcp_nodelay_on_passed_sockets() -> None:
         server.lifespan = config.lifespan_class(config)  # normally set in _serve()
         await server.startup(sockets=[listener])
         try:
-            assert listener.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY) == 1
+            assert listener.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY) != 0  # macOS reports 4, not 1
         finally:
             await server.shutdown()
     finally:
