@@ -52,6 +52,22 @@ if sys.platform == "win32":  # pragma: py-not-win32
 logger = logging.getLogger("uvicorn.error")
 
 
+def _set_tcp_nodelay(sock: socket.socket) -> None:
+    """Enable TCP_NODELAY on a listening socket.
+
+    Accepted sockets inherit the option, so this also covers listeners whose
+    ``family``/``proto`` metadata asyncio doesn't recognize -- e.g. sockets
+    wrapped from a file descriptor (``--fd``) or passed in by gunicorn -- where
+    asyncio's own ``_set_nodelay`` (which requires ``proto == IPPROTO_TCP``) is
+    skipped. Non-TCP sockets (e.g. Unix domain sockets) raise ``OSError`` here
+    and are left untouched.
+    """
+    try:
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    except OSError:
+        pass
+
+
 class ServerState:
     """
     Shared servers state that is available between all protocol instances.
@@ -151,6 +167,10 @@ class Server:
                 is_windows = platform.system() == "Windows"
                 if config.workers > 1 and is_windows:  # pragma: py-not-win32
                     sock = _share_socket(sock)  # type: ignore[assignment]
+                # Sockets passed in by gunicorn keep `proto=0`, so asyncio's
+                # own `_set_nodelay` skips them: set the option explicitly.
+                # See https://github.com/Kludex/uvicorn/issues/3149.
+                _set_tcp_nodelay(sock)
                 server = await loop.create_server(create_protocol, sock=sock, ssl=config.ssl, backlog=config.backlog)
                 self.servers.append(server)
             listeners = sockets
@@ -158,6 +178,11 @@ class Server:
         elif config.fd is not None:  # pragma: py-win32
             # Use an existing socket, from a file descriptor.
             sock = socket.fromfd(config.fd, socket.AF_UNIX, socket.SOCK_STREAM)
+            # `fromfd` leaves `proto=0` (and reports AF_UNIX), so asyncio's
+            # own `_set_nodelay` skips the accepted sockets: enable
+            # TCP_NODELAY on the listener explicitly; accepted sockets
+            # inherit it. See https://github.com/Kludex/uvicorn/issues/3149.
+            _set_tcp_nodelay(sock)
             server = await loop.create_server(create_protocol, sock=sock, ssl=config.ssl, backlog=config.backlog)
             assert server.sockets is not None  # mypy
             listeners = server.sockets

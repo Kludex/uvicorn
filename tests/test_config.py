@@ -263,18 +263,11 @@ def test_http2_requires_zttp_protocol() -> None:
 def test_socket_bind() -> None:
     config = Config(app=asgi_app)
     config.load()
-    sock = config.bind_socket()
-    assert isinstance(sock, socket.socket)
-    sock.close()
-
-
-def test_socket_bind_uses_tcp_protocol() -> None:
-    # Accepted sockets inherit `proto` from the listener, and asyncio only
-    # enables TCP_NODELAY on accepted sockets whose proto is IPPROTO_TCP.
-    # See https://github.com/Kludex/uvicorn/issues/3149.
-    config = Config(app=asgi_app)
-    config.load()
     with closing(config.bind_socket()) as sock:
+        assert isinstance(sock, socket.socket)
+        # Accepted sockets inherit `proto` from the listener, and asyncio only
+        # enables TCP_NODELAY on accepted sockets whose proto is IPPROTO_TCP.
+        # See https://github.com/Kludex/uvicorn/issues/3149.
         assert sock.proto == socket.IPPROTO_TCP
 
 

@@ -6,6 +6,7 @@ import contextvars
 import json
 import logging
 import signal
+import socket
 import sys
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
@@ -120,6 +121,53 @@ async def test_shutdown_on_early_exit_during_startup(unused_tcp_port: int):
 
     assert startup_complete
     assert shutdown_complete, "lifespan.shutdown was not called despite startup completing"
+
+
+async def test_startup_enables_tcp_nodelay_on_fd_listener() -> None:
+    """Listeners wrapped from a file descriptor (--fd) keep proto=0, so
+    asyncio's own _set_nodelay skips them. Server.startup() must enable
+    TCP_NODELAY explicitly; accepted sockets inherit it from the listener.
+    See https://github.com/Kludex/uvicorn/issues/3149.
+    """
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(5)
+    try:
+        config = Config(app=app, fd=listener.fileno(), lifespan="off")
+        config.load()
+        server = Server(config=config)
+        server.lifespan = config.lifespan_class(config)  # normally set in _serve()
+        await server.startup()
+        try:
+            assert listener.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY) == 1
+        finally:
+            await server.shutdown()
+    finally:
+        listener.close()
+
+
+async def test_startup_enables_tcp_nodelay_on_passed_sockets() -> None:
+    """Sockets passed in by gunicorn keep proto=0, so asyncio's own
+    _set_nodelay skips them too. Same expectation as the --fd path.
+    See https://github.com/Kludex/uvicorn/issues/3149.
+    """
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(5)
+    try:
+        config = Config(app=app, lifespan="off")
+        config.load()
+        server = Server(config=config)
+        server.lifespan = config.lifespan_class(config)  # normally set in _serve()
+        await server.startup(sockets=[listener])
+        try:
+            assert listener.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY) == 1
+        finally:
+            await server.shutdown()
+    finally:
+        listener.close()
 
 
 def test_run_exits_with_startup_failure_on_unloadable_app() -> None:
