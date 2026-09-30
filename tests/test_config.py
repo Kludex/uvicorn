@@ -268,6 +268,16 @@ def test_socket_bind() -> None:
     sock.close()
 
 
+def test_socket_bind_uses_tcp_protocol() -> None:
+    # Accepted sockets inherit `proto` from the listener, and asyncio only
+    # enables TCP_NODELAY on accepted sockets whose proto is IPPROTO_TCP.
+    # See https://github.com/Kludex/uvicorn/issues/3149.
+    config = Config(app=asgi_app)
+    config.load()
+    with closing(config.bind_socket()) as sock:
+        assert sock.proto == socket.IPPROTO_TCP
+
+
 def test_ssl_config(
     tls_ca_certificate_pem_path: str,
     tls_ca_certificate_private_key_path: str,
