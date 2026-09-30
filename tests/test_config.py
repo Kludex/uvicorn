@@ -284,27 +284,39 @@ class _AcceptedSocketReport(asyncio.Protocol):
 
 @pytest.mark.anyio
 async def test_bind_socket_keeps_tcp_nodelay_on_accepted_sockets() -> None:
-    # Sockets pre-bound by Config.bind_socket() (used with `--workers N` or
-    # gunicorn) must report proto == IPPROTO_TCP so that asyncio enables
-    # TCP_NODELAY on accepted connections. See issue #3149.
+    # Sockets pre-bound by Config.bind_socket() (used with `--workers N`)
+    # must be created with proto == IPPROTO_TCP. On Linux, accepted
+    # connections inherit the listener's proto, which lets asyncio enable
+    # TCP_NODELAY on them; on Windows (proactor) and macOS the accepted
+    # sockets report proto 0, so asyncio leaves TCP_NODELAY unset there.
+    # See issue #3149.
     config = Config(app=asgi_app)
     config.load()
     sock = config.bind_socket()
-    port = sock.getsockname()[1]
-
-    report = _AcceptedSocketReport()
-    server = await asyncio.get_running_loop().create_server(lambda: report, sock=sock)
+    assert sock.proto == socket.IPPROTO_TCP
     try:
-        _, writer = await asyncio.open_connection("127.0.0.1", port)
-        await asyncio.wait_for(report.connected.wait(), timeout=5)
-        writer.close()
-        await writer.wait_closed()
+        port = sock.getsockname()[1]
+
+        report = _AcceptedSocketReport()
+        server = await asyncio.get_running_loop().create_server(lambda: report, sock=sock)
+        try:
+            _, writer = await asyncio.open_connection("127.0.0.1", port)
+            try:
+                await asyncio.wait_for(report.connected.wait(), timeout=5)
+            finally:
+                writer.close()
+                await writer.wait_closed()
+        finally:
+            server.close()
+            await server.wait_closed()
     finally:
-        server.close()
-        await server.wait_closed()
         sock.close()
 
-    assert report.accepted == [(socket.IPPROTO_TCP, 1)]
+    (proto, nodelay) = report.accepted[0]
+    if sys.platform == "linux":
+        assert (proto, nodelay) == (socket.IPPROTO_TCP, 1)
+    else:
+        assert (proto, nodelay) == (0, 0)
 
 
 def test_ssl_config(
