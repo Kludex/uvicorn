@@ -9,6 +9,7 @@ import signal
 import sys
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
+from typing import Any
 
 import httpx2
 import pytest
@@ -276,3 +277,64 @@ async def test_reset_contextvars_asyncio(
     ) as extract_json_body:
         assert await extract_json_body(large_request) == {}
         assert await extract_json_body(SIMPLE_GET_REQUEST) == {}
+
+
+@pytest.mark.parametrize("reset_contextvars", [False, True])
+@pytest.mark.parametrize(
+    "task_factory",
+    [
+        pytest.param(None, id="default"),
+        pytest.param(
+            getattr(asyncio, "eager_task_factory", None),
+            marks=pytest.mark.skipif(sys.version_info < (3, 12), reason="Requires eager task factory"),
+            id="eager",
+        ),
+    ],
+)
+async def test_pipelined_request_context(
+    http_protocol_cls: type[H11Protocol | HttpToolsProtocol],
+    unused_tcp_port: int,
+    reset_contextvars: bool,
+    task_factory: Callable[..., asyncio.Task[Any]] | None,
+):
+    """Pipelined requests start from the connection's context, or an empty one with reset_contextvars."""
+    outer: contextvars.ContextVar[str] = contextvars.ContextVar("outer")
+    request: contextvars.ContextVar[str | None] = contextvars.ContextVar("request", default=None)
+    outer_token = outer.set("outer-value")
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert scope["type"] == "http"
+        seen = {"request": request.get(), "outer": outer.get("MISSING")}
+        token = request.set(scope["path"])
+        try:
+            while True:
+                message = await receive()
+                assert message["type"] == "http.request"
+                if not message["more_body"]:
+                    break
+            body = json.dumps(seen).encode("utf-8")
+            headers = [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode("utf-8"))]
+            await send({"type": "http.response.start", "status": 200, "headers": headers})
+            await send({"type": "http.response.body", "body": body})
+        finally:
+            request.reset(token)
+
+    loop = asyncio.get_running_loop()
+    previous_task_factory = loop.get_task_factory()
+    try:
+        loop.set_task_factory(task_factory)
+        pipelined = b"".join(
+            f"GET /{path} HTTP/1.1\r\nHost: example.org\r\n\r\n".encode() for path in ("first", "second", "third")
+        )
+        async with _raw_server(
+            app=app, http_protocol_cls=http_protocol_cls, port=unused_tcp_port, reset_contextvars=reset_contextvars
+        ) as extract_json_body:
+            expected = {"request": None, "outer": "MISSING" if reset_contextvars else "outer-value"}
+            async with asyncio.timeout(5):
+                assert await extract_json_body(pipelined) == expected
+                # The second and third responses follow without another write.
+                assert await extract_json_body(b"") == expected
+                assert await extract_json_body(b"") == expected
+    finally:
+        loop.set_task_factory(previous_task_factory)
+        outer.reset(outer_token)
