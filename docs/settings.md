@@ -137,7 +137,8 @@ The [SSL context](https://docs.python.org/3/library/ssl.html#ssl.SSLContext) can
 * `--ssl-ca-certs <str>` - The CA certificates file.
 * `--ssl-ciphers <str>` - The ciphers to use. **Default:** OpenSSL's safe defaults.
 
-To understand more about the SSL context options, please refer to the [Python documentation](https://docs.python.org/3/library/ssl.html).
+See [TLS client certificates](concepts/tls.md) to configure mutual TLS and authorize clients from the verified certificate.
+For details about the SSL context options, see the [Python documentation](https://docs.python.org/3/library/ssl.html).
 
 For advanced TLS scenarios that the flags above don't cover (e.g., mutual TLS, certificate pinning, custom `SSLContext.options`), pass an `ssl_context_factory` to `uvicorn.run()` or `Config`. See [Running with HTTPS](deployment/index.md#customizing-the-ssl-context) for details.
 

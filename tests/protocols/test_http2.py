@@ -37,6 +37,7 @@ pytestmark = [pytest.mark.anyio, skip_if_no_zttp_h2]
 class MockSSLObject:
     def __init__(self, alpn_protocol: str | None):
         self._alpn_protocol = alpn_protocol
+        self.context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 
     def selected_alpn_protocol(self) -> str | None:
         return self._alpn_protocol
