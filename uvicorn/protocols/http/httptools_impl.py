@@ -298,8 +298,8 @@ class HttpToolsProtocol(asyncio.Protocol):
     def _start_asgi_task(self, cycle: RequestResponseCycle, app: ASGI3Application) -> None:
         if self.config.reset_contextvars:
             # Opt-in workaround for https://github.com/python/cpython/issues/140947:
-            # asyncio can leak context vars between tasks. Hides context set in the
-            # lifespan or by external instrumentation.
+            # asyncio can leak context vars between tasks. Hides context set outside the
+            # request, such as by external instrumentation.
             task = self.loop.create_task(cycle.run_asgi(app), context=contextvars.Context())
         else:
             task = self.loop.create_task(cycle.run_asgi(app))
