@@ -1250,3 +1250,42 @@ async def test_header_upgrade_is_websocket_depend_not_installed(
     assert msg in caplog.text
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
     assert b"Hello, world" in protocol.transport.buffer
+
+
+@pytest.mark.parametrize(
+    "request_bytes",
+    [
+        pytest.param(b"GET / HTTP/1.1\r\n\r\n", id="no_host"),
+        pytest.param(b"GET / HTTP/1.1\r\nHost: a.example\r\nHost: b.example\r\n\r\n", id="two_hosts"),
+    ],
+)
+async def test_host_header_is_required_on_http_1_1(http_protocol_cls: type[HTTPProtocol], request_bytes: bytes):
+    """RFC 9112, section 3.2: an HTTP/1.1 request must carry exactly one Host header."""
+    app = Response("Hello, world", media_type="text/plain")
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(request_bytes)
+
+    assert b"HTTP/1.1 400 Bad Request" in protocol.transport.buffer
+    assert b"Hello, world" not in protocol.transport.buffer
+
+
+@pytest.mark.parametrize(
+    "request_bytes",
+    [
+        pytest.param(b"GET / HTTP/1.1\r\nHost: a.example\r\n\r\n", id="one_host"),
+        pytest.param(b"GET / HTTP/1.0\r\n\r\n", id="http_1_0_without_host"),
+    ],
+)
+async def test_host_header_requirement_does_not_reject_valid_requests(
+    http_protocol_cls: type[HTTPProtocol], request_bytes: bytes
+):
+    """A single Host is fine, and HTTP/1.0 does not require one at all."""
+    app = Response("Hello, world", media_type="text/plain")
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(request_bytes)
+    await protocol.loop.run_one()
+
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b"Hello, world" in protocol.transport.buffer
