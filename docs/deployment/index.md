@@ -213,6 +213,8 @@ to generate a valid certificate and private key.
 $ uvicorn main:app --port 5000 --ssl-keyfile=./key.pem --ssl-certfile=./cert.pem
 ```
 
+To require and authorize client certificates, see [TLS client certificates](../concepts/tls.md).
+
 ### Running gunicorn worker
 
 It's also possible to use certificates with uvicorn's worker for gunicorn.
