@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import socket as socket_module
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, contextmanager
@@ -10,6 +11,22 @@ from pathlib import Path
 from socket import socket
 
 from uvicorn import Config, Server
+
+
+def has_ipv6(host: str) -> bool:
+    """Whether the current environment can bind an IPv6 socket to *host*."""
+    sock = None
+    result = False
+    if socket_module.has_ipv6:
+        try:
+            sock = socket_module.socket(socket_module.AF_INET6)
+            sock.bind((host, 0))
+            result = True
+        except OSError:  # pragma: no cover
+            pass
+    if sock:
+        sock.close()
+    return result
 
 
 @asynccontextmanager
