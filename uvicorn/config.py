@@ -8,6 +8,7 @@ import logging.config
 import os
 import socket
 import ssl
+import stat
 import sys
 from collections.abc import Awaitable, Callable
 from configparser import RawConfigParser
@@ -253,6 +254,7 @@ class Config:
         self.host = host
         self.port = port
         self.uds = uds
+        self._uds_socket_owner: tuple[int, int] | None = None
         self.fd = fd
         self.loop = loop
         self.http = http
@@ -565,6 +567,35 @@ class Config:
             return None
         return loop_factory(use_subprocess=self.use_subprocess)
 
+    def _record_uds_socket(self) -> None:  # pragma: py-win32
+        self._uds_socket_owner = None
+        assert self.uds is not None
+
+        try:
+            uds_stat = os.lstat(self.uds)
+        except OSError:  # pragma: full coverage
+            return
+
+        if stat.S_ISSOCK(uds_stat.st_mode):
+            self._uds_socket_owner = (uds_stat.st_dev, uds_stat.st_ino)
+
+    def _cleanup_uds_socket(self) -> None:  # pragma: py-win32
+        owner = self._uds_socket_owner
+        self._uds_socket_owner = None
+        if self.uds is None or owner is None:
+            return
+
+        try:
+            uds_stat = os.lstat(self.uds)
+        except OSError:  # pragma: full coverage
+            return
+
+        if stat.S_ISSOCK(uds_stat.st_mode) and (uds_stat.st_dev, uds_stat.st_ino) == owner:
+            try:
+                os.remove(self.uds)
+            except FileNotFoundError:  # pragma: full coverage
+                pass
+
     def bind_socket(self) -> socket.socket:
         logger_args: list[str | int]
         if self.uds is not None:  # pragma: py-win32
@@ -572,9 +603,11 @@ class Config:
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             try:
                 sock.bind(path)
+                self._record_uds_socket()
                 uds_perms = 0o666
                 os.chmod(self.uds, uds_perms)
             except OSError as exc:  # pragma: full coverage
+                sock.close()
                 logger.error(exc)
                 sys.exit(STARTUP_FAILURE)
 

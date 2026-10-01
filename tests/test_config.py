@@ -553,6 +553,24 @@ def test_bind_unix_socket_works_with_reload_or_workers(
     sock.close()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
+def test_cleanup_uds_preserves_replacement(short_socket_name: str) -> None:  # pragma: py-win32
+    config = Config(app=asgi_app, uds=short_socket_name)
+    config.load()
+
+    with closing(config.bind_socket()):
+        os.remove(short_socket_name)
+        with closing(socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)) as replacement:
+            replacement.bind(short_socket_name)
+            replacement.listen()
+
+            config._cleanup_uds_socket()
+
+            assert Path(short_socket_name).exists()
+            with closing(socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)) as client:
+                client.connect(short_socket_name)
+
+
 @pytest.mark.parametrize(
     "reload, workers",
     [
