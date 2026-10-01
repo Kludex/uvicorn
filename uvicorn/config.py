@@ -599,6 +599,22 @@ class Config:
 
             sock = socket.socket(family=family)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if family == socket.AF_INET6 and hasattr(socket, "IPPROTO_IPV6") and hasattr(socket, "IPV6_V6ONLY"):
+                # Match asyncio's loop.create_server(), which always binds IPv6
+                # sockets as IPv6-only. Without this, an IPv6 bind here (used
+                # when running with multiple workers) silently inherits the
+                # platform's dual-stack default instead, giving --host '::'
+                # different IPv4 reachability depending on the worker count.
+                #
+                # The option constants can exist without the platform actually
+                # supporting them (see socket.has_dualstack_ipv6()), so this
+                # must not prevent bind() from running its own error handling.
+                try:
+                    sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, True)
+                except OSError:  # pragma: full coverage
+                    logger.warning(
+                        "Unable to set IPV6_V6ONLY on the IPv6 socket; IPv4 connections may be accepted alongside IPv6"
+                    )
             try:
                 sock.bind((self.host, self.port))
             except OSError as exc:  # pragma: full coverage
