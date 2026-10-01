@@ -34,7 +34,7 @@ class LifespanOn:
             config.load()
 
         self.config = config
-        self.logger = logging.getLogger("uvicorn.error")
+        self.logger = logging.getLogger("uvicorn.server")
         self.startup_event = asyncio.Event()
         self.shutdown_event = asyncio.Event()
         self.receive_queue: Queue[LifespanReceiveMessage] = asyncio.Queue()
