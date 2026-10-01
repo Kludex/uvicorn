@@ -173,6 +173,7 @@ def test_reload_includes_exclude_dir_patterns_are_matched(
         second_app_dir = reload_directory_structure / "app_second" / "src"
 
         with as_cwd(reload_directory_structure):
+            caplog.clear()
             config = Config(
                 app="tests.test_config:asgi_app",
                 reload=True,
@@ -260,11 +261,41 @@ def test_http2_requires_zttp_protocol() -> None:
         config.load()
 
 
-def test_socket_bind() -> None:
-    config = Config(app=asgi_app)
+def _has_ipv6(host: str = "::1") -> bool:
+    sock = None
+    has_ipv6 = False
+    if socket.has_ipv6:
+        try:
+            sock = socket.socket(socket.AF_INET6)
+            sock.bind((host, 0))
+            has_ipv6 = True
+        except Exception:  # pragma: no cover
+            pass
+    if sock:
+        sock.close()
+    return has_ipv6
+
+
+@pytest.mark.parametrize(
+    "host, family",
+    [
+        pytest.param("127.0.0.1", socket.AF_INET, id="ipv4"),
+        pytest.param(
+            "::1",
+            socket.AF_INET6,
+            id="ipv6",
+            marks=pytest.mark.skipif(not _has_ipv6("::1"), reason="IPV6 not enabled"),
+        ),
+    ],
+)
+def test_socket_bind(host: str, family: int) -> None:
+    config = Config(app=asgi_app, host=host, port=0)
     config.load()
     sock = config.bind_socket()
     assert isinstance(sock, socket.socket)
+    assert sock.family == family
+    assert sock.type == socket.SOCK_STREAM
+    assert sock.proto == socket.IPPROTO_TCP
     sock.close()
 
 
