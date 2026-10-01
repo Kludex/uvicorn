@@ -172,6 +172,34 @@ def test_multiprocess_sighup(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.skipif(os.name == "nt", reason="test spawns real worker processes")
+def test_process_join_repeats_a_lost_sigterm(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A worker that hasn't called exec() yet swallows a SIGTERM, so `join()` sends it again."""
+    kill = os.kill
+    lost: list[int] = []
+
+    def lose_first_sigterm(pid: int, sig: int) -> None:
+        if sig == signal.SIGTERM and not lost:
+            lost.append(pid)
+        else:
+            kill(pid, sig)
+
+    process = Process(Config(app=app), sockets=[])
+    process.start()
+    try:
+        monkeypatch.setattr(os, "kill", lose_first_sigterm)
+        process.terminate()
+        joined = threading.Thread(target=process.join, daemon=True)
+        joined.start()
+        joined.join(10)
+
+        assert lost == [process.pid]
+        assert not joined.is_alive()
+    finally:
+        if process.process.is_alive():  # pragma: no cover
+            process.process.kill()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="test spawns real worker processes")
 def test_multiprocess_restart_aborts_when_replacement_not_ready(monkeypatch: pytest.MonkeyPatch) -> None:
     """If a replacement never becomes ready, the existing worker is kept and the restart is aborted."""
     config = Config(app=app, workers=2, timeout_worker_healthcheck=1)
@@ -214,12 +242,15 @@ def test_multiprocess_sigttin() -> None:
     """
     config = Config(app=app, workers=2)
     supervisor = Multiprocess(config, sockets=[])
-    threading.Thread(target=supervisor.run, daemon=True).start()
-    supervisor.signal_queue.append(signal.SIGTTIN)
-    time.sleep(1)
-    assert len(supervisor.processes) == 3
-    supervisor.signal_queue.append(signal.SIGINT)
-    supervisor.join_all()
+    try:
+        supervisor.init_processes()
+        supervisor.signal_queue.append(signal.SIGTTIN)
+        supervisor.handle_signals()
+
+        assert len(supervisor.processes) == 3
+    finally:
+        supervisor.terminate_all()
+        supervisor.join_all()
 
 
 @pytest.mark.skipif(not hasattr(signal, "SIGTTOU"), reason="platform unsupports SIGTTOU")
@@ -229,12 +260,15 @@ def test_multiprocess_sigttou() -> None:
     """
     config = Config(app=app, workers=2)
     supervisor = Multiprocess(config, sockets=[])
-    threading.Thread(target=supervisor.run, daemon=True).start()
-    supervisor.signal_queue.append(signal.SIGTTOU)
-    time.sleep(1)
-    assert len(supervisor.processes) == 1
-    supervisor.signal_queue.append(signal.SIGTTOU)
-    time.sleep(1)
-    assert len(supervisor.processes) == 1
-    supervisor.signal_queue.append(signal.SIGINT)
-    supervisor.join_all()
+    try:
+        supervisor.init_processes()
+        supervisor.signal_queue.append(signal.SIGTTOU)
+        supervisor.handle_signals()
+        assert len(supervisor.processes) == 1
+
+        supervisor.signal_queue.append(signal.SIGTTOU)
+        supervisor.handle_signals()
+        assert len(supervisor.processes) == 1
+    finally:
+        supervisor.terminate_all()
+        supervisor.join_all()
