@@ -75,6 +75,7 @@ Using Uvicorn with watchfiles will enable the following options (which are other
 ## Production
 
 * `--workers <int>` - Number of worker processes. Defaults to the `$WEB_CONCURRENCY` environment variable if available, or 1. Not valid with `--reload`.
+* `--preload` - Load the application in the parent process and fork workers from it, so they share the loaded app copy-on-write. Reduces memory use and startup time. POSIX only (ignored on Windows). Note that import-time resources (e.g. database connections) are shared across workers, and `SIGHUP` reloads will not pick up new code. **Default:** *False*.
 * `--env-file <path>` - Environment configuration file for the ASGI application. **Default:** *None*.
 * `--timeout-worker-healthcheck <int>` - Maximum number of seconds to wait for a worker to respond to a healthcheck. **Default:** *5*.
 
