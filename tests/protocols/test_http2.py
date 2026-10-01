@@ -148,6 +148,7 @@ class MockProtocol(asyncio.Protocol):
     conn: Any
     flow: Any
     cycles: dict[int, Any]
+    server_state: ServerState
     timeout_keep_alive_task: Any
 
     def shutdown(self) -> None: ...
@@ -241,6 +242,7 @@ async def test_get_request():
     assert (b"content-type", b"text/plain; charset=utf-8") in headers
     assert body == b"Hello, world"
     assert ended
+    assert protocol.server_state.total_requests == 1
 
 
 @pytest.mark.parametrize("te", [None, b"trailers"])
@@ -518,6 +520,7 @@ async def test_partial_response_resets_stream():
     assert not protocol.transport.is_closing()
     events = client.events(protocol.transport.buffer)
     assert any(isinstance(event, zttp.RstStream) for event in events)
+    assert protocol.server_state.total_requests == 0
 
 
 async def test_partial_response_after_transport_close_is_dropped():
