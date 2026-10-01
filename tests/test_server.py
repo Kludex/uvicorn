@@ -6,6 +6,7 @@ import contextvars
 import json
 import logging
 import signal
+import socket
 import sys
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
@@ -148,6 +149,18 @@ async def test_request_than_limit_max_requests_warn_log(
             responses = await asyncio.gather(*tasks)
             assert len(responses) == 2
     assert "Maximum request limit of 1 exceeded. Terminating process." in caplog.text
+
+
+@pytest.mark.skipif(not socket.has_dualstack_ipv6(), reason="Platform does not support dual-stack IPv6 sockets")
+async def test_dual_stack_server_accepts_ipv4_on_ipv6_socket(unused_tcp_port: int):
+    config = Config(app=app, host="::", port=unused_tcp_port, loop="asyncio", dual_stack=True)
+    async with run_server(config):
+        async with httpx.AsyncClient() as client:
+            ipv4_response = await client.get(f"http://127.0.0.1:{unused_tcp_port}")
+            ipv6_response = await client.get(f"http://[::1]:{unused_tcp_port}")
+
+    assert ipv4_response.status_code == 200
+    assert ipv6_response.status_code == 200
 
 
 async def test_limit_max_requests_jitter(
