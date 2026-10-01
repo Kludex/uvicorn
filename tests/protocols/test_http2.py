@@ -26,7 +26,7 @@ try:
     from uvicorn.protocols.http.zttp_impl import ZttpProtocol
 
     skip_if_no_zttp_h2 = pytest.mark.skipif(
-        not hasattr(zttp, "HTTP2"), reason="zttp with HTTP/2 support is not installed"
+        not hasattr(zttp, "HTTP2") or not hasattr(zttp.Request, "protocol"), reason="zttp >= 0.0.32 is required"
     )
 except ModuleNotFoundError:  # pragma: no cover
     skip_if_no_zttp_h2 = pytest.mark.skipif(True, reason="zttp is not installed")

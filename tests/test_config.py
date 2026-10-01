@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import socket
+import subprocess
 import sys
 from collections.abc import Callable, Iterator
 from contextlib import closing
@@ -258,6 +259,38 @@ def test_http2_requires_zttp_protocol() -> None:
     config = Config(app=asgi_app, http="h11", http2=True)
     with pytest.raises(ValueError, match="HTTP/2 requires the `zttp` HTTP protocol"):
         config.load()
+
+
+@pytest.mark.parametrize("http2", [False, True])
+def test_http2_requires_extended_connect_api(http2: bool, monkeypatch: pytest.MonkeyPatch) -> None:
+    zttp = pytest.importorskip("zttp")
+    monkeypatch.setattr(zttp, "Request", object)
+    config = Config(app=asgi_app, http="zttp", http2=http2)
+    if http2:
+        with pytest.raises(ImportError, match=r"HTTP/2 requires zttp>=0\.0\.32"):
+            config.load()
+        assert not config.loaded
+    else:
+        config.load()
+        assert config.loaded
+
+
+def test_http2_without_wsproto() -> None:
+    pytest.importorskip("zttp")
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; sys.modules['wsproto'] = None; "
+            "from uvicorn import Config; "
+            "config = Config('tests.test_config:asgi_app', http='zttp', http2=True); "
+            "config.load(); assert config.loaded",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_socket_bind() -> None:
