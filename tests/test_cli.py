@@ -2,6 +2,7 @@ import contextlib
 import importlib
 import os
 import platform
+import re
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -12,13 +13,13 @@ import pytest
 from click.testing import CliRunner
 
 import uvicorn
+from uvicorn.cli import main as cli
 from uvicorn.config import STARTUP_FAILURE, Config
-from uvicorn.main import main as cli
 from uvicorn.server import Server
 from uvicorn.supervisors import ChangeReload, Multiprocess
 
 HEADERS = "Content-Security-Policy:default-src 'self'; script-src https://example.com"
-main = importlib.import_module("uvicorn.main")
+cli_module = importlib.import_module("uvicorn.cli")
 
 
 @contextlib.contextmanager
@@ -50,10 +51,28 @@ def test_cli_print_version() -> None:
     ) in result.output
 
 
+def test_main_invokes_cli(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.deprecated_call(
+        match=re.escape("uvicorn.main() is deprecated, use uvicorn.run() or uvicorn.cli.main() instead.")
+    ):
+        assert uvicorn.main(["--version"], standalone_mode=False) == 0
+
+    assert f"Running uvicorn {uvicorn.__version__}" in capsys.readouterr().out
+
+
+def test_main_command_invokes_cli(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.deprecated_call(
+        match=re.escape("uvicorn.main() is deprecated, use uvicorn.run() or uvicorn.cli.main() instead.")
+    ):
+        assert uvicorn.main.main(["--version"], standalone_mode=False) == 0
+
+    assert f"Running uvicorn {uvicorn.__version__}" in capsys.readouterr().out
+
+
 def test_cli_headers() -> None:
     runner = CliRunner()
 
-    with mock.patch.object(main, "run") as mock_run:
+    with mock.patch.object(cli_module, "run") as mock_run:
         result = runner.invoke(cli, ["tests.test_cli:App", "--header", HEADERS])
 
     assert result.output == ""
@@ -139,7 +158,7 @@ def test_cli_incomplete_app_parameter() -> None:
 def test_cli_event_size() -> None:
     runner = CliRunner()
 
-    with mock.patch.object(main, "run") as mock_run:
+    with mock.patch.object(cli_module, "run") as mock_run:
         result = runner.invoke(
             cli,
             ["tests.test_cli:App", "--h11-max-incomplete-event-size", str(32 * 1024)],
@@ -154,7 +173,7 @@ def test_cli_event_size() -> None:
 def test_cli_http2() -> None:
     runner = CliRunner()
 
-    with mock.patch.object(main, "run") as mock_run:
+    with mock.patch.object(cli_module, "run") as mock_run:
         result = runner.invoke(cli, ["tests.test_cli:App", "--http", "zttp", "--http2"])
 
     assert result.output == ""
@@ -168,7 +187,7 @@ def test_cli_http2() -> None:
 def test_env_variables(http_protocol: str):
     with load_env_var("UVICORN_HTTP", http_protocol):
         runner = CliRunner(env=os.environ)
-        with mock.patch.object(main, "run") as mock_run:
+        with mock.patch.object(cli_module, "run") as mock_run:
             runner.invoke(cli, ["tests.test_cli:App"])
             _, kwargs = mock_run.call_args
             assert kwargs["http"] == http_protocol
@@ -177,7 +196,7 @@ def test_env_variables(http_protocol: str):
 def test_ignore_environment_variable_when_set_on_cli():
     with load_env_var("UVICORN_HTTP", "h11"):
         runner = CliRunner(env=os.environ)
-        with mock.patch.object(main, "run") as mock_run:
+        with mock.patch.object(cli_module, "run") as mock_run:
             runner.invoke(cli, ["tests.test_cli:App", "--http=httptools"])
             _, kwargs = mock_run.call_args
             assert kwargs["http"] == "httptools"
@@ -209,7 +228,7 @@ def test_set_app_via_environment_variable():
     app_path = "tests.test_cli:App"
     with load_env_var("UVICORN_APP", app_path):
         runner = CliRunner(env=os.environ)
-        with mock.patch.object(main, "run") as mock_run:
+        with mock.patch.object(cli_module, "run") as mock_run:
             result = runner.invoke(cli)
             args, _ = mock_run.call_args
             assert result.exit_code == 0
