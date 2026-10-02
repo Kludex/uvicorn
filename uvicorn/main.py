@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import platform
 import ssl
+import stat
 import sys
 import warnings
 from collections.abc import Callable
@@ -633,8 +635,15 @@ def run(
     except KeyboardInterrupt:  # pragma: full coverage
         pass
     finally:
-        if config.uds and os.path.exists(config.uds):
-            os.remove(config.uds)  # pragma: py-win32
+        if config.uds is not None and config._uds_socket_stat is not None:  # pragma: py-win32
+            try:
+                uds_stat = os.lstat(config.uds)
+            except OSError:
+                pass
+            else:
+                if stat.S_ISSOCK(uds_stat.st_mode) and os.path.samestat(config._uds_socket_stat, uds_stat):
+                    with contextlib.suppress(FileNotFoundError):
+                        os.remove(config.uds)
 
     if not server.started and not config.should_reload and config.workers == 1:
         sys.exit(STARTUP_FAILURE)

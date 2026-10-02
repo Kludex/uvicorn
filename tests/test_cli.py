@@ -1,7 +1,9 @@
 import contextlib
 import importlib
+import importlib.util
 import os
 import platform
+import socket
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -16,7 +18,10 @@ from uvicorn.config import STARTUP_FAILURE, Config
 from uvicorn.main import main as cli
 from uvicorn.server import Server
 from uvicorn.supervisors import ChangeReload, Multiprocess
+from uvicorn.supervisors.basereload import BaseReload
 
+UDS_REQUIRED = pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
+UVLOOP_REQUIRED = pytest.mark.skipif(importlib.util.find_spec("uvloop") is None, reason="uvloop not installed")
 HEADERS = "Content-Security-Policy:default-src 'self'; script-src https://example.com"
 main = importlib.import_module("uvicorn.main")
 
@@ -101,28 +106,171 @@ def test_cli_call_multiprocess_run() -> None:
     mock_run.assert_called_once()
 
 
-@pytest.fixture(params=(True, False))
-def uds_file(tmp_path: Path, request: pytest.FixtureRequest) -> Path:  # pragma: py-win32
-    file = tmp_path / "uvicorn.sock"
-    should_create_file = request.param
-    if should_create_file:
-        file.touch(exist_ok=True)
-    return file
+@UDS_REQUIRED
+@pytest.mark.parametrize("mode", ["asyncio", pytest.param("uvloop", marks=UVLOOP_REQUIRED), "workers", "reload"])
+@pytest.mark.parametrize("replacement", ["none", "socket", "file", "symlink", "missing"])
+def test_cli_uds_cleanup(
+    short_socket_name: str, monkeypatch: pytest.MonkeyPatch, mode: str, replacement: str
+) -> None:  # pragma: py-win32
+    path = Path(short_socket_name)
+    original = path.with_suffix(".old")
+
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as other:
+
+        def replace_path() -> None:
+            assert path.is_socket()
+            if replacement == "none":
+                return
+            path.rename(original)
+            if replacement == "socket":
+                other.bind(short_socket_name)
+                other.listen()
+            elif replacement == "file":
+                path.write_text("sentinel")
+            elif replacement == "symlink":
+                target = path.with_suffix(".txt")
+                target.write_text("sentinel")
+                path.symlink_to(target)
+
+        chmod = os.chmod
+
+        def chmod_and_replace(path: str, permissions: int) -> None:
+            chmod(path, permissions)
+            replace_path()
+
+        def supervise(supervisor: Multiprocess | BaseReload) -> None:
+            try:
+                replace_path()
+            finally:
+                for sock in supervisor.sockets:
+                    sock.close()
+
+        if mode in ("workers", "reload"):
+            monkeypatch.setattr(Multiprocess if mode == "workers" else ChangeReload, "run", supervise)
+            uvicorn.run(
+                "tests.test_main:app",
+                uds=short_socket_name,
+                workers=2 if mode == "workers" else 1,
+                reload=mode == "reload",
+                log_level="critical",
+            )
+        else:
+            monkeypatch.setattr(os, "chmod", chmod_and_replace)
+            uvicorn.run(
+                "tests.test_main:app",
+                uds=short_socket_name,
+                loop=mode,
+                lifespan="off",
+                limit_max_requests=0,
+                log_level="critical",
+            )
+
+        if replacement in ("none", "missing"):
+            assert not path.exists()
+        elif replacement == "file":
+            assert path.read_text() == "sentinel"
+        elif replacement == "symlink":
+            assert path.is_symlink()
+        else:
+            assert path.is_socket()
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                client.connect(short_socket_name)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
-def test_cli_uds(uds_file: Path) -> None:  # pragma: py-win32
-    runner = CliRunner()
+@UDS_REQUIRED
+@pytest.mark.parametrize(
+    "options", [[], pytest.param(["--loop=uvloop"], marks=UVLOOP_REQUIRED), ["--workers=2"], ["--reload"]]
+)
+def test_cli_uds_bind_failure_preserves_file(short_socket_name: str, options: list[str]) -> None:  # pragma: py-win32
+    path = Path(short_socket_name)
+    path.write_text("sentinel")
 
-    with mock.patch.object(Config, "bind_socket") as mock_bind_socket:
-        with mock.patch.object(Multiprocess, "run") as mock_run:
-            result = runner.invoke(cli, ["tests.test_cli:App", "--workers=2", "--uds", str(uds_file)])
+    result = CliRunner().invoke(cli, ["tests.test_main:app", "--uds", short_socket_name, "--lifespan=off", *options])
+
+    assert result.exit_code != 0
+    assert path.read_text() == "sentinel"
+
+
+@UDS_REQUIRED
+@pytest.mark.parametrize("options", [["--workers=2"], ["--reload"]])
+def test_cli_uds_bind_failure_preserves_socket(short_socket_name: str, options: list[str]) -> None:  # pragma: py-win32
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as owner:
+        owner.bind(short_socket_name)
+        owner.listen()
+
+        result = CliRunner().invoke(cli, ["tests.test_main:app", "--uds", short_socket_name, *options])
+
+        assert result.exit_code == STARTUP_FAILURE
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.connect(short_socket_name)
+
+
+@UDS_REQUIRED
+@pytest.mark.parametrize(
+    "options", [[], pytest.param(["--loop=uvloop"], marks=UVLOOP_REQUIRED), ["--workers=2"], ["--reload"]]
+)
+def test_cli_uds_permission_failure_cleans_up(
+    short_socket_name: str, monkeypatch: pytest.MonkeyPatch, options: list[str]
+) -> None:  # pragma: py-win32
+    def fail_chmod(path: str, mode: int) -> None:
+        raise PermissionError("chmod failed")
+
+    monkeypatch.setattr(os, "chmod", fail_chmod)
+
+    result = CliRunner().invoke(cli, ["tests.test_main:app", "--uds", short_socket_name, "--lifespan=off", *options])
+
+    assert result.exit_code != 0
+    assert not Path(short_socket_name).exists()
+
+
+@UDS_REQUIRED
+def test_cli_uds_disappears_during_cleanup(
+    short_socket_name: str, monkeypatch: pytest.MonkeyPatch
+) -> None:  # pragma: py-win32
+    remove = os.remove
+
+    def remove_twice(path: str) -> None:
+        remove(path)
+        remove(path)
+
+    def supervise(supervisor: Multiprocess) -> None:
+        for sock in supervisor.sockets:
+            sock.close()
+        monkeypatch.setattr(os, "remove", remove_twice)
+
+    monkeypatch.setattr(Multiprocess, "run", supervise)
+
+    result = CliRunner().invoke(cli, ["tests.test_main:app", "--uds", short_socket_name, "--workers=2"])
 
     assert result.exit_code == 0
-    assert result.output == ""
-    mock_bind_socket.assert_called_once()
-    mock_run.assert_called_once()
-    assert not uds_file.exists()
+    assert not Path(short_socket_name).exists()
+
+
+@UDS_REQUIRED
+@pytest.mark.parametrize("error", [PermissionError, NotADirectoryError])
+@pytest.mark.parametrize("startup_failure", [False, True])
+def test_cli_uds_cleanup_lookup_error_preserves_result(
+    short_socket_name: str, monkeypatch: pytest.MonkeyPatch, error: type[OSError], startup_failure: bool
+) -> None:  # pragma: py-win32
+    def fail_lstat(path: str) -> os.stat_result:
+        raise error("cannot inspect socket")
+
+    def supervise(supervisor: Multiprocess) -> None:
+        for sock in supervisor.sockets:
+            sock.close()
+        cleanup.setattr(os, "lstat", fail_lstat)
+        if startup_failure:
+            raise RuntimeError("supervisor failed")
+
+    with monkeypatch.context() as cleanup:
+        cleanup.setattr(Multiprocess, "run", supervise)
+        result = CliRunner().invoke(cli, ["tests.test_main:app", "--uds", short_socket_name, "--workers=2"])
+
+    assert result.exit_code == int(startup_failure)
+    if startup_failure:
+        assert isinstance(result.exception, RuntimeError)
+        assert str(result.exception) == "supervisor failed"
+    assert Path(short_socket_name).is_socket()
 
 
 def test_cli_incomplete_app_parameter() -> None:
