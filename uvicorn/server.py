@@ -175,7 +175,7 @@ class Server:
                 config._uds_socket_stat = os.lstat(config.uds)
                 os.chmod(config.uds, uds_perms)
                 await server.start_serving()
-            except OSError:
+            except (OSError, asyncio.CancelledError):
                 server.close()
                 await server.wait_closed()
                 raise
