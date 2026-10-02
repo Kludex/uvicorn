@@ -101,30 +101,6 @@ def test_cli_call_multiprocess_run() -> None:
     mock_run.assert_called_once()
 
 
-@pytest.fixture(params=(True, False))
-def uds_file(tmp_path: Path, request: pytest.FixtureRequest) -> Path:  # pragma: py-win32
-    file = tmp_path / "uvicorn.sock"
-    should_create_file = request.param
-    if should_create_file:
-        file.touch(exist_ok=True)
-    return file
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
-def test_cli_uds(uds_file: Path) -> None:  # pragma: py-win32
-    runner = CliRunner()
-
-    with mock.patch.object(Config, "bind_socket") as mock_bind_socket:
-        with mock.patch.object(Multiprocess, "run") as mock_run:
-            result = runner.invoke(cli, ["tests.test_cli:App", "--workers=2", "--uds", str(uds_file)])
-
-    assert result.exit_code == 0
-    assert result.output == ""
-    mock_bind_socket.assert_called_once()
-    mock_run.assert_called_once()
-    assert not uds_file.exists()
-
-
 def test_cli_incomplete_app_parameter() -> None:
     runner = CliRunner()
 

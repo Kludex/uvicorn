@@ -169,9 +169,16 @@ class Server:
             if os.path.exists(config.uds):
                 uds_perms = os.stat(config.uds).st_mode  # pragma: full coverage
             server = await loop.create_unix_server(
-                create_protocol, path=config.uds, ssl=config.ssl, backlog=config.backlog
+                create_protocol, path=config.uds, ssl=config.ssl, backlog=config.backlog, start_serving=False
             )
-            os.chmod(config.uds, uds_perms)
+            try:
+                config._uds_socket_stat = os.lstat(config.uds)
+                os.chmod(config.uds, uds_perms)
+                await server.start_serving()
+            except OSError:
+                server.close()
+                await server.wait_closed()
+                raise
             assert server.sockets is not None  # mypy
             listeners = server.sockets
             self.servers = [server]
