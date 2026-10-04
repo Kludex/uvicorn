@@ -109,6 +109,17 @@ def test_reload_subdir_removal(reload_directory_structure: Path) -> None:
         assert config.reload_dirs == [reload_directory_structure]
 
 
+def test_reload_nested_subdirs_removal(tmp_path: Path) -> None:
+    root = tmp_path.resolve()
+    nested = [root / "a" / "x" / "y", root / "a" / "x", root / "a", root / "b" / "z", root / "c" / "d" / "e"]
+    for directory in nested:
+        directory.mkdir(parents=True, exist_ok=True)
+
+    with as_cwd(root):
+        config = Config(app="tests.test_config:asgi_app", reload=True, reload_dirs=[str(d) for d in nested])
+        assert frozenset(config.reload_dirs) == frozenset([root / "a", root / "b" / "z", root / "c" / "d" / "e"])
+
+
 def test_reload_included_dir_is_added_to_reload_dirs(
     reload_directory_structure: Path,
 ) -> None:
