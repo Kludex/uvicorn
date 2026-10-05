@@ -268,6 +268,22 @@ def test_socket_bind() -> None:
     sock.close()
 
 
+@pytest.mark.parametrize("host", ["127.0.0.1", "::1"])
+def test_bind_socket_uses_tcp_protocol(host: str) -> None:
+    """Pre-bound sockets must report IPPROTO_TCP so accepted sockets do too.
+
+    asyncio enables TCP_NODELAY only when the accepted socket's proto is
+    IPPROTO_TCP. Linux copies the listener proto onto the accepted socket, so a
+    default of 0 leaves Nagle on for ``--workers`` and gunicorn. See #3149.
+    """
+    config = Config(app=asgi_app, host=host, port=0)
+    config.load()
+    with closing(config.bind_socket()) as sock:
+        assert sock.family in (socket.AF_INET, socket.AF_INET6)
+        assert sock.type == socket.SOCK_STREAM
+        assert sock.proto == socket.IPPROTO_TCP
+
+
 def test_ssl_config(
     tls_ca_certificate_pem_path: str,
     tls_ca_certificate_private_key_path: str,

@@ -597,7 +597,10 @@ class Config:
                 family = socket.AF_INET6
                 addr_format = "%s://[%s]:%d"
 
-            sock = socket.socket(family=family)
+            # proto defaults to 0. On Linux, accepted sockets inherit it, and
+            # asyncio only sets TCP_NODELAY when proto is IPPROTO_TCP. That
+            # leaves Nagle enabled for --workers and any other pre-bound socket.
+            sock = socket.socket(family=family, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 sock.bind((self.host, self.port))
