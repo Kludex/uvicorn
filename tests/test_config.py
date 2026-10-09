@@ -260,12 +260,21 @@ def test_http2_requires_zttp_protocol() -> None:
         config.load()
 
 
-def test_socket_bind() -> None:
-    config = Config(app=asgi_app)
+def test_socket_bind(unused_tcp_port: int) -> None:
+    config = Config(app=asgi_app, port=unused_tcp_port)
     config.load()
-    sock = config.bind_socket()
-    assert isinstance(sock, socket.socket)
-    sock.close()
+    with closing(config.bind_socket()) as sock:
+        assert isinstance(sock, socket.socket)
+        assert sock.proto == socket.IPPROTO_TCP
+
+
+def test_socket_bind_ipv6(unused_tcp_port: int) -> None:
+    config = Config(app=asgi_app, host="::1", port=unused_tcp_port)
+    config.load()
+    with closing(config.bind_socket()) as sock:
+        assert isinstance(sock, socket.socket)
+        assert sock.family == socket.AF_INET6
+        assert sock.proto == socket.IPPROTO_TCP
 
 
 def test_ssl_config(
