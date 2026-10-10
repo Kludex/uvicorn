@@ -346,7 +346,17 @@ async def test_invalid_header_name(http_protocol_cls: type[HTTPProtocol], name: 
     assert protocol.transport.is_closing()
 
 
-@pytest.mark.parametrize("path", ["/", "/?foo", "/?foo=bar", "/?foo=bar&baz=1"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/",
+        "/?foo",
+        "/?foo=bar",
+        "/?foo=bar&baz=1",
+        pytest.param("/one%2Ftwo", id="percent-encoded-slash"),
+        pytest.param("/%41", id="percent-encoded-letter"),
+    ],
+)
 async def test_request_logging(path: str, http_protocol_cls: type[HTTPProtocol], caplog: pytest.LogCaptureFixture):
     get_request_with_query_string = b"\r\n".join(
         [f"GET {path} HTTP/1.1".encode("ascii"), b"Host: example.org", b"", b""]
