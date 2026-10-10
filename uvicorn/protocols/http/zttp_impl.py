@@ -243,8 +243,8 @@ class ZttpProtocol(asyncio.Protocol):
             app_state=self.app_state,
         )
         protocol.connection_made(self.transport)
-        protocol.data_received(bytes(output))
         self.transport.set_protocol(protocol)
+        protocol.data_received(bytes(output))
 
     def send_400_response(self, msg: str) -> None:
         body = msg.encode("ascii")

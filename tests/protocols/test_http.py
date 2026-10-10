@@ -6,7 +6,7 @@ import socket
 import threading
 import time
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
 import pytest
 
@@ -177,6 +177,7 @@ class MockTransport:
         self.closed = False
         self.buffer = b""
         self.read_paused = False
+        self.protocol: asyncio.Protocol | None = None
 
     def get_extra_info(self, key: Any):
         return {"sockname": self.sockname, "peername": self.peername, "sslcontext": self.sslcontext}.get(key)
@@ -202,7 +203,7 @@ class MockTransport:
         self.buffer = b""
 
     def set_protocol(self, protocol: asyncio.Protocol):
-        pass
+        self.protocol = protocol
 
 
 class MockTimerHandle:
@@ -254,7 +255,9 @@ class MockTask:
 
 
 class MockProtocol(asyncio.Protocol):
+    connections: set[asyncio.Protocol]
     loop: MockLoop
+    tasks: set[asyncio.Task[Any]]
     transport: MockTransport
     timeout_keep_alive_task: asyncio.TimerHandle | None
     ws_protocol_class: type[WSProtocol] | None
@@ -273,6 +276,7 @@ def get_connected_protocol(
     lifespan = lifespan or LifespanOff(config)
     server_state = ServerState()
     protocol = http_protocol_cls(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)  # type: ignore
+    transport.set_protocol(protocol)
     protocol.connection_made(transport)  # type: ignore[arg-type]
     return protocol  # type: ignore[return-value]
 
@@ -464,6 +468,41 @@ async def test_keepalive_timeout_with_pipelined_websocket_upgrade(
     await protocol.loop.run_one()
 
     assert protocol.timeout_keep_alive_task is None
+
+
+async def test_websocket_upgrade_failure_cleans_up_connection(http_protocol_cls: type[HTTPProtocol]):
+    app_called = False
+    connection_lost_calls = 0
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        nonlocal app_called
+        app_called = True  # pragma: no cover - failed upgrades must not invoke the app
+
+    class FailingWebSocketProtocol(asyncio.Protocol):
+        def __init__(self, config: Config, server_state: ServerState, app_state: dict[str, Any]) -> None:
+            self.connections = cast(set[asyncio.Protocol], server_state.connections)
+
+        def connection_made(self, transport: asyncio.BaseTransport) -> None:
+            self.connections.add(self)
+
+        def data_received(self, data: bytes) -> None:
+            raise RuntimeError("initial WebSocket processing failed")
+
+        def connection_lost(self, exc: Exception | None) -> None:
+            nonlocal connection_lost_calls
+            connection_lost_calls += 1
+            self.connections.remove(self)
+
+    protocol = get_connected_protocol(app, http_protocol_cls, ws=FailingWebSocketProtocol)
+    with pytest.raises(RuntimeError, match="initial WebSocket processing failed"):
+        protocol.data_received(UPGRADE_REQUEST)
+
+    assert isinstance(protocol.transport.protocol, FailingWebSocketProtocol)
+    protocol.transport.protocol.connection_lost(None)
+    assert connection_lost_calls == 1
+    assert not protocol.connections
+    assert not protocol.tasks
+    assert not app_called
 
 
 async def test_close(http_protocol_cls: type[HTTPProtocol]):
