@@ -188,27 +188,11 @@ header, per [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110#section-6.6.2).
 
 ```python
 async def app(scope, receive, send):
-    assert scope['type'] == 'http'
-    await send({
-        'type': 'http.response.start',
-        'status': 200,
-        'headers': [
-            [b'content-type', b'text/plain'],
-            [b'trailer', b'x-app-status'],
-        ],
-        'trailers': True,
-    })
-    await send({
-        'type': 'http.response.body',
-        'body': b'Hello, world!',
-    })
-    await send({
-        'type': 'http.response.trailers',
-        'headers': [
-            [b'x-app-status', b'ok'],
-        ],
-        'more_trailers': False,
-    })
+    assert scope["type"] == "http"
+    headers = [(b"content-type", b"text/plain"), (b"trailer", b"x-app-status")]
+    await send({"type": "http.response.start", "status": 200, "headers": headers, "trailers": True})
+    await send({"type": "http.response.body", "body": b"Hello, world!"})
+    await send({"type": "http.response.trailers", "headers": [(b"x-app-status", b"ok")], "more_trailers": False})
 ```
 
 ---
