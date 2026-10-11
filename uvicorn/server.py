@@ -35,7 +35,6 @@ def enable_tcp_nodelay(transport: asyncio.BaseTransport) -> None:
     try:
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     except OSError:
-        # 2026-10-05
         logger.debug("Failed to enable TCP_NODELAY on accepted socket", exc_info=True)
         return
 

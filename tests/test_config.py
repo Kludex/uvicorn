@@ -321,7 +321,6 @@ def test_supplied_listener_sets_nodelay_on_accepted_socket() -> None:
 
 
 def test_enable_tcp_nodelay_ignores_unusable_sockets(caplog: pytest.LogCaptureFixture) -> None:
-    # 2026-10-05
     class Transport:
         def __init__(self, sock: object) -> None:
             self._sock = sock
