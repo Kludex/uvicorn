@@ -60,11 +60,18 @@ def test_cli_headers() -> None:
     assert result.exit_code == 0
     mock_run.assert_called_once()
     assert mock_run.call_args[1]["headers"] == [
-        [
-            "Content-Security-Policy",
-            "default-src 'self'; script-src https://example.com",
-        ]
+        ("Content-Security-Policy", "default-src 'self'; script-src https://example.com")
     ]
+
+
+@pytest.mark.parametrize("header", ["X-Foo", ":bar"])
+def test_cli_invalid_header(header: str) -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli, ["tests.test_cli:App", "--header", header])
+
+    assert result.exit_code == 2
+    assert f"Invalid value for '--header': Expected 'Name:Value' format, got {header!r}." in result.output
 
 
 def test_cli_rejects_negative_limit_max_requests_jitter() -> None:

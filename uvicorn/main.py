@@ -58,6 +58,16 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     ctx.exit()
 
 
+def _parse_headers(ctx: click.Context, param: click.Parameter, value: tuple[str, ...]) -> list[tuple[str, str]]:
+    headers = []
+    for header in value:
+        name, sep, val = header.partition(":")
+        if not sep or not name:
+            raise click.BadParameter(f"Expected 'Name:Value' format, got {header!r}.")
+        headers.append((name, val))
+    return headers
+
+
 @click.command(context_settings={"auto_envvar_prefix": "UVICORN"})
 @click.argument("app", envvar="UVICORN_APP")
 @click.option(
@@ -354,6 +364,7 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     "--header",
     "headers",
     multiple=True,
+    callback=_parse_headers,
     help="Specify custom default HTTP response headers as a Name:Value pair",
 )
 @click.option(
@@ -438,7 +449,7 @@ def main(
     ssl_cert_reqs: int,
     ssl_ca_certs: str,
     ssl_ciphers: str | None,
-    headers: list[str],
+    headers: list[tuple[str, str]],
     use_colors: bool,
     app_dir: str,
     h11_max_incomplete_event_size: int | None,
@@ -491,7 +502,7 @@ def main(
         ssl_cert_reqs=ssl_cert_reqs,
         ssl_ca_certs=ssl_ca_certs,
         ssl_ciphers=ssl_ciphers,
-        headers=[header.split(":", 1) for header in headers],  # type: ignore[misc]
+        headers=headers,
         use_colors=use_colors,
         factory=factory,
         app_dir=app_dir,
