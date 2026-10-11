@@ -1370,6 +1370,21 @@ async def test_trailers(
     assert not protocol.transport.closed
 
 
+@pytest.mark.parametrize("status", [204, 304])
+async def test_trailers_on_bodyless_status_are_dropped(http_protocol_cls: type[HTTPProtocol], status: int):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        headers = [(b"transfer-encoding", b"chunked")]
+        await send({"type": "http.response.start", "status": status, "headers": headers, "trailers": True})
+        await send({"type": "http.response.body", "body": b""})
+        await send({"type": "http.response.trailers", "headers": [(b"x-trailer", b"value")], "more_trailers": False})
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST_WITH_TRAILERS)
+    await protocol.loop.run_one()
+    assert b"x-trailer" not in protocol.transport.buffer
+    assert not protocol.transport.closed
+
+
 async def test_invalid_trailer_value(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         await send({"type": "http.response.start", "status": 200, "trailers": True})

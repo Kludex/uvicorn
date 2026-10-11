@@ -497,7 +497,8 @@ class RequestResponseCycle:
             output = self.conn.send(event=response)
             self.transport.write(output)
             chunked = b"\r\ntransfer-encoding: chunked\r\n" in output.lower()
-            self.expect_trailers = self.expect_trailers and chunked and self.scope["method"] != "HEAD"
+            bodyless = self.scope["method"] == "HEAD" or status in (204, 304)
+            self.expect_trailers = self.expect_trailers and chunked and not bodyless
 
         elif not self.body_complete:
             # Sending response body

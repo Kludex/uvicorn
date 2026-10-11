@@ -527,9 +527,8 @@ class RequestResponseCycle:
                 self.chunked_encoding = True
                 content.append(b"transfer-encoding: chunked\r\n")
 
-            self.expect_trailers = (
-                self.expect_trailers and bool(self.chunked_encoding) and self.scope["method"] != "HEAD"
-            )
+            bodyless = self.scope["method"] == "HEAD" or status_code in (204, 304)
+            self.expect_trailers = self.expect_trailers and bool(self.chunked_encoding) and not bodyless
             content.append(b"\r\n")
             self.transport.write(b"".join(content))
 
