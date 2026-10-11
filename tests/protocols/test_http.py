@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import socket
 import threading
 import time
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
 import pytest
 
 from tests.response import Response
 from uvicorn import Server
-from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallable, Scope
+from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGIReceiveEvent, ASGISendCallable, Scope
 from uvicorn.config import WS_PROTOCOLS, Config
 from uvicorn.lifespan.off import LifespanOff
 from uvicorn.lifespan.on import LifespanOn
@@ -25,19 +27,12 @@ except ModuleNotFoundError:  # pragma: no cover
     skip_if_no_httptools = pytest.mark.skipif(True, reason="httptools is not installed")
 
 if TYPE_CHECKING:
-    import sys
-
     from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
-    from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
+    from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol as _WSProtocol
 
-    if sys.version_info >= (3, 10):  # pragma: no cover
-        from typing import TypeAlias
-    else:  # pragma: no cover
-        from typing_extensions import TypeAlias
-
-    HTTPProtocol: TypeAlias = "type[HttpToolsProtocol | H11Protocol]"
-    WSProtocol: TypeAlias = "type[WebSocketProtocol | _WSProtocol]"
+    WSProtocol: TypeAlias = WebSocketsSansIOProtocol | _WSProtocol
+    HTTPProtocol: TypeAlias = H11Protocol | HttpToolsProtocol
 
 pytestmark = pytest.mark.anyio
 
@@ -173,22 +168,21 @@ UPGRADE_REQUEST_ERROR_FIELD = b"\r\n".join(
 
 
 class MockTransport:
-    def __init__(self, sockname=None, peername=None, sslcontext=False):
+    def __init__(
+        self, sockname: tuple[str, int] | None = None, peername: tuple[str, int] | None = None, sslcontext: bool = False
+    ):
         self.sockname = ("127.0.0.1", 8000) if sockname is None else sockname
         self.peername = ("127.0.0.1", 8001) if peername is None else peername
         self.sslcontext = sslcontext
         self.closed = False
         self.buffer = b""
         self.read_paused = False
+        self.protocol: asyncio.Protocol | None = None
 
-    def get_extra_info(self, key):
-        return {
-            "sockname": self.sockname,
-            "peername": self.peername,
-            "sslcontext": self.sslcontext,
-        }.get(key)
+    def get_extra_info(self, key: Any):
+        return {"sockname": self.sockname, "peername": self.peername, "sslcontext": self.sslcontext}.get(key)
 
-    def write(self, data):
+    def write(self, data: bytes):
         assert not self.closed
         self.buffer += data
 
@@ -208,12 +202,14 @@ class MockTransport:
     def clear_buffer(self):
         self.buffer = b""
 
-    def set_protocol(self, protocol):
-        pass
+    def set_protocol(self, protocol: asyncio.Protocol):
+        self.protocol = protocol
 
 
 class MockTimerHandle:
-    def __init__(self, loop_later_list, delay, callback, args):
+    def __init__(
+        self, loop_later_list: list[MockTimerHandle], delay: float, callback: Callable[[], None], args: tuple[Any, ...]
+    ):
         self.loop_later_list = loop_later_list
         self.delay = delay
         self.callback = callback
@@ -228,14 +224,14 @@ class MockTimerHandle:
 
 class MockLoop:
     def __init__(self):
-        self._tasks = []
-        self._later = []
+        self._tasks: list[asyncio.Task[Any]] = []
+        self._later: list[MockTimerHandle] = []
 
-    def create_task(self, coroutine):
+    def create_task(self, coroutine: Any) -> Any:
         self._tasks.insert(0, coroutine)
         return MockTask()
 
-    def call_later(self, delay, callback, *args):
+    def call_later(self, delay: float, callback: Callable[[], None], *args: Any) -> MockTimerHandle:
         handle = MockTimerHandle(self._later, delay, callback, args)
         self._later.insert(0, handle)
         return handle
@@ -243,8 +239,8 @@ class MockLoop:
     async def run_one(self):
         return await self._tasks.pop()
 
-    def run_later(self, with_delay):
-        later = []
+    def run_later(self, with_delay: float) -> None:
+        later: list[MockTimerHandle] = []
         for timer_handle in self._later:
             if with_delay >= timer_handle.delay:
                 timer_handle.callback(*timer_handle.args)
@@ -254,32 +250,38 @@ class MockLoop:
 
 
 class MockTask:
-    def add_done_callback(self, callback):
+    def add_done_callback(self, callback: Callable[[], None]):
         pass
+
+
+class MockProtocol(asyncio.Protocol):
+    connections: set[asyncio.Protocol]
+    loop: MockLoop
+    tasks: set[asyncio.Task[Any]]
+    transport: MockTransport
+    timeout_keep_alive_task: asyncio.TimerHandle | None
+    ws_protocol_class: type[WSProtocol] | None
+    scope: Scope
 
 
 def get_connected_protocol(
     app: ASGIApplication,
-    http_protocol_cls: HTTPProtocol,
+    http_protocol_cls: type[HTTPProtocol],
     lifespan: LifespanOff | LifespanOn | None = None,
     **kwargs: Any,
-):
+) -> MockProtocol:
     loop = MockLoop()
     transport = MockTransport()
     config = Config(app=app, **kwargs)
     lifespan = lifespan or LifespanOff(config)
     server_state = ServerState()
-    protocol = http_protocol_cls(
-        config=config,
-        server_state=server_state,
-        app_state=lifespan.state,
-        _loop=loop,  # type: ignore
-    )
-    protocol.connection_made(transport)  # type: ignore
-    return protocol
+    protocol = http_protocol_cls(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)  # type: ignore
+    transport.set_protocol(protocol)
+    protocol.connection_made(transport)  # type: ignore[arg-type]
+    return protocol  # type: ignore[return-value]
 
 
-async def test_get_request(http_protocol_cls: HTTPProtocol):
+async def test_get_request(http_protocol_cls: type[HTTPProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
     protocol = get_connected_protocol(app, http_protocol_cls)
@@ -298,7 +300,7 @@ async def test_get_request(http_protocol_cls: HTTPProtocol):
         pytest.param("µ", id="allow_non_ascii_char"),
     ],
 )
-async def test_header_value_allowed_characters(http_protocol_cls: HTTPProtocol, char: str):
+async def test_header_value_allowed_characters(http_protocol_cls: type[HTTPProtocol], char: str):
     app = Response("Hello, world", media_type="text/plain", headers={"key": f"<{char}>"})
     protocol = get_connected_protocol(app, http_protocol_cls)
     protocol.data_received(SIMPLE_GET_REQUEST)
@@ -308,8 +310,54 @@ async def test_header_value_allowed_characters(http_protocol_cls: HTTPProtocol, 
     assert b"Hello, world" in protocol.transport.buffer
 
 
-@pytest.mark.parametrize("path", ["/", "/?foo", "/?foo=bar", "/?foo=bar&baz=1"])
-async def test_request_logging(path: str, http_protocol_cls: HTTPProtocol, caplog: pytest.LogCaptureFixture):
+@pytest.mark.parametrize(
+    "name",
+    [
+        pytest.param("bad header", id="reject_space"),
+        pytest.param("bad\x00header", id="reject_null"),
+        pytest.param("bad(header", id="reject_open_paren"),
+        pytest.param("bad)header", id="reject_close_paren"),
+        pytest.param("bad<header", id="reject_less_than"),
+        pytest.param("bad>header", id="reject_greater_than"),
+        pytest.param("bad@header", id="reject_at"),
+        pytest.param("bad,header", id="reject_comma"),
+        pytest.param("bad;header", id="reject_semicolon"),
+        pytest.param("bad:header", id="reject_colon"),
+        pytest.param("bad[header", id="reject_open_bracket"),
+        pytest.param("bad]header", id="reject_close_bracket"),
+        pytest.param("bad{header", id="reject_open_brace"),
+        pytest.param("bad}header", id="reject_close_brace"),
+        pytest.param("bad=header", id="reject_equals"),
+        pytest.param('bad"header', id="reject_double_quote"),
+        pytest.param("bad\\header", id="reject_backslash"),
+        pytest.param("bad\theader", id="reject_tab"),
+        pytest.param("bad\x7fheader", id="reject_del"),
+    ],
+)
+async def test_invalid_header_name(http_protocol_cls: type[HTTPProtocol], name: str):
+    app = Response("Hello, world", media_type="text/plain", headers={name: "value"})
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    # No 500 is sent because `response_started` is set before header validation,
+    # so the error handler just closes the connection.
+    assert b"HTTP/1.1 500 Internal Server Error" not in protocol.transport.buffer
+    assert name.encode() not in protocol.transport.buffer
+    assert protocol.transport.is_closing()
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/",
+        "/?foo",
+        "/?foo=bar",
+        "/?foo=bar&baz=1",
+        pytest.param("/one%2Ftwo", id="percent-encoded-slash"),
+        pytest.param("/%41", id="percent-encoded-letter"),
+    ],
+)
+async def test_request_logging(path: str, http_protocol_cls: type[HTTPProtocol], caplog: pytest.LogCaptureFixture):
     get_request_with_query_string = b"\r\n".join(
         [f"GET {path} HTTP/1.1".encode("ascii"), b"Host: example.org", b"", b""]
     )
@@ -324,7 +372,22 @@ async def test_request_logging(path: str, http_protocol_cls: HTTPProtocol, caplo
     assert f'"GET {path} HTTP/1.1" 200' in caplog.records[0].message
 
 
-async def test_head_request(http_protocol_cls: HTTPProtocol):
+async def test_request_logging_escapes_quotes(http_protocol_cls: type[HTTPProtocol], caplog: pytest.LogCaptureFixture):
+    if http_protocol_cls.__name__ == "ZttpProtocol":
+        pytest.skip("zttp rejects quotes in the request target")
+
+    caplog.set_level(logging.INFO, logger="uvicorn.access")
+    logging.getLogger("uvicorn.access").propagate = True
+
+    app = Response("Hello, world", media_type="text/plain")
+
+    protocol = get_connected_protocol(app, http_protocol_cls, log_config=None)
+    protocol.data_received(b'GET /foo"bar?a"b HTTP/1.1\r\nHost: example.org\r\n\r\n')
+    await protocol.loop.run_one()
+    assert '"GET /foo%22bar?a%22b HTTP/1.1" 200' in caplog.records[0].message
+
+
+async def test_head_request(http_protocol_cls: type[HTTPProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
     protocol = get_connected_protocol(app, http_protocol_cls)
@@ -334,7 +397,7 @@ async def test_head_request(http_protocol_cls: HTTPProtocol):
     assert b"Hello, world" not in protocol.transport.buffer
 
 
-async def test_post_request(http_protocol_cls: HTTPProtocol):
+async def test_post_request(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         body = b""
         more_body = True
@@ -353,7 +416,23 @@ async def test_post_request(http_protocol_cls: HTTPProtocol):
     assert b'Body: {"hello": "world"}' in protocol.transport.buffer
 
 
-async def test_keepalive(http_protocol_cls: HTTPProtocol):
+async def test_bodyless_request_receive(http_protocol_cls: type[HTTPProtocol]):
+    request_message: ASGIReceiveEvent | None = None
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        nonlocal request_message
+        request_message = await receive()
+        response = Response(b"", status_code=204)
+        await response(scope, receive, send)
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+
+    assert request_message == {"type": "http.request", "body": b"", "more_body": False}
+
+
+async def test_keepalive(http_protocol_cls: type[HTTPProtocol]):
     app = Response(b"", status_code=204)
 
     protocol = get_connected_protocol(app, http_protocol_cls)
@@ -364,7 +443,7 @@ async def test_keepalive(http_protocol_cls: HTTPProtocol):
     assert not protocol.transport.is_closing()
 
 
-async def test_keepalive_timeout(http_protocol_cls: HTTPProtocol):
+async def test_keepalive_timeout(http_protocol_cls: type[HTTPProtocol]):
     app = Response(b"", status_code=204)
 
     protocol = get_connected_protocol(app, http_protocol_cls)
@@ -378,9 +457,7 @@ async def test_keepalive_timeout(http_protocol_cls: HTTPProtocol):
     assert protocol.transport.is_closing()
 
 
-async def test_keepalive_timeout_with_pipelined_requests(
-    http_protocol_cls: HTTPProtocol,
-):
+async def test_keepalive_timeout_with_pipelined_requests(http_protocol_cls: type[HTTPProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
     protocol = get_connected_protocol(app, http_protocol_cls)
@@ -403,7 +480,57 @@ async def test_keepalive_timeout_with_pipelined_requests(
     assert protocol.timeout_keep_alive_task is not None
 
 
-async def test_close(http_protocol_cls: HTTPProtocol):
+async def test_keepalive_timeout_with_pipelined_websocket_upgrade(
+    http_protocol_cls: type[HTTPProtocol], ws_protocol_cls: type[WSProtocol]
+):
+    if http_protocol_cls.__name__ == "HttpToolsProtocol":
+        pytest.skip("httptools never upgrades with the keep-alive timer armed")
+
+    app = Response("Hello, world", media_type="text/plain")
+
+    protocol = get_connected_protocol(app, http_protocol_cls, ws=ws_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST + UPGRADE_REQUEST)
+    await protocol.loop.run_one()
+
+    assert protocol.timeout_keep_alive_task is None
+
+
+async def test_websocket_upgrade_failure_cleans_up_connection(http_protocol_cls: type[HTTPProtocol]):
+    app_called = False
+    connection_lost_calls = 0
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        nonlocal app_called
+        app_called = True  # pragma: no cover - failed upgrades must not invoke the app
+
+    class FailingWebSocketProtocol(asyncio.Protocol):
+        def __init__(self, config: Config, server_state: ServerState, app_state: dict[str, Any]) -> None:
+            self.connections = cast(set[asyncio.Protocol], server_state.connections)
+
+        def connection_made(self, transport: asyncio.BaseTransport) -> None:
+            self.connections.add(self)
+
+        def data_received(self, data: bytes) -> None:
+            raise RuntimeError("initial WebSocket processing failed")
+
+        def connection_lost(self, exc: Exception | None) -> None:
+            nonlocal connection_lost_calls
+            connection_lost_calls += 1
+            self.connections.remove(self)
+
+    protocol = get_connected_protocol(app, http_protocol_cls, ws=FailingWebSocketProtocol)
+    with pytest.raises(RuntimeError, match="initial WebSocket processing failed"):
+        protocol.data_received(UPGRADE_REQUEST)
+
+    assert isinstance(protocol.transport.protocol, FailingWebSocketProtocol)
+    protocol.transport.protocol.connection_lost(None)
+    assert connection_lost_calls == 1
+    assert not protocol.connections
+    assert not protocol.tasks
+    assert not app_called
+
+
+async def test_close(http_protocol_cls: type[HTTPProtocol]):
     app = Response(b"", status_code=204, headers={"connection": "close"})
 
     protocol = get_connected_protocol(app, http_protocol_cls)
@@ -413,7 +540,17 @@ async def test_close(http_protocol_cls: HTTPProtocol):
     assert protocol.transport.is_closing()
 
 
-async def test_chunked_encoding(http_protocol_cls: HTTPProtocol):
+async def test_bodyless_response_with_transfer_encoding(http_protocol_cls: type[HTTPProtocol]):
+    """RFC 9112 §6.1 forbids `Transfer-Encoding` on a 204, which zttp refuses to serialize."""
+    app = Response(b"", status_code=204, headers={"transfer-encoding": "chunked"})
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 204 No Content" in protocol.transport.buffer
+
+
+async def test_chunked_encoding(http_protocol_cls: type[HTTPProtocol]):
     app = Response(b"Hello, world!", status_code=200, headers={"transfer-encoding": "chunked"})
 
     protocol = get_connected_protocol(app, http_protocol_cls)
@@ -424,7 +561,7 @@ async def test_chunked_encoding(http_protocol_cls: HTTPProtocol):
     assert not protocol.transport.is_closing()
 
 
-async def test_chunked_encoding_empty_body(http_protocol_cls: HTTPProtocol):
+async def test_chunked_encoding_empty_body(http_protocol_cls: type[HTTPProtocol]):
     app = Response(b"Hello, world!", status_code=200, headers={"transfer-encoding": "chunked"})
 
     protocol = get_connected_protocol(app, http_protocol_cls)
@@ -435,9 +572,7 @@ async def test_chunked_encoding_empty_body(http_protocol_cls: HTTPProtocol):
     assert not protocol.transport.is_closing()
 
 
-async def test_chunked_encoding_head_request(
-    http_protocol_cls: HTTPProtocol,
-):
+async def test_chunked_encoding_head_request(http_protocol_cls: type[HTTPProtocol]):
     app = Response(b"Hello, world!", status_code=200, headers={"transfer-encoding": "chunked"})
 
     protocol = get_connected_protocol(app, http_protocol_cls)
@@ -447,7 +582,7 @@ async def test_chunked_encoding_head_request(
     assert not protocol.transport.is_closing()
 
 
-async def test_pipelined_requests(http_protocol_cls: HTTPProtocol):
+async def test_pipelined_requests(http_protocol_cls: type[HTTPProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
     protocol = get_connected_protocol(app, http_protocol_cls)
@@ -468,7 +603,7 @@ async def test_pipelined_requests(http_protocol_cls: HTTPProtocol):
     protocol.transport.clear_buffer()
 
 
-async def test_undersized_request(http_protocol_cls: HTTPProtocol):
+async def test_undersized_request(http_protocol_cls: type[HTTPProtocol]):
     app = Response(b"xxx", headers={"content-length": "10"})
 
     protocol = get_connected_protocol(app, http_protocol_cls)
@@ -477,7 +612,7 @@ async def test_undersized_request(http_protocol_cls: HTTPProtocol):
     assert protocol.transport.is_closing()
 
 
-async def test_oversized_request(http_protocol_cls: HTTPProtocol):
+async def test_oversized_request(http_protocol_cls: type[HTTPProtocol]):
     app = Response(b"xxx" * 20, headers={"content-length": "10"})
 
     protocol = get_connected_protocol(app, http_protocol_cls)
@@ -486,7 +621,7 @@ async def test_oversized_request(http_protocol_cls: HTTPProtocol):
     assert protocol.transport.is_closing()
 
 
-async def test_large_post_request(http_protocol_cls: HTTPProtocol):
+async def test_large_post_request(http_protocol_cls: type[HTTPProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
     protocol = get_connected_protocol(app, http_protocol_cls)
@@ -496,7 +631,7 @@ async def test_large_post_request(http_protocol_cls: HTTPProtocol):
     assert not protocol.transport.read_paused
 
 
-async def test_invalid_http(http_protocol_cls: HTTPProtocol):
+async def test_invalid_http(http_protocol_cls: type[HTTPProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
     protocol = get_connected_protocol(app, http_protocol_cls)
@@ -504,7 +639,7 @@ async def test_invalid_http(http_protocol_cls: HTTPProtocol):
     assert protocol.transport.is_closing()
 
 
-async def test_app_exception(http_protocol_cls: HTTPProtocol):
+async def test_app_exception(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         raise Exception()
 
@@ -515,7 +650,7 @@ async def test_app_exception(http_protocol_cls: HTTPProtocol):
     assert protocol.transport.is_closing()
 
 
-async def test_exception_during_response(http_protocol_cls: HTTPProtocol):
+async def test_exception_during_response(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         await send({"type": "http.response.start", "status": 200})
         await send({"type": "http.response.body", "body": b"1", "more_body": True})
@@ -528,7 +663,7 @@ async def test_exception_during_response(http_protocol_cls: HTTPProtocol):
     assert protocol.transport.is_closing()
 
 
-async def test_no_response_returned(http_protocol_cls: HTTPProtocol):
+async def test_no_response_returned(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable): ...
 
     protocol = get_connected_protocol(app, http_protocol_cls)
@@ -538,7 +673,7 @@ async def test_no_response_returned(http_protocol_cls: HTTPProtocol):
     assert protocol.transport.is_closing()
 
 
-async def test_partial_response_returned(http_protocol_cls: HTTPProtocol):
+async def test_partial_response_returned(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         await send({"type": "http.response.start", "status": 200})
 
@@ -549,7 +684,7 @@ async def test_partial_response_returned(http_protocol_cls: HTTPProtocol):
     assert protocol.transport.is_closing()
 
 
-async def test_response_header_splitting(http_protocol_cls: HTTPProtocol):
+async def test_response_header_splitting(http_protocol_cls: type[HTTPProtocol]):
     app = Response(b"", headers={"key": "value\r\nCookie: smuggled=value"})
 
     protocol = get_connected_protocol(app, http_protocol_cls)
@@ -560,7 +695,7 @@ async def test_response_header_splitting(http_protocol_cls: HTTPProtocol):
     assert protocol.transport.is_closing()
 
 
-async def test_duplicate_start_message(http_protocol_cls: HTTPProtocol):
+async def test_duplicate_start_message(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         await send({"type": "http.response.start", "status": 200})
         await send({"type": "http.response.start", "status": 200})
@@ -572,7 +707,7 @@ async def test_duplicate_start_message(http_protocol_cls: HTTPProtocol):
     assert protocol.transport.is_closing()
 
 
-async def test_missing_start_message(http_protocol_cls: HTTPProtocol):
+async def test_missing_start_message(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         await send({"type": "http.response.body", "body": b""})
 
@@ -583,7 +718,7 @@ async def test_missing_start_message(http_protocol_cls: HTTPProtocol):
     assert protocol.transport.is_closing()
 
 
-async def test_message_after_body_complete(http_protocol_cls: HTTPProtocol):
+async def test_message_after_body_complete(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         await send({"type": "http.response.start", "status": 200})
         await send({"type": "http.response.body", "body": b""})
@@ -596,7 +731,7 @@ async def test_message_after_body_complete(http_protocol_cls: HTTPProtocol):
     assert protocol.transport.is_closing()
 
 
-async def test_value_returned(http_protocol_cls: HTTPProtocol):
+async def test_value_returned(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         await send({"type": "http.response.start", "status": 200})
         await send({"type": "http.response.body", "body": b""})
@@ -609,7 +744,7 @@ async def test_value_returned(http_protocol_cls: HTTPProtocol):
     assert protocol.transport.is_closing()
 
 
-async def test_early_disconnect(http_protocol_cls: HTTPProtocol):
+async def test_early_disconnect(http_protocol_cls: type[HTTPProtocol]):
     got_disconnect_event = False
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
@@ -630,7 +765,7 @@ async def test_early_disconnect(http_protocol_cls: HTTPProtocol):
     assert got_disconnect_event
 
 
-async def test_early_response(http_protocol_cls: HTTPProtocol):
+async def test_early_response(http_protocol_cls: type[HTTPProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
     protocol = get_connected_protocol(app, http_protocol_cls)
@@ -640,8 +775,13 @@ async def test_early_response(http_protocol_cls: HTTPProtocol):
     protocol.data_received(FINISH_POST_REQUEST)
     assert not protocol.transport.is_closing()
 
+    protocol.transport.clear_buffer()
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
 
-async def test_read_after_response(http_protocol_cls: HTTPProtocol):
+
+async def test_read_after_response(http_protocol_cls: type[HTTPProtocol]):
     message_after_response = None
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
@@ -658,7 +798,7 @@ async def test_read_after_response(http_protocol_cls: HTTPProtocol):
     assert message_after_response == {"type": "http.disconnect"}
 
 
-async def test_http10_request(http_protocol_cls: HTTPProtocol):
+async def test_http10_request(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         assert scope["type"] == "http"
         content = "Version: %s" % scope["http_version"]
@@ -672,7 +812,7 @@ async def test_http10_request(http_protocol_cls: HTTPProtocol):
     assert b"Version: 1.0" in protocol.transport.buffer
 
 
-async def test_root_path(http_protocol_cls: HTTPProtocol):
+async def test_root_path(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         assert scope["type"] == "http"
         root_path = scope.get("root_path", "")
@@ -687,7 +827,7 @@ async def test_root_path(http_protocol_cls: HTTPProtocol):
     assert b"root_path=/app path=/app/" in protocol.transport.buffer
 
 
-async def test_raw_path(http_protocol_cls: HTTPProtocol):
+async def test_raw_path(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         assert scope["type"] == "http"
         path = scope["path"]
@@ -704,7 +844,7 @@ async def test_raw_path(http_protocol_cls: HTTPProtocol):
     assert b"Done" in protocol.transport.buffer
 
 
-async def test_max_concurrency(http_protocol_cls: HTTPProtocol):
+async def test_max_concurrency(http_protocol_cls: type[HTTPProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
     protocol = get_connected_protocol(app, http_protocol_cls, limit_concurrency=1)
@@ -725,27 +865,27 @@ async def test_max_concurrency(http_protocol_cls: HTTPProtocol):
     )
 
 
-async def test_shutdown_during_request(http_protocol_cls: HTTPProtocol):
+async def test_shutdown_during_request(http_protocol_cls: type[HTTPProtocol]):
     app = Response(b"", status_code=204)
 
     protocol = get_connected_protocol(app, http_protocol_cls)
     protocol.data_received(SIMPLE_GET_REQUEST)
-    protocol.shutdown()
+    protocol.shutdown()  # type: ignore[attr-defined]
     await protocol.loop.run_one()
     assert b"HTTP/1.1 204 No Content" in protocol.transport.buffer
     assert protocol.transport.is_closing()
 
 
-async def test_shutdown_during_idle(http_protocol_cls: HTTPProtocol):
+async def test_shutdown_during_idle(http_protocol_cls: type[HTTPProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
     protocol = get_connected_protocol(app, http_protocol_cls)
-    protocol.shutdown()
+    protocol.shutdown()  # type: ignore[attr-defined]
     assert protocol.transport.buffer == b""
     assert protocol.transport.is_closing()
 
 
-async def test_100_continue_sent_when_body_consumed(http_protocol_cls: HTTPProtocol):
+async def test_100_continue_sent_when_body_consumed(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         body = b""
         more_body = True
@@ -777,7 +917,7 @@ async def test_100_continue_sent_when_body_consumed(http_protocol_cls: HTTPProto
 
 
 async def test_100_continue_not_sent_when_body_not_consumed(
-    http_protocol_cls: HTTPProtocol,
+    http_protocol_cls: type[HTTPProtocol],
 ):
     app = Response(b"", status_code=204)
 
@@ -799,7 +939,7 @@ async def test_100_continue_not_sent_when_body_not_consumed(
     assert b"HTTP/1.1 204 No Content" in protocol.transport.buffer
 
 
-async def test_supported_upgrade_request(http_protocol_cls: HTTPProtocol):
+async def test_supported_upgrade_request(http_protocol_cls: type[HTTPProtocol]):
     pytest.importorskip("wsproto")
 
     app = Response("Hello, world", media_type="text/plain")
@@ -809,7 +949,7 @@ async def test_supported_upgrade_request(http_protocol_cls: HTTPProtocol):
     assert b"HTTP/1.1 426 " in protocol.transport.buffer
 
 
-async def test_unsupported_ws_upgrade_request(http_protocol_cls: HTTPProtocol):
+async def test_unsupported_ws_upgrade_request(http_protocol_cls: type[HTTPProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
     protocol = get_connected_protocol(app, http_protocol_cls, ws="none")
@@ -820,7 +960,7 @@ async def test_unsupported_ws_upgrade_request(http_protocol_cls: HTTPProtocol):
 
 
 async def test_unsupported_ws_upgrade_request_warn_on_auto(
-    caplog: pytest.LogCaptureFixture, http_protocol_cls: HTTPProtocol
+    caplog: pytest.LogCaptureFixture, http_protocol_cls: type[HTTPProtocol]
 ):
     app = Response("Hello, world", media_type="text/plain")
 
@@ -836,7 +976,7 @@ async def test_unsupported_ws_upgrade_request_warn_on_auto(
     assert msg in warnings
 
 
-async def test_http2_upgrade_request(http_protocol_cls: HTTPProtocol, ws_protocol_cls: WSProtocol):
+async def test_http2_upgrade_request(http_protocol_cls: type[HTTPProtocol], ws_protocol_cls: type[WSProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
     protocol = get_connected_protocol(app, http_protocol_cls, ws=ws_protocol_cls)
@@ -867,7 +1007,7 @@ def asgi2app(scope: Scope):
 async def test_scopes(
     asgi2or3_app: ASGIApplication,
     expected_scopes: dict[str, str],
-    http_protocol_cls: HTTPProtocol,
+    http_protocol_cls: type[HTTPProtocol],
 ):
     protocol = get_connected_protocol(asgi2or3_app, http_protocol_cls)
     protocol.data_received(SIMPLE_GET_REQUEST)
@@ -881,10 +1021,12 @@ async def test_scopes(
         pytest.param(b"G?T / HTTP/1.1", id="invalid-method"),
         pytest.param(b"GET /?x=y z HTTP/1.1", id="invalid-path"),
         pytest.param(b"GET / HTTP1.1", id="invalid-http-version"),
+        pytest.param(b"GET /caf\xc3\xa9 HTTP/1.1", id="non-ascii-path"),
+        pytest.param(b"GET /?q=caf\xc3\xa9 HTTP/1.1", id="non-ascii-query"),
     ],
 )
 async def test_invalid_http_request(
-    request_line: str, http_protocol_cls: HTTPProtocol, caplog: pytest.LogCaptureFixture
+    request_line: str, http_protocol_cls: type[HTTPProtocol], caplog: pytest.LogCaptureFixture
 ):
     app = Response("Hello, world", media_type="text/plain")
     request = INVALID_REQUEST_TEMPLATE % request_line
@@ -1007,7 +1149,7 @@ async def test_huge_headers_h11_max_incomplete():
     assert b"Hello, world" in protocol.transport.buffer
 
 
-async def test_return_close_header(http_protocol_cls: HTTPProtocol):
+async def test_return_close_header(http_protocol_cls: type[HTTPProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
     protocol = get_connected_protocol(app, http_protocol_cls)
@@ -1021,7 +1163,57 @@ async def test_return_close_header(http_protocol_cls: HTTPProtocol):
     assert b"connection: close" in protocol.transport.buffer.lower()
 
 
-async def test_close_connection_with_multiple_requests(http_protocol_cls: HTTPProtocol):
+@pytest.mark.parametrize(
+    ("http_version", "request_connection", "response_connection"),
+    [
+        pytest.param(b"1.1", b"Close", None, id="request-case-insensitive"),
+        pytest.param(b"1.1", b"keep-alive, close", None, id="request-multiple-tokens"),
+        pytest.param(b"1.1", b" keep-alive , CLOSE ", None, id="request-whitespace"),
+        pytest.param(b"1.1", b"close", "Close", id="response-deduplicated"),
+        pytest.param(b"1.1", b"keep-alive", "keep-alive, Close", id="response-multiple-tokens"),
+    ],
+)
+async def test_connection_close_tokens(
+    http_protocol_cls: type[HTTPProtocol],
+    http_version: bytes,
+    request_connection: bytes,
+    response_connection: str | None,
+) -> None:
+    response_headers = {} if response_connection is None else {"connection": response_connection}
+    app = Response("Hello, world", headers=response_headers, media_type="text/plain")
+    protocol = get_connected_protocol(app, http_protocol_cls, access_log=False)
+    request = (
+        b"GET / HTTP/" + http_version + b"\r\nHost: example.org\r\nConnection: " + request_connection + b"\r\n\r\n"
+    )
+    protocol.data_received(request)
+    await protocol.loop.run_one()
+
+    response = protocol.transport.buffer
+    header_block = response.split(b"\r\n\r\n", 1)[0]
+    connection_headers = [
+        header for header in header_block.split(b"\r\n")[1:] if header.lower().startswith(b"connection:")
+    ]
+    connection_tokens = [
+        token.strip().lower() for header in connection_headers for token in header.split(b":", 1)[1].split(b",")
+    ]
+    assert protocol.transport.is_closing()
+    assert len(connection_headers) == 1
+    assert b"close" in connection_tokens
+
+
+@skip_if_no_httptools
+async def test_httptools_http10_keep_alive_disabled() -> None:
+    app = Response("Hello, world", media_type="text/plain")
+    protocol = get_connected_protocol(app, HttpToolsProtocol, access_log=False)
+    request = b"GET / HTTP/1.0\r\nHost: example.org\r\nConnection: keep-alive\r\n\r\n"
+    protocol.data_received(request)
+    await protocol.loop.run_one()
+
+    assert protocol.transport.is_closing()
+    assert b"connection: close\r\n" in protocol.transport.buffer.lower()
+
+
+async def test_close_connection_with_multiple_requests(http_protocol_cls: type[HTTPProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 
     protocol = get_connected_protocol(app, http_protocol_cls)
@@ -1035,7 +1227,7 @@ async def test_close_connection_with_multiple_requests(http_protocol_cls: HTTPPr
     assert b"connection: close" in protocol.transport.buffer.lower()
 
 
-async def test_close_connection_with_post_request(http_protocol_cls: HTTPProtocol):
+async def test_close_connection_with_post_request(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         body = b""
         more_body = True
@@ -1054,7 +1246,7 @@ async def test_close_connection_with_post_request(http_protocol_cls: HTTPProtoco
     assert b"Body: {'hello': 'world'}" in protocol.transport.buffer
 
 
-async def test_iterator_headers(http_protocol_cls: HTTPProtocol):
+async def test_iterator_headers(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         headers = iter([(b"x-test-header", b"test value")])
         await send({"type": "http.response.start", "status": 200, "headers": headers})
@@ -1066,7 +1258,7 @@ async def test_iterator_headers(http_protocol_cls: HTTPProtocol):
     assert b"x-test-header: test value" in protocol.transport.buffer
 
 
-async def test_lifespan_state(http_protocol_cls: HTTPProtocol):
+async def test_lifespan_state(http_protocol_cls: type[HTTPProtocol]):
     expected_states = [{"a": 123, "b": [1]}, {"a": 123, "b": [1, 2]}]
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
@@ -1095,7 +1287,7 @@ async def test_lifespan_state(http_protocol_cls: HTTPProtocol):
 
 
 async def test_header_upgrade_is_not_websocket_depend_installed(
-    caplog: pytest.LogCaptureFixture, http_protocol_cls: HTTPProtocol
+    caplog: pytest.LogCaptureFixture, http_protocol_cls: type[HTTPProtocol]
 ):
     caplog.set_level(logging.WARNING, logger="uvicorn.error")
     app = Response("Hello, world", media_type="text/plain")
@@ -1111,7 +1303,7 @@ async def test_header_upgrade_is_not_websocket_depend_installed(
 
 
 async def test_header_upgrade_is_websocket_depend_not_installed(
-    caplog: pytest.LogCaptureFixture, http_protocol_cls: HTTPProtocol
+    caplog: pytest.LogCaptureFixture, http_protocol_cls: type[HTTPProtocol]
 ):
     caplog.set_level(logging.WARNING, logger="uvicorn.error")
     app = Response("Hello, world", media_type="text/plain")

@@ -21,13 +21,9 @@ When running locally, use `--reload` to turn on auto-reloading.
 
 The `--reload` and `--workers` arguments are **mutually exclusive**.
 
-To see the complete set of available options, use `uvicorn --help`:
+To see the complete set of available options, use `uvicorn --help`.
 
-```bash
-{{ uvicorn_help }}
-```
-
-See the [settings documentation](settings.md) for more details on the supported options for running uvicorn.
+See the [settings documentation](../settings.md) for more details on the supported options for running uvicorn.
 
 ## Running programmatically
 
@@ -82,7 +78,7 @@ The default process manager monitors the status of child processes and automatic
 
 You can also manage child processes by sending specific signals to the main process. (Not supported on Windows.)
 
-- `SIGHUP`: Work processeses are graceful restarted one after another. If you update the code, the new worker process will use the new code.
+- `SIGHUP`: Gracefully restart the workers one at a time with no dropped requests. Fresh workers pick up new code on disk.
 - `SIGTTIN`: Increase the number of worker processes by one.
 - `SIGTTOU`: Decrease the number of worker processes by one.
 
@@ -141,28 +137,6 @@ stdout_logfile_maxbytes=0
 
 Then run with `supervisord -n`.
 
-### Circus
-
-To use `circus` as a process manager, you should either:
-
-* Hand over the socket to uvicorn using its file descriptor, which circus makes available as `$(circus.sockets.web)`.
-* Or use a UNIX domain socket for each `uvicorn` process.
-
-A simple circus configuration might look something like this:
-
-```ini title="circus.ini"
-[watcher:web]
-cmd = venv/bin/uvicorn --fd $(circus.sockets.web) main:App
-use_sockets = True
-numprocesses = 4
-
-[socket:web]
-host = 0.0.0.0
-port = 8000
-```
-
-Then run `circusd circus.ini`.
-
 ## Running behind Nginx
 
 Using Nginx as a proxy in front of your Uvicorn processes may not be necessary, but is recommended for additional resilience. Nginx can deal with serving your static media and buffering slow requests, leaving your application servers free from load as much as possible.
@@ -175,7 +149,8 @@ When running your application behind one or more proxies you will want to make s
 
 Here's how a simple Nginx configuration might look. This example includes setting proxy headers, and using a UNIX domain socket to communicate with the application server.
 
-It also includes some basic configuration to forward websocket connections. For more info on this, check [Nginx recommendations][nginx_websocket].
+It also includes some basic configuration to forward websocket connections.
+For more info on this, check [Nginx recommendations](https://nginx.org/en/docs/http/websocket.html).
 
 ```conf
 http {
@@ -216,7 +191,7 @@ http {
 
 Uvicorn's `--proxy-headers` behavior may not be sufficient for more complex proxy configurations that use different combinations of headers, or where the application is running behind more than one intermediary proxying service.
 
-In those cases, you might want to use an ASGI middleware to set the `client` and `scheme` dependant on the request headers.
+In those cases, you might want to use an ASGI middleware to set the `client` and `scheme` dependent on the request headers.
 
 ## Running behind a CDN
 
@@ -229,9 +204,9 @@ Content Delivery Networks can also be a low-effort way to provide HTTPS terminat
 ## Running with HTTPS
 
 To run uvicorn with https, a certificate and a private key are required.
-The recommended way to get them is using [Let's Encrypt][letsencrypt].
+The recommended way to get them is using [Let's Encrypt](https://letsencrypt.org/).
 
-For local development with https, it's possible to use [mkcert][mkcert]
+For local development with https, it's possible to use [mkcert](https://github.com/FiloSottile/mkcert)
 to generate a valid certificate and private key.
 
 ```bash
@@ -246,9 +221,35 @@ It's also possible to use certificates with uvicorn's worker for gunicorn.
 $ gunicorn --keyfile=./key.pem --certfile=./cert.pem -k uvicorn.workers.UvicornWorker main:app
 ```
 
-[nginx_websocket]: https://nginx.org/en/docs/http/websocket.html
-[letsencrypt]: https://letsencrypt.org/
-[mkcert]: https://github.com/FiloSottile/mkcert
+### Customizing the SSL context
+
+For TLS scenarios that the `--ssl-*` flags don't cover (e.g., mutual TLS, custom `SSLContext.options`, bumping `minimum_version`, loading certificates from memory), pass an `ssl_context_factory` to `uvicorn.run()` or `Config`.
+
+The factory receives the `Config` instance and a `default_ssl_context_factory` callable that builds the standard context from the `ssl_*` settings on `Config`. Use it to start from uvicorn's default and mutate it, or ignore it and build your own context from scratch - the `ssl_*` settings are only consumed by the default factory, so if you don't call it they're effectively unused.
+
+```python
+import ssl
+from collections.abc import Callable
+
+import uvicorn
+from uvicorn.config import Config
+
+
+def ssl_context_factory(config: Config, default_ssl_context_factory: Callable[[], ssl.SSLContext]) -> ssl.SSLContext:
+    context = default_ssl_context_factory()
+    context.minimum_version = ssl.TLSVersion.TLSv1_3
+    return context
+
+
+uvicorn.run(
+    "main:app",
+    ssl_keyfile="key.pem",
+    ssl_certfile="cert.pem",
+    ssl_context_factory=ssl_context_factory,
+)
+```
+
+The factory is called inside each worker process, so it works with `--reload` and `--workers > 1`. The factory itself must be picklable in those modes (a top-level function is fine; lambdas and local closures are not). The `ssl_*` settings on `Config` are only consumed by `default_ssl_context_factory()`; if you build the context yourself without calling it, those settings are ignored.
 
 ## Proxies and Forwarded Headers
 
@@ -269,7 +270,9 @@ or Literals (e.g. `/path/to/socket.sock`). When running from CLI these are confi
 !!! Warning "Only trust clients you can actually trust!"
     Incorrectly trusting other clients can lead to malicious actors spoofing their apparent client address to your application.
 
-For more information, check [`ProxyHeadersMiddleware`](https://github.com/encode/uvicorn/blob/master/uvicorn/middleware/proxy_headers.py).
+A proxy chain may send a header once per hop rather than as a single comma-separated value. Repeated `X-Forwarded-For` fields are combined in order (as the equivalent comma-separated list, [RFC 9110, 5.3](https://www.rfc-editor.org/rfc/rfc9110#section-5.3)), while for `X-Forwarded-Proto` the last field is used.
+
+For more information, check [`ProxyHeadersMiddleware`](https://github.com/Kludex/uvicorn/blob/main/uvicorn/middleware/proxy_headers.py).
 
 ### Client Port
 

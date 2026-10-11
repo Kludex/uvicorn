@@ -7,25 +7,20 @@ import logging
 import os
 import socket
 import sys
-import typing
+from collections.abc import Callable, Iterator
+from contextlib import closing
 from pathlib import Path
-from typing import Any, Literal
+from typing import IO, Any, Literal
 from unittest.mock import MagicMock
 
 import pytest
 import yaml
 from pytest_mock import MockerFixture
 
-from tests.utils import as_cwd
-from uvicorn._types import (
-    ASGIApplication,
-    ASGIReceiveCallable,
-    ASGISendCallable,
-    Environ,
-    Scope,
-    StartResponse,
-)
-from uvicorn.config import Config
+from tests.custom_loop_utils import CustomLoop
+from tests.utils import as_cwd, get_asyncio_default_loop_per_os
+from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallable, Environ, Scope, StartResponse
+from uvicorn.config import Config, LoopFactoryType, UvicornDeprecationWarning
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from uvicorn.middleware.wsgi import WSGIMiddleware
 from uvicorn.protocols.http.h11_impl import H11Protocol
@@ -112,6 +107,17 @@ def test_reload_subdir_removal(reload_directory_structure: Path) -> None:
     with as_cwd(reload_directory_structure):
         config = Config(app="tests.test_config:asgi_app", reload=True, reload_dirs=reload_dirs)
         assert config.reload_dirs == [reload_directory_structure]
+
+
+def test_reload_nested_subdirs_removal(tmp_path: Path) -> None:
+    root = tmp_path.resolve()
+    nested = [root / "a" / "x" / "y", root / "a" / "x", root / "a", root / "b" / "z", root / "c" / "d" / "e"]
+    for directory in nested:
+        directory.mkdir(parents=True, exist_ok=True)
+
+    with as_cwd(root):
+        config = Config(app="tests.test_config:asgi_app", reload=True, reload_dirs=[str(d) for d in nested])
+        assert frozenset(config.reload_dirs) == frozenset([root / "a", root / "b" / "z", root / "c" / "d" / "e"])
 
 
 def test_reload_included_dir_is_added_to_reload_dirs(
@@ -259,11 +265,18 @@ def test_concrete_http_class() -> None:
     assert config.http_protocol_class is H11Protocol
 
 
+def test_http2_requires_zttp_protocol() -> None:
+    config = Config(app=asgi_app, http="h11", http2=True)
+    with pytest.raises(ValueError, match="HTTP/2 requires the `zttp` HTTP protocol"):
+        config.load()
+
+
 def test_socket_bind() -> None:
     config = Config(app=asgi_app)
     config.load()
     sock = config.bind_socket()
     assert isinstance(sock, socket.socket)
+    assert sock.proto == socket.IPPROTO_TCP
     sock.close()
 
 
@@ -291,7 +304,7 @@ def test_ssl_config_combined(tls_certificate_key_and_chain_path: str) -> None:
     assert config.is_ssl is True
 
 
-def asgi2_app(scope: Scope) -> typing.Callable:
+def asgi2_app(scope: Scope) -> Callable:
     async def asgi(receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:  # pragma: nocover
         pass
 
@@ -371,10 +384,39 @@ def test_log_config_yaml(
     mocked_logging_config_module.dictConfig.assert_called_once_with(logging_config)
 
 
+def test_log_config_yaml_missing_pyyaml(mocked_logging_config_module: MagicMock, mocker: MockerFixture) -> None:
+    """
+    Test that a helpful error is raised when PyYAML is not installed.
+    """
+    mocker.patch.dict(sys.modules, {"yaml": None})
+    with pytest.raises(ImportError, match=r"Install the PyYAML package or uvicorn\[standard\]"):
+        Config(app=asgi_app, log_config="log_config.yaml")
+
+
+def test_log_config_pathlike(
+    mocked_logging_config_module: MagicMock,
+    logging_config: dict[str, Any],
+    json_logging_config: str,
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    """
+    Test that one can pass a `os.PathLike` (e.g. `pathlib.Path`) as the log config path.
+    """
+    path = tmp_path / "log_config.json"
+    mocked_open = mocker.patch("uvicorn.config.open", mocker.mock_open(read_data=json_logging_config))
+
+    config = Config(app=asgi_app, log_config=path)
+    config.load()
+
+    mocked_open.assert_called_once_with(os.fspath(path))
+    mocked_logging_config_module.dictConfig.assert_called_once_with(logging_config)
+
+
 @pytest.mark.parametrize("config_file", ["log_config.ini", configparser.ConfigParser(), io.StringIO()])
 def test_log_config_file(
     mocked_logging_config_module: MagicMock,
-    config_file: str | configparser.RawConfigParser | typing.IO[Any],
+    config_file: str | configparser.RawConfigParser | IO[Any],
 ) -> None:
     """
     Test that one can load a configparser config from disk.
@@ -386,17 +428,25 @@ def test_log_config_file(
 
 
 @pytest.fixture(params=[0, 1])
-def web_concurrency(request: pytest.FixtureRequest) -> typing.Iterator[int]:
+def web_concurrency(request: pytest.FixtureRequest) -> Iterator[int]:
     yield request.param
     if os.getenv("WEB_CONCURRENCY"):
         del os.environ["WEB_CONCURRENCY"]
 
 
-@pytest.fixture(params=["127.0.0.1", "127.0.0.2"])
-def forwarded_allow_ips(request: pytest.FixtureRequest) -> typing.Iterator[str]:
+@pytest.fixture(params=["::1", "127.0.0.1", "127.0.0.2"])
+def forwarded_allow_ips(request: pytest.FixtureRequest) -> Iterator[str]:
     yield request.param
     if os.getenv("FORWARDED_ALLOW_IPS"):
         del os.environ["FORWARDED_ALLOW_IPS"]
+
+
+def test_forwarded_allow_ips_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("FORWARDED_ALLOW_IPS", raising=False)
+
+    config = Config(app=asgi_app)
+
+    assert config.forwarded_allow_ips == "127.0.0.1,::1"
 
 
 def test_env_file(
@@ -467,6 +517,21 @@ def test_config_log_effective_level(log_level: int, uvicorn_logger_level: int) -
     assert logging.getLogger("uvicorn.asgi").getEffectiveLevel() == effective_level
 
 
+@pytest.mark.parametrize("log_level", ["INFO", "Info", "info"])
+def test_config_log_level_case_insensitive(log_level: str) -> None:
+    config = Config(app=asgi_app, log_level=log_level)
+    config.load()
+    assert logging.getLogger("uvicorn.error").level == logging.INFO
+
+
+@pytest.mark.filterwarnings("ignore: websockets.legacy is deprecated.*:DeprecationWarning")
+def test_ws_websockets_emits_deprecation_warning() -> None:
+    sys.modules.pop("uvicorn.protocols.websockets.websockets_impl", None)
+    config = Config(app=asgi_app, ws="websockets")
+    with pytest.warns(UvicornDeprecationWarning, match="The `websockets` implementation is deprecated"):
+        config.load()
+
+
 def test_ws_max_size() -> None:
     config = Config(app=asgi_app, ws_max_size=1000)
     config.load()
@@ -522,6 +587,37 @@ def test_bind_fd_works_with_reload_or_workers(reload: bool, workers: int):  # pr
     fdsock.close()
 
 
+@pytest.fixture
+def stdin_socket() -> Iterator[socket.socket]:  # pragma: py-win32
+    with closing(socket.socket(socket.AF_INET)) as sock:
+        sock.bind(("127.0.0.1", 0))
+        saved_stdin = os.dup(0)
+        os.dup2(sock.fileno(), 0)
+        try:
+            yield sock
+        finally:
+            os.dup2(saved_stdin, 0)
+            os.close(saved_stdin)
+
+
+@pytest.mark.parametrize(
+    "reload, workers",
+    [
+        (True, 1),
+        (False, 2),
+    ],
+    ids=["--reload=True --workers=1", "--reload=False --workers=2"],
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
+def test_bind_stdin_works_with_reload_or_workers(
+    reload: bool, workers: int, stdin_socket: socket.socket
+):  # pragma: py-win32
+    config = Config(app=asgi_app, fd=0, reload=reload, workers=workers)
+    config.load()
+    with closing(config.bind_socket()) as sock:
+        assert sock.getsockname() == stdin_socket.getsockname()
+
+
 @pytest.mark.parametrize(
     "reload, workers, expected",
     [
@@ -545,3 +641,56 @@ def test_warn_when_using_reload_and_workers(caplog: pytest.LogCaptureFixture) ->
     Config(app=asgi_app, reload=True, workers=2)
     assert len(caplog.records) == 1
     assert '"workers" flag is ignored when reloading is enabled.' in caplog.records[0].message
+
+
+@pytest.mark.parametrize(
+    ("loop_type", "expected_loop_factory"),
+    [
+        ("none", None),
+        ("asyncio", get_asyncio_default_loop_per_os()),
+    ],
+)
+def test_get_loop_factory(loop_type: LoopFactoryType, expected_loop_factory: Any):
+    config = Config(app=asgi_app, loop=loop_type)
+    loop_factory = config.get_loop_factory()
+    if loop_factory is None:
+        assert expected_loop_factory is loop_factory
+    else:
+        loop = loop_factory()
+        with closing(loop):
+            assert loop is not None
+            assert isinstance(loop, expected_loop_factory)
+
+
+def test_custom_loop__importable_custom_loop_setup_function() -> None:
+    config = Config(app=asgi_app, loop="tests.custom_loop_utils:CustomLoop")
+    config.load()
+    loop_factory = config.get_loop_factory()
+    assert loop_factory, "Loop factory should be set"
+    event_loop = loop_factory()
+    with closing(event_loop):
+        assert event_loop is not None
+        assert isinstance(event_loop, CustomLoop)
+
+
+@pytest.mark.filterwarnings("ignore::pytest.PytestUnraisableExceptionWarning")
+def test_custom_loop__not_importable_custom_loop_setup_function(caplog: pytest.LogCaptureFixture) -> None:
+    config = Config(app=asgi_app, loop="tests.test_config:non_existing_setup_function")
+    config.load()
+    with pytest.raises(SystemExit):
+        config.get_loop_factory()
+    error_messages = [
+        record.message for record in caplog.records if record.name == "uvicorn.error" and record.levelname == "ERROR"
+    ]
+    assert (
+        'Error loading custom loop setup function. Attribute "non_existing_setup_function" not found in module "tests.test_config".'  # noqa: E501
+        == error_messages.pop(0)
+    )
+
+
+def test_setup_event_loop_is_removed(caplog: pytest.LogCaptureFixture) -> None:
+    config = Config(app=asgi_app)
+    with pytest.raises(
+        AttributeError, match="The `setup_event_loop` method was replaced by `get_loop_factory` in uvicorn 0.36.0."
+    ):
+        config.setup_event_loop()

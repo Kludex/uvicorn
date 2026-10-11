@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from asyncio import Queue
-from typing import Any, Union
+from typing import Any
 
 from uvicorn import Config
 from uvicorn._types import (
@@ -16,13 +16,13 @@ from uvicorn._types import (
     LifespanStartupFailedEvent,
 )
 
-LifespanReceiveMessage = Union[LifespanStartupEvent, LifespanShutdownEvent]
-LifespanSendMessage = Union[
-    LifespanStartupFailedEvent,
-    LifespanShutdownFailedEvent,
-    LifespanStartupCompleteEvent,
-    LifespanShutdownCompleteEvent,
-]
+LifespanReceiveMessage = LifespanStartupEvent | LifespanShutdownEvent
+LifespanSendMessage = (
+    LifespanStartupFailedEvent
+    | LifespanShutdownFailedEvent
+    | LifespanStartupCompleteEvent
+    | LifespanShutdownCompleteEvent
+)
 
 
 STATE_TRANSITION_ERROR = "Got invalid state transition on lifespan protocol."
@@ -38,7 +38,7 @@ class LifespanOn:
         self.startup_event = asyncio.Event()
         self.shutdown_event = asyncio.Event()
         self.receive_queue: Queue[LifespanReceiveMessage] = asyncio.Queue()
-        self.error_occured = False
+        self.error_occurred = False
         self.startup_failed = False
         self.shutdown_failed = False
         self.should_exit = False
@@ -50,26 +50,26 @@ class LifespanOn:
         loop = asyncio.get_event_loop()
         main_lifespan_task = loop.create_task(self.main())  # noqa: F841
         # Keep a hard reference to prevent garbage collection
-        # See https://github.com/encode/uvicorn/pull/972
+        # See https://github.com/Kludex/uvicorn/pull/972
         startup_event: LifespanStartupEvent = {"type": "lifespan.startup"}
         await self.receive_queue.put(startup_event)
         await self.startup_event.wait()
 
-        if self.startup_failed or (self.error_occured and self.config.lifespan == "on"):
+        if self.startup_failed or (self.error_occurred and self.config.lifespan == "on"):
             self.logger.error("Application startup failed. Exiting.")
             self.should_exit = True
         else:
             self.logger.info("Application startup complete.")
 
     async def shutdown(self) -> None:
-        if self.error_occured:
+        if self.error_occurred:
             return
         self.logger.info("Waiting for application shutdown.")
         shutdown_event: LifespanShutdownEvent = {"type": "lifespan.shutdown"}
         await self.receive_queue.put(shutdown_event)
         await self.shutdown_event.wait()
 
-        if self.shutdown_failed or (self.error_occured and self.config.lifespan == "on"):
+        if self.shutdown_failed or (self.error_occurred and self.config.lifespan == "on"):
             self.logger.error("Application shutdown failed. Exiting.")
             self.should_exit = True
         else:
@@ -86,7 +86,7 @@ class LifespanOn:
             await app(scope, self.receive, self.send)
         except BaseException as exc:
             self.asgi = None
-            self.error_occured = True
+            self.error_occurred = True
             if self.startup_failed or self.shutdown_failed:
                 return
             if self.config.lifespan == "auto":

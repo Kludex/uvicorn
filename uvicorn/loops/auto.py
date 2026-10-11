@@ -1,11 +1,17 @@
-def auto_loop_setup(use_subprocess: bool = False) -> None:
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Callable
+
+
+def auto_loop_factory(use_subprocess: bool = False) -> Callable[[], asyncio.AbstractEventLoop]:
     try:
         import uvloop  # noqa
     except ImportError:  # pragma: no cover
-        from uvicorn.loops.asyncio import asyncio_setup as loop_setup
+        from uvicorn.loops.asyncio import asyncio_loop_factory as loop_factory
 
-        loop_setup(use_subprocess=use_subprocess)
+        return loop_factory(use_subprocess=use_subprocess)
     else:  # pragma: no cover
-        from uvicorn.loops.uvloop import uvloop_setup
+        from uvicorn.loops.uvloop import uvloop_loop_factory
 
-        uvloop_setup(use_subprocess=use_subprocess)
+        return uvloop_loop_factory(use_subprocess=use_subprocess)

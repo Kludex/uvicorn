@@ -12,7 +12,7 @@ import pytest
 from click.testing import CliRunner
 
 import uvicorn
-from uvicorn.config import Config
+from uvicorn.config import STARTUP_FAILURE, Config
 from uvicorn.main import main as cli
 from uvicorn.server import Server
 from uvicorn.supervisors import ChangeReload, Multiprocess
@@ -60,11 +60,29 @@ def test_cli_headers() -> None:
     assert result.exit_code == 0
     mock_run.assert_called_once()
     assert mock_run.call_args[1]["headers"] == [
-        [
-            "Content-Security-Policy",
-            "default-src 'self'; script-src https://example.com",
-        ]
+        ("Content-Security-Policy", "default-src 'self'; script-src https://example.com")
     ]
+
+
+@pytest.mark.parametrize("header", ["X-Foo", ":bar"])
+def test_cli_invalid_header(header: str) -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli, ["tests.test_cli:App", "--header", header])
+
+    assert result.exit_code == 2
+    assert f"Invalid value for '--header': Expected 'Name:Value' format, got {header!r}." in result.output
+
+
+def test_cli_rejects_negative_limit_max_requests_jitter() -> None:
+    runner = CliRunner()
+
+    with mock.patch.object(main, "run") as mock_run:
+        result = runner.invoke(cli, ["tests.test_cli:App", "--limit-max-requests-jitter", "-1"])
+
+    assert result.exit_code == 2
+    assert "Invalid value for '--limit-max-requests-jitter'" in result.output
+    mock_run.assert_not_called()
 
 
 def test_cli_call_server_run() -> None:
@@ -133,7 +151,7 @@ def test_cli_incomplete_app_parameter() -> None:
     assert (
         'Error loading ASGI app. Import string "tests.test_cli" must be in format "<module>:<attribute>".'
     ) in result.output
-    assert result.exit_code == 1
+    assert result.exit_code == STARTUP_FAILURE
 
 
 def test_cli_event_size() -> None:
@@ -149,6 +167,19 @@ def test_cli_event_size() -> None:
     assert result.exit_code == 0
     mock_run.assert_called_once()
     assert mock_run.call_args[1]["h11_max_incomplete_event_size"] == 32768
+
+
+def test_cli_http2() -> None:
+    runner = CliRunner()
+
+    with mock.patch.object(main, "run") as mock_run:
+        result = runner.invoke(cli, ["tests.test_cli:App", "--http", "zttp", "--http2"])
+
+    assert result.output == ""
+    assert result.exit_code == 0
+    mock_run.assert_called_once()
+    assert mock_run.call_args[1]["http"] == "zttp"
+    assert mock_run.call_args[1]["http2"] is True
 
 
 @pytest.mark.parametrize("http_protocol", ["h11", "httptools"])

@@ -1,0 +1,23 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: Uvicorn
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Marcelo
+    family-names: Trylesinski
+    email: marcelotryle@gmail.com
+  - given-names: Tom
+    family-names: Christie
+    email: tom@tomchristie.com
+repository-code: "https://github.com/Kludex/uvicorn"
+url: "https://uvicorn.dev/"
+abstract: Uvicorn is an ASGI web server implementation for Python.
+keywords:
+  - asgi
+  - server
+license: BSD-3-Clause

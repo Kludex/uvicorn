@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
@@ -15,7 +16,8 @@ from uvicorn import Config, Server
 async def run_server(config: Config, sockets: list[socket] | None = None) -> AsyncIterator[Server]:
     server = Server(config=config)
     task = asyncio.create_task(server.serve(sockets=sockets))
-    await asyncio.sleep(0.1)
+    while not server.started:
+        await asyncio.sleep(0.05)
     try:
         yield server
     finally:
@@ -44,3 +46,11 @@ def as_cwd(path: Path):
         yield
     finally:
         os.chdir(prev_cwd)
+
+
+def get_asyncio_default_loop_per_os() -> type[asyncio.AbstractEventLoop]:
+    """Get the default asyncio loop per OS."""
+    if sys.platform == "win32":
+        return asyncio.ProactorEventLoop  # type: ignore  # pragma: nocover
+    else:
+        return asyncio.SelectorEventLoop  # pragma: nocover

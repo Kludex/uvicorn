@@ -1,13 +1,8 @@
 #!/bin/sh -e
 
-export PREFIX=""
-if [ -d 'venv' ] ; then
-    export PREFIX="venv/bin/"
-    export PATH=${PREFIX}:${PATH}
-fi
 export SOURCE_FILES="uvicorn tests"
 
 set -x
 
-${PREFIX}ruff format $SOURCE_FILES
-${PREFIX}ruff check --fix $SOURCE_FILES
+uv run ruff format $SOURCE_FILES
+uv run ruff check --fix $SOURCE_FILES

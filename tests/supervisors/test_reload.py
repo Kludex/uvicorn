@@ -3,11 +3,10 @@ from __future__ import annotations
 import signal
 import socket
 import sys
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from pathlib import Path
-from threading import Thread
-from time import sleep
-from typing import Callable
+from threading import Event, Thread
+from time import monotonic, sleep
 
 import pytest
 from pytest_mock import MockerFixture
@@ -18,7 +17,7 @@ from uvicorn.supervisors.basereload import BaseReload, _display_path
 from uvicorn.supervisors.statreload import StatReload
 
 try:
-    from uvicorn.supervisors.watchfilesreload import WatchFilesReload
+    from uvicorn.supervisors.watchfilesreload import FileFilter, WatchFilesReload
 except ImportError:  # pragma: no cover
     WatchFilesReload = None  # type: ignore[misc,assignment]
 
@@ -31,25 +30,30 @@ def run(sockets: list[socket.socket] | None) -> None:
     pass  # pragma: no cover
 
 
-def sleep_touch(*paths: Path):
-    sleep(0.1)
-    for p in paths:
-        p.touch()
+def touch_repeatedly(stop_event: Event, *paths: Path) -> None:
+    while not stop_event.wait(0.1):
+        for path in paths:
+            path.touch()
 
 
 @pytest.fixture
-def touch_soon() -> Generator[Callable[[Path], None]]:
-    threads: list[Thread] = []
+def touch_soon() -> Generator[Callable[..., Event]]:
+    threads: list[tuple[Thread, Event]] = []
 
-    def start(*paths: Path) -> None:
-        thread = Thread(target=sleep_touch, args=paths)
+    def start(*paths: Path) -> Event:
+        stop_event = Event()
+        thread = Thread(target=touch_repeatedly, args=(stop_event, *paths), daemon=True)
         thread.start()
-        threads.append(thread)
+        threads.append((thread, stop_event))
+        return stop_event
 
     yield start
 
-    for t in threads:
-        t.join()
+    for _, stop_event in threads:
+        stop_event.set()
+    for thread, _ in threads:
+        thread.join(timeout=10)
+        assert not thread.is_alive(), "Touch worker did not shut down in time"
 
 
 class TestBaseReload:
@@ -69,17 +73,27 @@ class TestBaseReload:
         reloader.startup()
         return reloader
 
-    def _reload_tester(
-        self, touch_soon: Callable[[Path], None], reloader: BaseReload, *files: Path
-    ) -> list[Path] | None:
+    def _reload_tester(self, touch_soon: Callable[..., Event], reloader: BaseReload, *files: Path) -> list[Path] | None:
         reloader.restart()
         if WatchFilesReload is not None and isinstance(reloader, WatchFilesReload):
-            touch_soon(*files)
-        else:
-            assert not next(reloader)
-            sleep(0.1)
-            for file in files:
-                file.touch()
+            stop_touching = touch_soon(*files)
+            try:
+                expected = set(files)
+                deadline = monotonic() + 5
+                seen: set[Path] = set()
+                while monotonic() < deadline:
+                    changes = next(reloader)
+                    if changes:
+                        seen.update(p for p in changes if p in expected)
+                        if seen == expected:
+                            break
+                return sorted(seen) if seen else None
+            finally:
+                stop_touching.set()
+        assert not next(reloader)
+        sleep(0.1)
+        for file in files:
+            file.touch()
         return next(reloader)
 
     @pytest.mark.parametrize("reloader_class", [StatReload, WatchFilesReload])
@@ -96,7 +110,7 @@ class TestBaseReload:
             reloader.shutdown()
 
     @pytest.mark.parametrize("reloader_class", [StatReload, pytest.param(WatchFilesReload, marks=skip_non_linux)])
-    def test_reload_when_python_file_is_changed(self, touch_soon: Callable[[Path], None]):
+    def test_reload_when_python_file_is_changed(self, touch_soon: Callable[..., Event]):
         file = self.reload_path / "main.py"
 
         with as_cwd(self.reload_path):
@@ -109,7 +123,7 @@ class TestBaseReload:
             reloader.shutdown()
 
     @pytest.mark.parametrize("reloader_class", [StatReload, WatchFilesReload])
-    def test_should_reload_when_python_file_in_subdir_is_changed(self, touch_soon: Callable[[Path], None]):
+    def test_should_reload_when_python_file_in_subdir_is_changed(self, touch_soon: Callable[..., Event]):
         file = self.reload_path / "app" / "sub" / "sub.py"
 
         with as_cwd(self.reload_path):
@@ -121,7 +135,7 @@ class TestBaseReload:
             reloader.shutdown()
 
     @pytest.mark.parametrize("reloader_class", [WatchFilesReload])
-    def test_should_not_reload_when_python_file_in_excluded_subdir_is_changed(self, touch_soon: Callable[[Path], None]):
+    def test_should_not_reload_when_python_file_in_excluded_subdir_is_changed(self, touch_soon: Callable[..., Event]):
         sub_dir = self.reload_path / "app" / "sub"
         sub_file = sub_dir / "sub.py"
 
@@ -141,7 +155,7 @@ class TestBaseReload:
         "reloader_class, result", [(StatReload, False), pytest.param(WatchFilesReload, True, marks=skip_non_linux)]
     )
     def test_reload_when_pattern_matched_file_is_changed(
-        self, result: bool, touch_soon: Callable[[Path], None]
+        self, result: bool, touch_soon: Callable[..., Event]
     ):  # pragma: py-not-linux
         file = self.reload_path / "app" / "js" / "main.js"
 
@@ -155,7 +169,7 @@ class TestBaseReload:
 
     @pytest.mark.parametrize("reloader_class", [pytest.param(WatchFilesReload, marks=skip_non_linux)])
     def test_should_not_reload_when_exclude_pattern_match_file_is_changed(
-        self, touch_soon: Callable[[Path], None]
+        self, touch_soon: Callable[..., Event]
     ):  # pragma: py-not-linux
         python_file = self.reload_path / "app" / "src" / "main.py"
         css_file = self.reload_path / "app" / "css" / "main.css"
@@ -177,7 +191,7 @@ class TestBaseReload:
             reloader.shutdown()
 
     @pytest.mark.parametrize("reloader_class", [StatReload, WatchFilesReload])
-    def test_should_not_reload_when_dot_file_is_changed(self, touch_soon: Callable[[Path], None]):
+    def test_should_not_reload_when_dot_file_is_changed(self, touch_soon: Callable[..., Event]):
         file = self.reload_path / ".dotted"
 
         with as_cwd(self.reload_path):
@@ -190,7 +204,7 @@ class TestBaseReload:
 
     @pytest.mark.parametrize("reloader_class", [StatReload, pytest.param(WatchFilesReload, marks=skip_non_linux)])
     def test_should_reload_when_directories_have_same_prefix(
-        self, touch_soon: Callable[[Path], None]
+        self, touch_soon: Callable[..., Event]
     ):  # pragma: py-not-linux
         app_dir = self.reload_path / "app"
         app_file = app_dir / "src" / "main.py"
@@ -215,7 +229,7 @@ class TestBaseReload:
         [StatReload, pytest.param(WatchFilesReload, marks=skip_non_linux)],
     )
     def test_should_not_reload_when_only_subdirectory_is_watched(
-        self, touch_soon: Callable[[Path], None]
+        self, touch_soon: Callable[..., Event]
     ):  # pragma: py-not-linux
         app_dir = self.reload_path / "app"
         app_dir_file = self.reload_path / "app" / "src" / "main.py"
@@ -234,7 +248,7 @@ class TestBaseReload:
         reloader.shutdown()
 
     @pytest.mark.parametrize("reloader_class", [pytest.param(WatchFilesReload, marks=skip_non_linux)])
-    def test_override_defaults(self, touch_soon: Callable[[Path], None]) -> None:  # pragma: py-not-linux
+    def test_override_defaults(self, touch_soon: Callable[..., Event]) -> None:  # pragma: py-not-linux
         dotted_file = self.reload_path / ".dotted"
         dotted_dir_file = self.reload_path / ".dotted_dir" / "file.txt"
         python_file = self.reload_path / "main.py"
@@ -256,7 +270,7 @@ class TestBaseReload:
             reloader.shutdown()
 
     @pytest.mark.parametrize("reloader_class", [pytest.param(WatchFilesReload, marks=skip_non_linux)])
-    def test_explicit_paths(self, touch_soon: Callable[[Path], None]) -> None:  # pragma: py-not-linux
+    def test_explicit_paths(self, touch_soon: Callable[..., Event]) -> None:  # pragma: py-not-linux
         dotted_file = self.reload_path / ".dotted"
         non_dotted_file = self.reload_path / "ext" / "ext.jpg"
         python_file = self.reload_path / "main.py"
@@ -306,24 +320,17 @@ class TestBaseReload:
 
 
 @pytest.mark.skipif(WatchFilesReload is None, reason="watchfiles not available")
-def test_should_watch_one_dir_cwd(mocker: MockerFixture, reload_directory_structure: Path):
+def test_should_watch_cwd(mocker: MockerFixture, reload_directory_structure: Path):
     mock_watch = mocker.patch("uvicorn.supervisors.watchfilesreload.watch")
-    app_dir = reload_directory_structure / "app"
-    app_first_dir = reload_directory_structure / "app_first"
 
-    with as_cwd(reload_directory_structure):
-        config = Config(
-            app="tests.test_config:asgi_app",
-            reload=True,
-            reload_dirs=[str(app_dir), str(app_first_dir)],
-        )
-        WatchFilesReload(config, target=run, sockets=[])
-        mock_watch.assert_called_once()
-        assert mock_watch.call_args[0] == (Path.cwd(),)
+    config = Config(app="tests.test_config:asgi_app", reload=True, reload_dirs=[])
+    WatchFilesReload(config, target=run, sockets=[])
+    mock_watch.assert_called_once()
+    assert mock_watch.call_args[0] == (Path.cwd(),)
 
 
 @pytest.mark.skipif(WatchFilesReload is None, reason="watchfiles not available")
-def test_should_watch_separate_dirs_outside_cwd(mocker: MockerFixture, reload_directory_structure: Path):
+def test_should_watch_multiple_dirs(mocker: MockerFixture, reload_directory_structure: Path):
     mock_watch = mocker.patch("uvicorn.supervisors.watchfilesreload.watch")
     app_dir = reload_directory_structure / "app"
     app_first_dir = reload_directory_structure / "app_first"
@@ -337,7 +344,6 @@ def test_should_watch_separate_dirs_outside_cwd(mocker: MockerFixture, reload_di
     assert set(mock_watch.call_args[0]) == {
         app_dir,
         app_first_dir,
-        Path.cwd(),
     }
 
 
@@ -408,3 +414,25 @@ def test_base_reloader_closes_sockets_on_shutdown():
     assert sock.fileno() != -1
     reloader.shutdown()
     assert sock.fileno() == -1
+
+
+@pytest.mark.skipif(WatchFilesReload is None, reason="watchfiles not available")
+def test_file_filter_excluded_directory(tmp_path: Path) -> None:
+    """A glob include inside an excluded directory is not watched.
+
+    Pins the branch directly: the reload tests that exercise it through real
+    file watching are skipped on Windows and macOS, which left it uncovered
+    on some CI runs (see #2974).
+    """
+    excluded_dir = tmp_path / "vendor"
+    excluded_dir.mkdir()
+
+    config = Config(
+        app="tests.test_config:asgi_app",
+        reload=True,
+        reload_excludes=[str(excluded_dir)],
+    )
+    file_filter = FileFilter(config)
+
+    assert file_filter(tmp_path / "app.py")
+    assert not file_filter(excluded_dir / "app.py")
