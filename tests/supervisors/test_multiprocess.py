@@ -114,32 +114,35 @@ def test_multiprocess_health_check() -> None:
 
 @pytest.mark.skipif(os.name == "nt", reason="test spawns real worker processes")
 @pytest.mark.parametrize(
-    "asgi_app, sig, message",
+    "asgi_app, steps, message",
     [
-        (app, "SIGKILL", "died from signal SIGKILL"),
-        (app, "SIGSTOP", "was unresponsive and got killed"),
-        (exit_app, None, "died with exit code 1"),
+        (app, [Process.kill, Process.join], "died from signal SIGKILL"),
+        (exit_app, [Process.join], "died with exit code 1"),
+        (app, [], "was unresponsive and got killed"),
     ],
 )
 def test_multiprocess_logs_why_worker_died(
-    asgi_app: Callable[..., Any], sig: str | None, message: str, caplog: pytest.LogCaptureFixture
+    asgi_app: Callable[..., Any],
+    steps: list[Callable[[Process], None]],
+    message: str,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    config = Config(app=asgi_app, workers=1, timeout_worker_healthcheck=1)
+    # A zero healthcheck timeout means a worker that is still booting never answers in time.
+    config = Config(app=asgi_app, workers=1, timeout_worker_healthcheck=0)
     supervisor = Multiprocess(config, sockets=[])
     try:
         supervisor.init_processes()
         process = supervisor.processes[0]
-        if sig is not None:
-            assert process.wait_until_ready(timeout=10) and process.pid is not None
-            os.kill(process.pid, signal.Signals[sig])
-        if sig != "SIGSTOP":
-            process.process.join()
+        for step in steps:
+            step(process)
         with caplog.at_level(logging.INFO, logger="uvicorn.error"):
             supervisor.keep_subprocess_alive()
         assert f"Child process [{process.pid}] {message}" in caplog.messages
     finally:
-        supervisor.terminate_all()
-        supervisor.join_all()
+        # SIGTERM can get lost while the replacement worker is still spawning.
+        for process in supervisor.processes:
+            process.kill()
+            process.join()
 
 
 @new_console_in_windows
