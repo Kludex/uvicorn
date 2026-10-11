@@ -12,10 +12,10 @@ from uvicorn.server import ServerState
 
 if TYPE_CHECKING:
     from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
-    from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
+    from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol as _WSProtocol
 
-    WSProtocol: TypeAlias = WebSocketProtocol | _WSProtocol
+    WSProtocol: TypeAlias = WebSocketsSansIOProtocol | _WSProtocol
     HTTPProtocol: TypeAlias = H11Protocol | HttpToolsProtocol
 
 
@@ -131,7 +131,7 @@ class MockLoop:
         self._tasks: list[asyncio.Task[Any]] = []
         self._later: list[MockTimerHandle] = []
 
-    def create_task(self, coroutine: Any, **kwargs: Any) -> Any:
+    def create_task(self, coroutine: Any) -> Any:
         self._tasks.insert(0, coroutine)
         return MockTask()
 
