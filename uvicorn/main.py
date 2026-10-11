@@ -58,7 +58,7 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     ctx.exit()
 
 
-def parse_headers(ctx: click.Context, param: click.Parameter, value: tuple[str, ...]) -> list[tuple[str, str]]:
+def _parse_headers(ctx: click.Context, param: click.Parameter, value: tuple[str, ...]) -> list[tuple[str, str]]:
     headers = []
     for header in value:
         name, sep, val = header.partition(":")
@@ -364,7 +364,7 @@ def parse_headers(ctx: click.Context, param: click.Parameter, value: tuple[str, 
     "--header",
     "headers",
     multiple=True,
-    callback=parse_headers,
+    callback=_parse_headers,
     help="Specify custom default HTTP response headers as a Name:Value pair",
 )
 @click.option(
