@@ -62,7 +62,7 @@ def _parse_headers(ctx: click.Context, param: click.Parameter, value: tuple[str,
     headers = []
     for header in value:
         name, sep, val = header.partition(":")
-        if not sep:
+        if not sep or not name:
             raise click.BadParameter(f"Expected 'Name:Value' format, got {header!r}.")
         headers.append((name, val))
     return headers

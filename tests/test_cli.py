@@ -64,13 +64,14 @@ def test_cli_headers() -> None:
     ]
 
 
-def test_cli_headers_missing_colon() -> None:
+@pytest.mark.parametrize("header", ["X-Foo", ":bar"])
+def test_cli_invalid_header(header: str) -> None:
     runner = CliRunner()
 
-    result = runner.invoke(cli, ["tests.test_cli:App", "--header", "X-Foo"])
+    result = runner.invoke(cli, ["tests.test_cli:App", "--header", header])
 
     assert result.exit_code == 2
-    assert "Invalid value for '--header': Expected 'Name:Value' format, got 'X-Foo'." in result.output
+    assert f"Invalid value for '--header': Expected 'Name:Value' format, got {header!r}." in result.output
 
 
 def test_cli_rejects_negative_limit_max_requests_jitter() -> None:
