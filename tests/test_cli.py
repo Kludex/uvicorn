@@ -60,11 +60,17 @@ def test_cli_headers() -> None:
     assert result.exit_code == 0
     mock_run.assert_called_once()
     assert mock_run.call_args[1]["headers"] == [
-        [
-            "Content-Security-Policy",
-            "default-src 'self'; script-src https://example.com",
-        ]
+        ("Content-Security-Policy", "default-src 'self'; script-src https://example.com")
     ]
+
+
+def test_cli_headers_missing_colon() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli, ["tests.test_cli:App", "--header", "X-Foo"])
+
+    assert result.exit_code == 2
+    assert "Invalid value for '--header': Expected 'Name:Value' format, got 'X-Foo'." in result.output
 
 
 def test_cli_rejects_negative_limit_max_requests_jitter() -> None:
