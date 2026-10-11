@@ -417,6 +417,7 @@ class RequestResponseCycle:
         # Response state
         self.response_started = False
         self.response_complete = False
+        self.body_complete = False
         self.send_trailers = False
         self.chunked_encoding: bool | None = None
         self.expected_content_length = 0
@@ -532,7 +533,7 @@ class RequestResponseCycle:
             content.append(b"\r\n")
             self.transport.write(b"".join(content))
 
-        elif not self.response_complete:
+        elif not self.body_complete:
             # Sending response body
             if message["type"] != "http.response.body":
                 raise RuntimeError(f"Expected ASGI message 'http.response.body', but got '{message['type']}'.")
@@ -563,14 +564,15 @@ class RequestResponseCycle:
             if not more_body:
                 if self.expected_content_length != 0:
                     raise RuntimeError("Response content shorter than Content-Length")
-                self.response_complete = True
-                self.message_event.set()
+                self.body_complete = True
                 if not self.send_trailers:
+                    self.response_complete = True
+                    self.message_event.set()
                     if not self.keep_alive:
                         self.transport.close()
                     self.on_response()
 
-        elif self.send_trailers:
+        elif self.send_trailers and not self.response_complete:
             # Sending response trailers
             if message["type"] != "http.response.trailers":
                 raise RuntimeError(f"Expected ASGI message 'http.response.trailers', but got '{message['type']}'.")
@@ -592,7 +594,8 @@ class RequestResponseCycle:
                 self.transport.write(b"".join(content))
 
             if not more_trailers:
-                self.send_trailers = False
+                self.response_complete = True
+                self.message_event.set()
                 if not self.keep_alive:
                     self.transport.close()
                 self.on_response()

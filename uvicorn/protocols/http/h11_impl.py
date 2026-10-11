@@ -408,6 +408,7 @@ class RequestResponseCycle:
         # Response state
         self.response_started = False
         self.response_complete = False
+        self.body_complete = False
         self.send_trailers = False
         self.trailers: list[tuple[bytes, bytes]] = []
 
@@ -498,7 +499,7 @@ class RequestResponseCycle:
             chunked = b"\r\ntransfer-encoding: chunked\r\n" in output.lower()
             self.expect_trailers = self.expect_trailers and chunked and self.scope["method"] != "HEAD"
 
-        elif not self.response_complete:
+        elif not self.body_complete:
             # Sending response body
             if message["type"] != "http.response.body":
                 raise RuntimeError(f"Expected ASGI message 'http.response.body', but got '{message['type']}'.")
@@ -513,13 +514,14 @@ class RequestResponseCycle:
 
             # Handle response completion
             if not more_body:
-                self.response_complete = True
-                self.message_event.set()
+                self.body_complete = True
                 if not self.send_trailers:
                     output = self.conn.send(event=h11.EndOfMessage())
                     self.transport.write(output)
+                    self.response_complete = True
+                    self.message_event.set()
 
-        elif self.send_trailers:
+        elif self.send_trailers and not self.response_complete:
             # Sending response trailers
             if message["type"] != "http.response.trailers":
                 raise RuntimeError(f"Expected ASGI message 'http.response.trailers', but got '{message['type']}'.")
@@ -528,16 +530,17 @@ class RequestResponseCycle:
             more_trailers = message.get("more_trailers", False)
 
             if not more_trailers:
-                self.send_trailers = False
                 trailers = self.trailers if self.expect_trailers else []
                 output = self.conn.send(event=h11.EndOfMessage(headers=trailers))
                 self.transport.write(output)
+                self.response_complete = True
+                self.message_event.set()
 
         else:
             # Response already sent
             raise RuntimeError(f"Unexpected ASGI message '{message['type']}' sent, after response already completed.")
 
-        if self.response_complete and not self.send_trailers:
+        if self.response_complete:
             if self.conn.our_state is h11.MUST_CLOSE or not self.keep_alive:
                 self.conn.send(event=h11.ConnectionClosed())
                 self.transport.close()

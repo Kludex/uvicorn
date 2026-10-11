@@ -1374,7 +1374,7 @@ async def test_invalid_trailer_value(http_protocol_cls: type[HTTPProtocol]):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         await send({"type": "http.response.start", "status": 200, "trailers": True})
         await send({"type": "http.response.body", "body": b"Hi"})
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match="(?i)header value|invalid field"):
             await send(
                 {"type": "http.response.trailers", "headers": [(b"x-trailer", b"bad\r\nvalue")], "more_trailers": False}
             )
@@ -1382,6 +1382,18 @@ async def test_invalid_trailer_value(http_protocol_cls: type[HTTPProtocol]):
     protocol = get_connected_protocol(app, http_protocol_cls)
     protocol.data_received(SIMPLE_GET_REQUEST_WITH_TRAILERS)
     await protocol.loop.run_one()
+    assert protocol.transport.closed
+
+
+async def test_return_without_trailers_closes_connection(http_protocol_cls: type[HTTPProtocol]):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send({"type": "http.response.start", "status": 200, "trailers": True})
+        await send({"type": "http.response.body", "body": b"Hi"})
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST_WITH_TRAILERS)
+    await protocol.loop.run_one()
+    assert protocol.transport.closed
 
 
 async def test_body_after_trailers_raises(http_protocol_cls: type[HTTPProtocol]):
