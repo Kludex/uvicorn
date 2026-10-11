@@ -475,7 +475,7 @@ class RequestResponseCycle:
 
             status = message["status"]
             headers = self.default_headers + list(message.get("headers", []))
-            self.send_trailers = message.get("trailers", False) and self.scope["method"] != "HEAD"
+            self.send_trailers = message.get("trailers", False)
 
             if CLOSE_HEADER in self.scope["headers"] and CLOSE_HEADER not in headers:
                 headers = headers + [CLOSE_HEADER]
@@ -495,6 +495,8 @@ class RequestResponseCycle:
             response = h11.Response(status_code=status, headers=headers, reason=reason)
             output = self.conn.send(event=response)
             self.transport.write(output)
+            chunked = b"\r\ntransfer-encoding: chunked\r\n" in output.lower()
+            self.expect_trailers = self.expect_trailers and chunked and self.scope["method"] != "HEAD"
 
         elif not self.response_complete:
             # Sending response body
@@ -527,7 +529,6 @@ class RequestResponseCycle:
 
             if not more_trailers:
                 self.send_trailers = False
-                # h11 emits trailers only if the client advertised TE: trailers.
                 trailers = self.trailers if self.expect_trailers else []
                 output = self.conn.send(event=h11.EndOfMessage(headers=trailers))
                 self.transport.write(output)

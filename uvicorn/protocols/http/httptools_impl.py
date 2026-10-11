@@ -482,7 +482,7 @@ class RequestResponseCycle:
 
             status_code = message["status"]
             headers = self.default_headers + list(message.get("headers", []))
-            self.send_trailers = message.get("trailers", False) and self.scope["method"] != "HEAD"
+            self.send_trailers = message.get("trailers", False)
 
             if self.access_log:
                 self.access_logger.info(
@@ -526,6 +526,9 @@ class RequestResponseCycle:
                 self.chunked_encoding = True
                 content.append(b"transfer-encoding: chunked\r\n")
 
+            self.expect_trailers = (
+                self.expect_trailers and bool(self.chunked_encoding) and self.scope["method"] != "HEAD"
+            )
             content.append(b"\r\n")
             self.transport.write(b"".join(content))
 
@@ -546,10 +549,7 @@ class RequestResponseCycle:
                 else:
                     content = []
                 if not more_body:
-                    if self.send_trailers:
-                        content.append(b"0\r\n")
-                    else:
-                        content.append(b"0\r\n\r\n")
+                    content.append(b"0\r\n" if self.send_trailers and self.expect_trailers else b"0\r\n\r\n")
                 self.transport.write(b"".join(content))
             else:
                 num_bytes = len(body)
@@ -575,22 +575,19 @@ class RequestResponseCycle:
             if message["type"] != "http.response.trailers":
                 raise RuntimeError(f"Expected ASGI message 'http.response.trailers', but got '{message['type']}'.")
 
-            trailers = list(message.get("headers", []))
             more_trailers = message.get("more_trailers", False)
             content = []
 
-            for name, value in trailers:
+            for name, value in message.get("headers", []):
                 if HEADER_RE.search(name):
-                    raise RuntimeError("Invalid HTTP header name.")  # pragma: no cover
+                    raise RuntimeError("Invalid HTTP header name.")  # pragma: full coverage
                 if HEADER_VALUE_RE.search(value):
-                    raise RuntimeError("Invalid HTTP header value.")  # pragma: no cover
-                name = name.lower()
-                content.extend([name, b": ", value, b"\r\n"])
+                    raise RuntimeError("Invalid HTTP header value.")
+                content.extend([name.lower(), b": ", value, b"\r\n"])
 
             if not more_trailers:
                 content.append(b"\r\n")
 
-            # Server should only send if the client sent a TE: trailers header.
             if self.expect_trailers:
                 self.transport.write(b"".join(content))
 
