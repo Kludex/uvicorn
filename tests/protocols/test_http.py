@@ -372,6 +372,21 @@ async def test_request_logging(path: str, http_protocol_cls: type[HTTPProtocol],
     assert f'"GET {path} HTTP/1.1" 200' in caplog.records[0].message
 
 
+async def test_request_logging_escapes_quotes(http_protocol_cls: type[HTTPProtocol], caplog: pytest.LogCaptureFixture):
+    if http_protocol_cls.__name__ == "ZttpProtocol":
+        pytest.skip("zttp rejects quotes in the request target")
+
+    caplog.set_level(logging.INFO, logger="uvicorn.access")
+    logging.getLogger("uvicorn.access").propagate = True
+
+    app = Response("Hello, world", media_type="text/plain")
+
+    protocol = get_connected_protocol(app, http_protocol_cls, log_config=None)
+    protocol.data_received(b'GET /foo"bar?a"b HTTP/1.1\r\nHost: example.org\r\n\r\n')
+    await protocol.loop.run_one()
+    assert '"GET /foo%22bar?a%22b HTTP/1.1" 200' in caplog.records[0].message
+
+
 async def test_head_request(http_protocol_cls: type[HTTPProtocol]):
     app = Response("Hello, world", media_type="text/plain")
 

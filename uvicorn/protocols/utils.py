@@ -58,4 +58,4 @@ def get_path_with_query_string(scope: WWWScope) -> str:
     path_with_query_string = scope["raw_path"].decode("latin1")
     if scope["query_string"]:
         path_with_query_string = "{}?{}".format(path_with_query_string, scope["query_string"].decode("ascii"))
-    return path_with_query_string
+    return path_with_query_string.replace('"', "%22")
