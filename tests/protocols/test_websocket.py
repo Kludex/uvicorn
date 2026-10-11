@@ -976,6 +976,32 @@ async def test_server_reject_connection_with_multibody_response(
     assert disconnected_message == {"type": "websocket.disconnect", "code": 1006}
 
 
+async def test_server_reject_connection_does_not_log_incomplete_handshake(
+    ws_protocol_cls: WSProtocol,
+    http_protocol_cls: HTTPProtocol,
+    unused_tcp_port: int,
+    caplog: pytest.LogCaptureFixture,
+):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert scope["type"] == "websocket"
+        assert "websocket.http.response" in scope["extensions"]
+        await receive()
+        await send({"type": "websocket.http.response.start", "status": 401, "headers": []})
+        await send({"type": "websocket.http.response.body", "body": b"denied"})
+
+    async def websocket_session(url: str):
+        response = await wsresponse(url)
+        assert response.status_code == 401
+        assert response.content == b"denied"
+
+    config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
+    with caplog.at_level("ERROR", logger="uvicorn.error"):
+        async with run_server(config):
+            await websocket_session(f"ws://127.0.0.1:{unused_tcp_port}")
+
+    assert "ASGI callable returned without completing handshake." not in caplog.text
+
+
 async def test_server_reject_connection_with_invalid_status(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
 ):
