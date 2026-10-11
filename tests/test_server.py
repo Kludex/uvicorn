@@ -5,7 +5,9 @@ import contextlib
 import contextvars
 import json
 import logging
+import os
 import signal
+import socket
 import sys
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
@@ -135,6 +137,75 @@ def test_run_exits_with_startup_failure_on_unloadable_app() -> None:
     with pytest.raises(SystemExit) as exc_info:
         server.run()
     assert exc_info.value.code == STARTUP_FAILURE
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
+async def test_uds_cleanup_preserves_replacement_during_server_creation(
+    short_socket_name: str, monkeypatch: pytest.MonkeyPatch
+) -> None:  # pragma: py-win32
+    config = Config(app=app, lifespan="off", uds=short_socket_name)
+    config.load()
+    server = Server(config=config)
+    server.lifespan = config.lifespan_class(config)
+    loop = asyncio.get_running_loop()
+    create_unix_server = loop.create_unix_server
+
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as replacement:
+
+        def replace_uds_socket() -> None:
+            os.remove(short_socket_name)
+            replacement.bind(short_socket_name)
+            replacement.listen()
+
+        async def create_unix_server_with_replacement(*args, **kwargs):
+            loop.call_soon(replace_uds_socket)
+            return await create_unix_server(*args, **kwargs)
+
+        monkeypatch.setattr(loop, "create_unix_server", create_unix_server_with_replacement)
+
+        try:
+            await server.startup()
+            config._cleanup_uds_socket()
+
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                client.connect(short_socket_name)
+        finally:
+            if server.started:
+                await server.shutdown()
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(short_socket_name)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
+async def test_uds_startup_failure_closes_bound_socket(
+    short_socket_name: str, monkeypatch: pytest.MonkeyPatch
+) -> None:  # pragma: py-win32
+    config = Config(app=app, lifespan="off", uds=short_socket_name)
+    config.load()
+    server = Server(config=config)
+    server.lifespan = config.lifespan_class(config)
+    loop = asyncio.get_running_loop()
+    create_unix_server = loop.create_unix_server
+    created_server: asyncio.Server | None = None
+
+    async def capture_created_server(*args, **kwargs):
+        nonlocal created_server
+        created_server = await create_unix_server(*args, **kwargs)
+        return created_server
+
+    def fail_chmod(path: str, mode: int) -> None:
+        raise OSError("chmod failed")
+
+    monkeypatch.setattr(loop, "create_unix_server", capture_created_server)
+    monkeypatch.setattr(os, "chmod", fail_chmod)
+
+    with pytest.raises(SystemExit) as exc_info:
+        await server.startup()
+
+    assert exc_info.value.code == STARTUP_FAILURE
+    assert created_server is not None
+    assert not created_server.is_serving()
+    assert not os.path.exists(short_socket_name)
 
 
 async def test_request_than_limit_max_requests_warn_log(
