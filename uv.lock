@@ -13,8 +13,8 @@ exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for 
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
+httptools = "2026-05-27T00:00:00Z"
 zttp = "2026-09-19T23:59:59Z"
-httptools = "2026-05-26T22:00:00Z"
 
 [[package]]
 name = "a2wsgi"
