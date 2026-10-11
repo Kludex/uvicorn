@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import logging
 import os
 import signal
 import threading
@@ -38,6 +39,10 @@ def new_console_in_windows(test_function: Callable[[], Any]) -> Callable[[], Any
 
 async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
     pass  # pragma: no cover
+
+
+async def exit_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+    os._exit(1)  # pragma: no cover
 
 
 def test_process_ping_pong() -> None:
@@ -102,6 +107,36 @@ def test_multiprocess_health_check() -> None:
 
         assert process not in supervisor.processes
         assert all(process.is_alive() for process in supervisor.processes)
+    finally:
+        supervisor.terminate_all()
+        supervisor.join_all()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="test spawns real worker processes")
+@pytest.mark.parametrize(
+    "asgi_app, sig, message",
+    [
+        (app, "SIGKILL", "died from signal SIGKILL"),
+        (app, "SIGSTOP", "was unresponsive and got killed"),
+        (exit_app, None, "died with exit code 1"),
+    ],
+)
+def test_multiprocess_logs_why_worker_died(
+    asgi_app: Callable[..., Any], sig: str | None, message: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    config = Config(app=asgi_app, workers=1, timeout_worker_healthcheck=1)
+    supervisor = Multiprocess(config, sockets=[])
+    try:
+        supervisor.init_processes()
+        process = supervisor.processes[0]
+        if sig is not None:
+            assert process.wait_until_ready(timeout=10) and process.pid is not None
+            os.kill(process.pid, signal.Signals[sig])
+        if sig != "SIGSTOP":
+            process.process.join()
+        with caplog.at_level(logging.INFO, logger="uvicorn.error"):
+            supervisor.keep_subprocess_alive()
+        assert f"Child process [{process.pid}] {message}" in caplog.messages
     finally:
         supervisor.terminate_all()
         supervisor.join_all()
