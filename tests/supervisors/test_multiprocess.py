@@ -156,11 +156,13 @@ def test_multiprocess_sighup(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     Ensure that the SIGHUP signal is handled as expected.
     """
-    monkeypatch.setattr(Process, "is_ready", lambda self, timeout=1: True)
+    # A worker that hasn't exec'd yet swallows SIGTERM, so only terminate workers that answer a ping.
+    monkeypatch.setattr(Process, "is_ready", Process.ping)
     config = Config(app=app, workers=2)
     supervisor = Multiprocess(config, sockets=[])
     try:
         supervisor.init_processes()
+        assert all(process.ping() for process in supervisor.processes)
         pids = [process.pid for process in supervisor.processes]
         supervisor.signal_queue.append(signal.SIGHUP)
         supervisor.handle_signals()
