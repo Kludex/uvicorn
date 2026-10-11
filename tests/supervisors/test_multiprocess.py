@@ -116,8 +116,8 @@ def test_multiprocess_health_check() -> None:
 @pytest.mark.parametrize(
     "asgi_app, steps, message",
     [
-        (app, [Process.kill, Process.join], "died from signal SIGKILL"),
-        (exit_app, [Process.join], "died with exit code 1"),
+        (app, [Process.kill, Process.join], "exited on signal 9"),
+        (exit_app, [Process.join], "exited with code 1"),
         (app, [], "was unresponsive and got killed"),
     ],
 )

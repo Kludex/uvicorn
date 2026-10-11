@@ -235,15 +235,11 @@ class Multiprocess:
                 return  # pragma: full coverage
 
             if exitcode is None:
-                reason = "was unresponsive and got killed"
-            elif exitcode >= 0:
-                reason = f"died with exit code {exitcode}"
+                logger.error(f"Child process [{process.pid}] was unresponsive and got killed")
+            elif exitcode < 0:
+                logger.error(f"Child process [{process.pid}] exited on signal {-exitcode}")
             else:
-                try:
-                    reason = f"died from signal {signal.Signals(-exitcode).name}"
-                except ValueError:  # pragma: no cover - unnamed signals, e.g. real-time ones
-                    reason = f"died from signal {-exitcode}"
-            logger.info(f"Child process [{process.pid}] {reason}")
+                logger.warning(f"Child process [{process.pid}] exited with code {exitcode}")
             process = Process(self.config, self.sockets)
             process.start()
             self.processes[idx] = process
