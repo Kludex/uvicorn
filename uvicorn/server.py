@@ -2,29 +2,45 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import logging
 import os
 import platform
+import random
 import signal
 import socket
 import sys
 import threading
 import time
+from collections.abc import Generator, Sequence
 from email.utils import formatdate
 from types import FrameType
-from typing import TYPE_CHECKING, Generator, Sequence, Union
+from typing import TYPE_CHECKING, TypeAlias
 
-import click
-
-from uvicorn.config import Config
+from uvicorn._ansi import style
+from uvicorn._compat import asyncio_run
+from uvicorn.config import STARTUP_FAILURE, Config
 
 if TYPE_CHECKING:
+    from uvicorn.protocols.http.auto_zttp_impl import AutoZttpProtocol
     from uvicorn.protocols.http.h11_impl import H11Protocol
     from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
+    from uvicorn.protocols.http.zttp_h2_impl import ZttpH2Protocol
+    from uvicorn.protocols.http.zttp_impl import ZttpProtocol
     from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
+    from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol
 
-    Protocols = Union[H11Protocol, HttpToolsProtocol, WSProtocol, WebSocketProtocol]
+    Protocols: TypeAlias = (
+        H11Protocol
+        | HttpToolsProtocol
+        | ZttpProtocol
+        | ZttpH2Protocol
+        | AutoZttpProtocol
+        | WSProtocol
+        | WebSocketProtocol
+        | WebSocketsSansIOProtocol
+    )
 
 HANDLED_SIGNALS = (
     signal.SIGINT,  # Unix signal 2. Sent by Ctrl+C.
@@ -60,9 +76,14 @@ class Server:
 
         self._captured_signals: list[int] = []
 
+    @functools.cached_property
+    def limit_max_requests(self) -> int | None:
+        if self.config.limit_max_requests is None:
+            return None
+        return self.config.limit_max_requests + random.randint(0, self.config.limit_max_requests_jitter)
+
     def run(self, sockets: list[socket.socket] | None = None) -> None:
-        self.config.setup_event_loop()
-        return asyncio.run(self.serve(sockets=sockets))
+        return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
 
     async def serve(self, sockets: list[socket.socket] | None = None) -> None:
         with self.capture_signals():
@@ -78,24 +99,23 @@ class Server:
         self.lifespan = config.lifespan_class(config)
 
         message = "Started server process [%d]"
-        color_message = "Started server process [" + click.style("%d", fg="cyan") + "]"
+        color_message = "Started server process [" + style("%d", fg="cyan") + "]"
         logger.info(message, process_id, extra={"color_message": color_message})
 
         await self.startup(sockets=sockets)
-        if self.should_exit:
-            return
-        await self.main_loop()
-        await self.shutdown(sockets=sockets)
+        if not self.should_exit:
+            await self.main_loop()
+        if self.started:
+            await self.shutdown(sockets=sockets)
 
-        message = "Finished server process [%d]"
-        color_message = "Finished server process [" + click.style("%d", fg="cyan") + "]"
-        logger.info(message, process_id, extra={"color_message": color_message})
+            message = "Finished server process [%d]"
+            color_message = "Finished server process [" + style("%d", fg="cyan") + "]"
+            logger.info(message, process_id, extra={"color_message": color_message})
 
     async def startup(self, sockets: list[socket.socket] | None = None) -> None:
         await self.lifespan.startup()
         if self.lifespan.should_exit:
-            self.should_exit = True
-            return
+            sys.exit(STARTUP_FAILURE)
 
         config = self.config
 
@@ -118,7 +138,7 @@ class Server:
 
             def _share_socket(
                 sock: socket.SocketType,
-            ) -> socket.SocketType:  # pragma py-linux pragma: py-darwin
+            ) -> socket.SocketType:  # pragma py-not-win32
                 # Windows requires the socket be explicitly shared across
                 # multiple workers (processes).
                 from socket import fromshare  # type: ignore[attr-defined]
@@ -169,7 +189,7 @@ class Server:
             except OSError as exc:
                 logger.error(exc)
                 await self.lifespan.shutdown()
-                sys.exit(1)
+                sys.exit(STARTUP_FAILURE)
 
             assert server.sockets is not None
             listeners = server.sockets
@@ -210,7 +230,7 @@ class Server:
 
             protocol_name = "https" if config.ssl else "http"
             message = f"Uvicorn running on {addr_format} (Press CTRL+C to quit)"
-            color_message = "Uvicorn running on " + click.style(addr_format, bold=True) + " (Press CTRL+C to quit)"
+            color_message = "Uvicorn running on " + style(addr_format, bold=True) + " (Press CTRL+C to quit)"
             logger.info(
                 message,
                 protocol_name,
@@ -251,9 +271,9 @@ class Server:
         if self.should_exit:
             return True
 
-        max_requests = self.config.limit_max_requests
+        max_requests = self.limit_max_requests
         if max_requests is not None and self.server_state.total_requests >= max_requests:
-            logger.warning(f"Maximum request limit of {max_requests} exceeded. Terminating process.")
+            logger.info("Maximum request limit of %d exceeded. Terminating process.", max_requests)
             return True
 
         return False
@@ -272,22 +292,16 @@ class Server:
             connection.shutdown()
         await asyncio.sleep(0.1)
 
-        # When 3.10 is not supported anymore, use `async with asyncio.timeout(...):`.
         try:
-            await asyncio.wait_for(
-                self._wait_tasks_to_complete(),
-                timeout=self.config.timeout_graceful_shutdown,
-            )
-        except asyncio.TimeoutError:
+            async with asyncio.timeout(self.config.timeout_graceful_shutdown):
+                await self._wait_tasks_to_complete()
+        except TimeoutError:
             logger.error(
                 "Cancel %s running task(s), timeout graceful shutdown exceeded",
                 len(self.server_state.tasks),
             )
             for t in self.server_state.tasks:
-                if sys.version_info < (3, 9):  # pragma: py-gte-39
-                    t.cancel()
-                else:  # pragma: py-lt-39
-                    t.cancel(msg="Task cancelled, timeout graceful shutdown exceeded")
+                t.cancel(msg="Task cancelled, timeout graceful shutdown exceeded")
 
         # Send the lifespan shutdown event, and wait for application shutdown.
         if not self.force_exit:

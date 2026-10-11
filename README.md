@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="320" height="320" src="https://raw.githubusercontent.com/tomchristie/uvicorn/master/docs/uvicorn.png" alt='uvicorn'>
+  <img width="320" height="320" src="https://raw.githubusercontent.com/tomchristie/uvicorn/main/docs/uvicorn.png" alt='uvicorn'>
 </p>
 
 <p align="center">
@@ -8,11 +8,16 @@
 
 ---
 
-[![Build Status](https://github.com/encode/uvicorn/workflows/Test%20Suite/badge.svg)](https://github.com/encode/uvicorn/actions)
+[![Build Status](https://github.com/Kludex/uvicorn/workflows/Test%20Suite/badge.svg)](https://github.com/Kludex/uvicorn/actions)
 [![Package version](https://badge.fury.io/py/uvicorn.svg)](https://pypi.python.org/pypi/uvicorn)
 [![Supported Python Version](https://img.shields.io/pypi/pyversions/uvicorn.svg?color=%2334D058)](https://pypi.org/project/uvicorn)
+[![Discord](https://img.shields.io/discord/1051468649518616576?logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/RxKUF5JuHs)
 
-**Documentation**: [https://www.uvicorn.org](https://www.uvicorn.org)
+---
+
+**Documentation**: [https://uvicorn.dev](https://uvicorn.dev)
+
+**Source Code**: [https://www.github.com/Kludex/uvicorn](https://www.github.com/Kludex/uvicorn)
 
 ---
 
@@ -22,7 +27,7 @@ Until recently Python has lacked a minimal low-level server/application interfac
 async frameworks. The [ASGI specification][asgi] fills this gap, and means we're now able to
 start building a common set of tooling usable across all async frameworks.
 
-Uvicorn supports HTTP/1.1 and WebSockets.
+Uvicorn currently supports HTTP/1.1, HTTP/2 and WebSockets.
 
 ## Quickstart
 
@@ -49,7 +54,6 @@ Moreover, "optional extras" means that:
 
 - the websocket protocol will be handled by `websockets` (should you want to use `wsproto` you'd need to install it manually) if possible.
 - the `--reload` flag in development mode will use `watchfiles`.
-- windows users will have `colorama` installed for the colored logs.
 - `python-dotenv` will be installed should you want to use the `--env-file` option.
 - `PyYAML` will be installed to allow you to provide a `.yaml` file to `--log-config`, if desired.
 
@@ -137,7 +141,7 @@ $ hypercorn app:App
 
 ---
 
-<p align="center"><i>Uvicorn is <a href="https://github.com/encode/uvicorn/blob/master/LICENSE.md">BSD licensed</a> code.<br/>Designed & crafted with care.</i><br/>&mdash; 🦄  &mdash;</p>
+<p align="center"><i>Uvicorn is <a href="https://github.com/Kludex/uvicorn/blob/main/LICENSE.md">BSD licensed</a> code.<br/>Designed & crafted with care.</i><br/>&mdash; 🦄  &mdash;</p>
 
 [asgi]: https://asgi.readthedocs.io/en/latest/
 [daphne]: https://github.com/django/daphne

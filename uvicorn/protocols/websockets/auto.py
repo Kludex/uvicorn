@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import typing
+from collections.abc import Callable
 
-AutoWebSocketsProtocol: typing.Callable[..., asyncio.Protocol] | None
+AutoWebSocketsProtocol: Callable[..., asyncio.Protocol] | None
 try:
     import websockets  # noqa
 except ImportError:  # pragma: no cover
@@ -16,6 +16,6 @@ except ImportError:  # pragma: no cover
 
         AutoWebSocketsProtocol = WSProtocol
 else:
-    from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
+    from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
 
-    AutoWebSocketsProtocol = WebSocketProtocol
+    AutoWebSocketsProtocol = WebSocketsSansIOProtocol

@@ -1,7 +1,7 @@
 #!/bin/sh -e
 
-SEMVER_REGEX="([0-9]+)\.([0-9]+)\.([0-9]+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+)?"
-CHANGELOG_VERSION=$(grep -o -E $SEMVER_REGEX CHANGELOG.md | head -1)
+SEMVER_REGEX="([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?(\+[0-9A-Za-z-]+)?"
+CHANGELOG_VERSION=$(grep -o -E $SEMVER_REGEX docs/release-notes.md | head -1)
 VERSION=$(grep -o -E $SEMVER_REGEX uvicorn/__init__.py | head -1)
 if [ "$CHANGELOG_VERSION" != "$VERSION" ]; then
     echo "Version in changelog does not match version in uvicorn/__init__.py!"

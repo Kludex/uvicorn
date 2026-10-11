@@ -1,5 +1,3 @@
-# Deployment
-
 Server deployment is a complex area, that will depend on what kind of service you're deploying Uvicorn onto.
 
 As a general rule, you probably want to:
@@ -23,123 +21,9 @@ When running locally, use `--reload` to turn on auto-reloading.
 
 The `--reload` and `--workers` arguments are **mutually exclusive**.
 
-To see the complete set of available options, use `uvicorn --help`:
+To see the complete set of available options, use `uvicorn --help`.
 
-<!-- :cli_usage: -->
-```
-$ uvicorn --help
-Usage: uvicorn [OPTIONS] APP
-
-Options:
-  --host TEXT                     Bind socket to this host.  [default:
-                                  127.0.0.1]
-  --port INTEGER                  Bind socket to this port. If 0, an available
-                                  port will be picked.  [default: 8000]
-  --uds TEXT                      Bind to a UNIX domain socket.
-  --fd INTEGER                    Bind to socket from this file descriptor.
-  --reload                        Enable auto-reload.
-  --reload-dir PATH               Set reload directories explicitly, instead
-                                  of using the current working directory.
-  --reload-include TEXT           Set glob patterns to include while watching
-                                  for files. Includes '*.py' by default; these
-                                  defaults can be overridden with `--reload-
-                                  exclude`. This option has no effect unless
-                                  watchfiles is installed.
-  --reload-exclude TEXT           Set glob patterns to exclude while watching
-                                  for files. Includes '.*, .py[cod], .sw.*,
-                                  ~*' by default; these defaults can be
-                                  overridden with `--reload-include`. This
-                                  option has no effect unless watchfiles is
-                                  installed.
-  --reload-delay FLOAT            Delay between previous and next check if
-                                  application needs to be. Defaults to 0.25s.
-                                  [default: 0.25]
-  --workers INTEGER               Number of worker processes. Defaults to the
-                                  $WEB_CONCURRENCY environment variable if
-                                  available, or 1. Not valid with --reload.
-  --loop [auto|asyncio|uvloop]    Event loop implementation.  [default: auto]
-  --http [auto|h11|httptools]     HTTP protocol implementation.  [default:
-                                  auto]
-  --ws [auto|none|websockets|wsproto]
-                                  WebSocket protocol implementation.
-                                  [default: auto]
-  --ws-max-size INTEGER           WebSocket max size message in bytes
-                                  [default: 16777216]
-  --ws-max-queue INTEGER          The maximum length of the WebSocket message
-                                  queue.  [default: 32]
-  --ws-ping-interval FLOAT        WebSocket ping interval in seconds.
-                                  [default: 20.0]
-  --ws-ping-timeout FLOAT         WebSocket ping timeout in seconds.
-                                  [default: 20.0]
-  --ws-per-message-deflate BOOLEAN
-                                  WebSocket per-message-deflate compression
-                                  [default: True]
-  --lifespan [auto|on|off]        Lifespan implementation.  [default: auto]
-  --interface [auto|asgi3|asgi2|wsgi]
-                                  Select ASGI3, ASGI2, or WSGI as the
-                                  application interface.  [default: auto]
-  --env-file PATH                 Environment configuration file.
-  --log-config PATH               Logging configuration file. Supported
-                                  formats: .ini, .json, .yaml.
-  --log-level [critical|error|warning|info|debug|trace]
-                                  Log level. [default: info]
-  --access-log / --no-access-log  Enable/Disable access log.
-  --use-colors / --no-use-colors  Enable/Disable colorized logging.
-  --proxy-headers / --no-proxy-headers
-                                  Enable/Disable X-Forwarded-Proto,
-                                  X-Forwarded-For, X-Forwarded-Port to
-                                  populate remote address info.
-  --server-header / --no-server-header
-                                  Enable/Disable default Server header.
-  --date-header / --no-date-header
-                                  Enable/Disable default Date header.
-  --forwarded-allow-ips TEXT      Comma separated list of IP Addresses, IP
-                                  Networks, or literals (e.g. UNIX Socket
-                                  path) to trust with proxy headers. Defaults
-                                  to the $FORWARDED_ALLOW_IPS environment
-                                  variable if available, or '127.0.0.1'. The
-                                  literal '*' means trust everything.
-  --root-path TEXT                Set the ASGI 'root_path' for applications
-                                  submounted below a given URL path.
-  --limit-concurrency INTEGER     Maximum number of concurrent connections or
-                                  tasks to allow, before issuing HTTP 503
-                                  responses.
-  --backlog INTEGER               Maximum number of connections to hold in
-                                  backlog
-  --limit-max-requests INTEGER    Maximum number of requests to service before
-                                  terminating the process.
-  --timeout-keep-alive INTEGER    Close Keep-Alive connections if no new data
-                                  is received within this timeout.  [default:
-                                  5]
-  --timeout-graceful-shutdown INTEGER
-                                  Maximum number of seconds to wait for
-                                  graceful shutdown.
-  --ssl-keyfile TEXT              SSL key file
-  --ssl-certfile TEXT             SSL certificate file
-  --ssl-keyfile-password TEXT     SSL keyfile password
-  --ssl-version INTEGER           SSL version to use (see stdlib ssl module's)
-                                  [default: 17]
-  --ssl-cert-reqs INTEGER         Whether client certificate is required (see
-                                  stdlib ssl module's)  [default: 0]
-  --ssl-ca-certs TEXT             CA certificates file
-  --ssl-ciphers TEXT              Ciphers to use (see stdlib ssl module's)
-                                  [default: TLSv1]
-  --header TEXT                   Specify custom default HTTP response headers
-                                  as a Name:Value pair
-  --version                       Display the uvicorn version and exit.
-  --app-dir TEXT                  Look for APP in the specified directory, by
-                                  adding this to the PYTHONPATH. Defaults to
-                                  the current working directory.
-  --h11-max-incomplete-event-size INTEGER
-                                  For h11, the maximum number of bytes to
-                                  buffer of an incomplete event.
-  --factory                       Treat APP as an application factory, i.e. a
-                                  () -> <ASGI app> callable.
-  --help                          Show this message and exit.
-```
-
-
-See the [settings documentation](settings.md) for more details on the supported options for running uvicorn.
+See the [settings documentation](../settings.md) for more details on the supported options for running uvicorn.
 
 ## Running programmatically
 
@@ -194,7 +78,7 @@ The default process manager monitors the status of child processes and automatic
 
 You can also manage child processes by sending specific signals to the main process. (Not supported on Windows.)
 
-- `SIGHUP`: Work processeses are graceful restarted one after another. If you update the code, the new worker process will use the new code.
+- `SIGHUP`: Gracefully restart the workers one at a time with no dropped requests. Fresh workers pick up new code on disk.
 - `SIGTTIN`: Increase the number of worker processes by one.
 - `SIGTTOU`: Decrease the number of worker processes by one.
 
@@ -253,28 +137,6 @@ stdout_logfile_maxbytes=0
 
 Then run with `supervisord -n`.
 
-### Circus
-
-To use `circus` as a process manager, you should either:
-
-* Hand over the socket to uvicorn using its file descriptor, which circus makes available as `$(circus.sockets.web)`.
-* Or use a UNIX domain socket for each `uvicorn` process.
-
-A simple circus configuration might look something like this:
-
-```ini title="circus.ini"
-[watcher:web]
-cmd = venv/bin/uvicorn --fd $(circus.sockets.web) main:App
-use_sockets = True
-numprocesses = 4
-
-[socket:web]
-host = 0.0.0.0
-port = 8000
-```
-
-Then run `circusd circus.ini`.
-
 ## Running behind Nginx
 
 Using Nginx as a proxy in front of your Uvicorn processes may not be necessary, but is recommended for additional resilience. Nginx can deal with serving your static media and buffering slow requests, leaving your application servers free from load as much as possible.
@@ -283,11 +145,12 @@ In managed environments such as `Heroku`, you won't typically need to configure 
 
 The recommended configuration for proxying from Nginx is to use a UNIX domain socket between Nginx and whatever the process manager that is being used to run Uvicorn. If using Uvicorn directly you can bind it to a UNIX domain socket using `uvicorn --uds /path/to/socket.sock <...>`.
 
-When running your application behind one or more proxies you will want to make sure that each proxy sets appropriate headers to ensure that your application can properly determine the client address of the incoming connection, and if the connection was over `http` or `https`. For more information see [Proxies and Forwarded Headers][#proxies-and-forwarded-headers] below.
+When running your application behind one or more proxies you will want to make sure that each proxy sets appropriate headers to ensure that your application can properly determine the client address of the incoming connection, and if the connection was over `http` or `https`. For more information see [Proxies and Forwarded Headers](#proxies-and-forwarded-headers) below.
 
 Here's how a simple Nginx configuration might look. This example includes setting proxy headers, and using a UNIX domain socket to communicate with the application server.
 
-It also includes some basic configuration to forward websocket connections. For more info on this, check [Nginx recommendations][nginx_websocket].
+It also includes some basic configuration to forward websocket connections.
+For more info on this, check [Nginx recommendations](https://nginx.org/en/docs/http/websocket.html).
 
 ```conf
 http {
@@ -328,7 +191,7 @@ http {
 
 Uvicorn's `--proxy-headers` behavior may not be sufficient for more complex proxy configurations that use different combinations of headers, or where the application is running behind more than one intermediary proxying service.
 
-In those cases, you might want to use an ASGI middleware to set the `client` and `scheme` dependant on the request headers.
+In those cases, you might want to use an ASGI middleware to set the `client` and `scheme` dependent on the request headers.
 
 ## Running behind a CDN
 
@@ -341,9 +204,9 @@ Content Delivery Networks can also be a low-effort way to provide HTTPS terminat
 ## Running with HTTPS
 
 To run uvicorn with https, a certificate and a private key are required.
-The recommended way to get them is using [Let's Encrypt][letsencrypt].
+The recommended way to get them is using [Let's Encrypt](https://letsencrypt.org/).
 
-For local development with https, it's possible to use [mkcert][mkcert]
+For local development with https, it's possible to use [mkcert](https://github.com/FiloSottile/mkcert)
 to generate a valid certificate and private key.
 
 ```bash
@@ -358,9 +221,35 @@ It's also possible to use certificates with uvicorn's worker for gunicorn.
 $ gunicorn --keyfile=./key.pem --certfile=./cert.pem -k uvicorn.workers.UvicornWorker main:app
 ```
 
-[nginx_websocket]: https://nginx.org/en/docs/http/websocket.html
-[letsencrypt]: https://letsencrypt.org/
-[mkcert]: https://github.com/FiloSottile/mkcert
+### Customizing the SSL context
+
+For TLS scenarios that the `--ssl-*` flags don't cover (e.g., mutual TLS, custom `SSLContext.options`, bumping `minimum_version`, loading certificates from memory), pass an `ssl_context_factory` to `uvicorn.run()` or `Config`.
+
+The factory receives the `Config` instance and a `default_ssl_context_factory` callable that builds the standard context from the `ssl_*` settings on `Config`. Use it to start from uvicorn's default and mutate it, or ignore it and build your own context from scratch - the `ssl_*` settings are only consumed by the default factory, so if you don't call it they're effectively unused.
+
+```python
+import ssl
+from collections.abc import Callable
+
+import uvicorn
+from uvicorn.config import Config
+
+
+def ssl_context_factory(config: Config, default_ssl_context_factory: Callable[[], ssl.SSLContext]) -> ssl.SSLContext:
+    context = default_ssl_context_factory()
+    context.minimum_version = ssl.TLSVersion.TLSv1_3
+    return context
+
+
+uvicorn.run(
+    "main:app",
+    ssl_keyfile="key.pem",
+    ssl_certfile="cert.pem",
+    ssl_context_factory=ssl_context_factory,
+)
+```
+
+The factory is called inside each worker process, so it works with `--reload` and `--workers > 1`. The factory itself must be picklable in those modes (a top-level function is fine; lambdas and local closures are not). The `ssl_*` settings on `Config` are only consumed by `default_ssl_context_factory()`; if you build the context yourself without calling it, those settings are ignored.
 
 ## Proxies and Forwarded Headers
 
@@ -381,7 +270,9 @@ or Literals (e.g. `/path/to/socket.sock`). When running from CLI these are confi
 !!! Warning "Only trust clients you can actually trust!"
     Incorrectly trusting other clients can lead to malicious actors spoofing their apparent client address to your application.
 
-For more information, check [`ProxyHeadersMiddleware`](https://github.com/encode/uvicorn/blob/master/uvicorn/middleware/proxy_headers.py).
+A proxy chain may send a header once per hop rather than as a single comma-separated value. Repeated `X-Forwarded-For` fields are combined in order (as the equivalent comma-separated list, [RFC 9110, 5.3](https://www.rfc-editor.org/rfc/rfc9110#section-5.3)), while for `X-Forwarded-Proto` the last field is used.
+
+For more information, check [`ProxyHeadersMiddleware`](https://github.com/Kludex/uvicorn/blob/main/uvicorn/middleware/proxy_headers.py).
 
 ### Client Port
 

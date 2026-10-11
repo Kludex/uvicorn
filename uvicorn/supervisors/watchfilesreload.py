@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from socket import socket
-from typing import Callable
 
 from watchfiles import watch
 
@@ -61,12 +61,9 @@ class WatchFilesReload(BaseReload):
     ) -> None:
         super().__init__(config, target, sockets)
         self.reloader_name = "WatchFiles"
-        self.reload_dirs = []
+        self.reload_dirs: list[Path] = []
         for directory in config.reload_dirs:
-            if Path.cwd() not in directory.parents:
-                self.reload_dirs.append(directory)
-        if Path.cwd() not in self.reload_dirs:
-            self.reload_dirs.append(Path.cwd())
+            self.reload_dirs.append(directory)
 
         self.watch_filter = FileFilter(config)
         self.watcher = watch(
@@ -76,6 +73,7 @@ class WatchFilesReload(BaseReload):
             # using yield_on_timeout here mostly to make sure tests don't
             # hang forever, won't affect the class's behavior
             yield_on_timeout=True,
+            ignore_permission_denied=True,
         )
 
     def should_restart(self) -> list[Path] | None:

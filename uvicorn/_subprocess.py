@@ -8,9 +8,9 @@ from __future__ import annotations
 import multiprocessing
 import os
 import sys
+from collections.abc import Callable
 from multiprocessing.context import SpawnProcess
 from socket import socket
-from typing import Callable
 
 from uvicorn.config import Config
 
@@ -79,6 +79,6 @@ def subprocess_started(
         # Now we can call into `Server.run(sockets=sockets)`
         target(sockets=sockets)
     except KeyboardInterrupt:  # pragma: no cover
-        # supress the exception to avoid a traceback from subprocess.Popen
+        # suppress the exception to avoid a traceback from subprocess.Popen
         # the parent already expects us to end, so no vital information is lost
         pass

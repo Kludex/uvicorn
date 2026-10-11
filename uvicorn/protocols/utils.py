@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import urllib.parse
+import socket
 
 from uvicorn._types import WWWScope
 
@@ -10,7 +10,7 @@ class ClientDisconnected(OSError): ...
 
 
 def get_remote_addr(transport: asyncio.Transport) -> tuple[str, int] | None:
-    socket_info = transport.get_extra_info("socket")
+    socket_info: socket.socket | None = transport.get_extra_info("socket")
     if socket_info is not None:
         try:
             info = socket_info.getpeername()
@@ -21,20 +21,25 @@ def get_remote_addr(transport: asyncio.Transport) -> tuple[str, int] | None:
             return None
 
     info = transport.get_extra_info("peername")
-    if info is not None and isinstance(info, (list, tuple)) and len(info) == 2:
+    if info is not None and isinstance(info, list | tuple) and len(info) == 2:
         return (str(info[0]), int(info[1]))
     return None
 
 
-def get_local_addr(transport: asyncio.Transport) -> tuple[str, int] | None:
-    socket_info = transport.get_extra_info("socket")
+def get_local_addr(transport: asyncio.Transport) -> tuple[str, int | None] | None:
+    socket_info: socket.socket | None = transport.get_extra_info("socket")
     if socket_info is not None:
         info = socket_info.getsockname()
-
-        return (str(info[0]), int(info[1])) if isinstance(info, tuple) else None
+        if isinstance(info, tuple):
+            return (str(info[0]), int(info[1]))
+        if isinstance(info, str):
+            return (info, None)
+        return None
     info = transport.get_extra_info("sockname")
-    if info is not None and isinstance(info, (list, tuple)) and len(info) == 2:
+    if info is not None and isinstance(info, list | tuple) and len(info) == 2:
         return (str(info[0]), int(info[1]))
+    if isinstance(info, str):
+        return (info, None)
     return None
 
 
@@ -50,7 +55,7 @@ def get_client_addr(scope: WWWScope) -> str:
 
 
 def get_path_with_query_string(scope: WWWScope) -> str:
-    path_with_query_string = urllib.parse.quote(scope["path"])
+    path_with_query_string = scope["raw_path"].decode("latin1")
     if scope["query_string"]:
         path_with_query_string = "{}?{}".format(path_with_query_string, scope["query_string"].decode("ascii"))
-    return path_with_query_string
+    return path_with_query_string.replace('"', "%22")

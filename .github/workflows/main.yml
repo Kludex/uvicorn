@@ -1,0 +1,117 @@
+name: Test Suite
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  tests:
+    name: "Python ${{ matrix.python-version }} ${{ matrix.os }}"
+    runs-on: "${{ matrix.os }}"
+    timeout-minutes: 10
+
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14", "3.14t"]
+        os: [windows-latest, ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      - name: Install dependencies
+        run: scripts/install
+        shell: bash
+
+      - name: Run linting checks
+        run: scripts/check
+        if: "${{ matrix.os == 'ubuntu-latest'}}"
+
+      - name: "Build package & docs"
+        run: scripts/build
+        shell: bash
+
+      - name: "Run tests"
+        run: scripts/test
+        shell: bash
+
+      - name: "Enforce coverage"
+        run: scripts/coverage
+        shell: bash
+
+  docs-preview:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+
+    env:
+      HAS_CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+
+    permissions:
+      contents: read
+      pull-requests: write
+
+    environment:
+      name: cloudflare
+      url: ${{ steps.deploy.outputs.deployment-url }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.12"
+          enable-cache: false
+
+      - name: Install dependencies
+        run: scripts/install
+
+      - name: Build docs
+        run: uv run zensical build
+
+      - name: Deploy preview to Cloudflare Workers
+        id: deploy
+        if: ${{ env.HAS_CLOUDFLARE_TOKEN == 'true' }}
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: versions upload --tag pr-${{ github.event.pull_request.number }}
+
+      - name: Comment preview URL on PR
+        if: ${{ steps.deploy.outcome == 'success' }}
+        uses: thollander/actions-comment-pull-request@24bffb9b452ba05a4f3f77933840a6a841d1b32b # v3.0.1
+        with:
+          message: |
+            :book: Docs preview: ${{ steps.deploy.outputs.deployment-url }}
+          comment-tag: docs-preview
+
+  # https://github.com/marketplace/actions/alls-green#why
+  check:
+    if: always()
+    needs: [tests]
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Decide whether the needed jobs succeeded or failed
+        uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
+        with:
+          jobs: ${{ toJSON(needs) }}

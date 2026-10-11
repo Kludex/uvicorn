@@ -1,10 +1,11 @@
+from __future__ import annotations
+
 import asyncio
-import logging
 import sys
+from collections.abc import Callable
 
-logger = logging.getLogger("uvicorn.error")
 
-
-def asyncio_setup(use_subprocess: bool = False) -> None:
-    if sys.platform == "win32" and use_subprocess:
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())  # pragma: full coverage
+def asyncio_loop_factory(use_subprocess: bool = False) -> Callable[[], asyncio.AbstractEventLoop]:
+    if sys.platform == "win32" and not use_subprocess:
+        return asyncio.ProactorEventLoop
+    return asyncio.SelectorEventLoop

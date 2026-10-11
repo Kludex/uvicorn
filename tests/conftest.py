@@ -9,8 +9,6 @@ from copy import deepcopy
 from hashlib import md5
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from threading import Thread
-from time import sleep
 from typing import Any
 from uuid import uuid4
 
@@ -132,7 +130,8 @@ def reload_directory_structure(tmp_path_factory: pytest.TempPathFactory):
     │   └── file.txt
     └── main.py
     """
-    root = tmp_path_factory.mktemp("reload_directory")
+    # Resolve symlinks (e.g. /tmp -> /private/tmp on macOS) so paths match what watchfiles reports.
+    root = tmp_path_factory.mktemp("reload_directory").resolve()
     apps = ["app", "app_first", "app_second", "app_third"]
 
     root_file = root / "main.py"
@@ -214,27 +213,6 @@ def short_socket_name(tmp_path, tmp_path_factory):  # pragma: py-win32
                 return
 
 
-def sleep_touch(*paths: Path):
-    sleep(0.1)
-    for p in paths:
-        p.touch()
-
-
-@pytest.fixture
-def touch_soon():
-    threads = []
-
-    def start(*paths: Path):
-        thread = Thread(target=sleep_touch, args=paths)
-        thread.start()
-        threads.append(thread)
-
-    yield start
-
-    for t in threads:
-        t.join()
-
-
 def _unused_port(socket_type: int) -> int:
     """Find an unused localhost port from 1024-65535 and return it."""
     with contextlib.closing(socket.socket(type=socket_type)) as sock:
@@ -257,8 +235,7 @@ def unused_tcp_port() -> int:
             id="wsproto",
         ),
         pytest.param(
-            "uvicorn.protocols.websockets.websockets_impl:WebSocketProtocol",
-            id="websockets",
+            "uvicorn.protocols.websockets.websockets_sansio_impl:WebSocketsSansIOProtocol", id="websockets-sansio"
         ),
     ]
 )
@@ -277,6 +254,14 @@ def ws_protocol_cls(request: pytest.FixtureRequest):
             id="httptools",
         ),
         pytest.param("uvicorn.protocols.http.h11_impl:H11Protocol", id="h11"),
+        pytest.param(
+            "uvicorn.protocols.http.zttp_impl:ZttpProtocol",
+            marks=pytest.mark.skipif(
+                not importlib.util.find_spec("zttp"),
+                reason="zttp not installed.",
+            ),
+            id="zttp",
+        ),
     ]
 )
 def http_protocol_cls(request: pytest.FixtureRequest):
