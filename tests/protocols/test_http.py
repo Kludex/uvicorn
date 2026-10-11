@@ -996,6 +996,8 @@ async def test_scopes(
         pytest.param(b"G?T / HTTP/1.1", id="invalid-method"),
         pytest.param(b"GET /?x=y z HTTP/1.1", id="invalid-path"),
         pytest.param(b"GET / HTTP1.1", id="invalid-http-version"),
+        pytest.param(b"GET /caf\xc3\xa9 HTTP/1.1", id="non-ascii-path"),
+        pytest.param(b"GET /?q=caf\xc3\xa9 HTTP/1.1", id="non-ascii-query"),
     ],
 )
 async def test_invalid_http_request(

@@ -504,6 +504,20 @@ async def test_app_returning_without_response_returns_500():
     assert body == b"Internal Server Error"
 
 
+@pytest.mark.parametrize("target", [b"/caf\xc3\xa9", b"/?q=caf\xc3\xa9"])
+async def test_non_ascii_target_resets_stream(target: bytes):
+    protocol = get_connected_protocol(Response("Hello, world", media_type="text/plain"))
+    client = H2Client()
+
+    client.request(b"GET", target)
+    protocol.data_received(client.data_to_send())
+
+    assert not protocol.loop._tasks
+    assert not protocol.transport.is_closing()
+    events = client.events(protocol.transport.buffer)
+    assert any(isinstance(event, zttp.RstStream) for event in events)
+
+
 async def test_partial_response_resets_stream():
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         await send({"type": "http.response.start", "status": 200, "headers": []})

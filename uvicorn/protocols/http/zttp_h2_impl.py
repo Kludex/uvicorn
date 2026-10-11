@@ -190,6 +190,9 @@ class ZttpH2Protocol(asyncio.Protocol):
             # the new credit released.
 
     def handle_request(self, event: zttp.Request) -> None:
+        if not event.target.isascii():
+            self.conn.stream(event.stream_id).reset()
+            return
         headers = (
             event.headers.to_list(lowercase_names=True)
             if isinstance(event.headers, zttp.HeaderBlock)
