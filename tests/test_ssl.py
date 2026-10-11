@@ -1,16 +1,39 @@
 from __future__ import annotations
 
+import asyncio
 import ssl
-from collections.abc import Callable
-from typing import TypeAlias
+from collections.abc import Callable, Iterator
+from typing import Any, TypeAlias
 
 import httpx2
 import pytest
+import trustme
+from websockets.asyncio.client import connect
 
 from tests.utils import run_server
 from uvicorn.config import Config
 
 DefaultFactory: TypeAlias = Callable[[], ssl.SSLContext]
+
+
+@pytest.fixture
+def tls_client_certificate(tls_certificate_authority: trustme.CA) -> trustme.LeafCert:
+    return tls_certificate_authority.issue_cert("uvicorn-client")
+
+
+@pytest.fixture
+def tls_client_ssl_context(
+    tls_ca_ssl_context: ssl.SSLContext,
+    tls_client_certificate: trustme.LeafCert,
+) -> Iterator[ssl.SSLContext]:
+    with tls_client_certificate.private_key_and_cert_chain_pem.tempfile() as certfile:
+        tls_ca_ssl_context.load_cert_chain(certfile)
+        yield tls_ca_ssl_context
+
+
+def client_certificate_der(certificate: trustme.LeafCert) -> bytes:
+    pem = certificate.cert_chain_pems[0].bytes().decode("ascii")
+    return ssl.PEM_cert_to_DER_cert(pem)
 
 
 async def app(scope, receive, send):
@@ -40,6 +63,257 @@ async def test_run(
         async with httpx2.AsyncClient(verify=tls_ca_ssl_context) as client:
             response = await client.get(f"https://127.0.0.1:{unused_tcp_port}")
     assert response.status_code == 204
+
+
+@pytest.mark.anyio
+async def test_client_certificate_in_http_scope(
+    http_protocol_cls: type[asyncio.Protocol],
+    tls_client_certificate: trustme.LeafCert,
+    tls_client_ssl_context: ssl.SSLContext,
+    tls_certificate_server_cert_path: str,
+    tls_certificate_private_key_path: str,
+    tls_ca_certificate_pem_path: str,
+    unused_tcp_port: int,
+) -> None:
+    scopes: list[dict[str, Any]] = []
+
+    async def certificate_app(scope, receive, send):
+        scopes.append(scope)
+        await send({"type": "http.response.start", "status": 204, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    config = Config(
+        app=certificate_app,
+        http=http_protocol_cls,
+        loop="asyncio",
+        lifespan="off",
+        limit_max_requests=2,
+        ssl_keyfile=tls_certificate_private_key_path,
+        ssl_certfile=tls_certificate_server_cert_path,
+        ssl_ca_certs=tls_ca_certificate_pem_path,
+        ssl_cert_reqs=ssl.CERT_REQUIRED,
+        port=unused_tcp_port,
+    )
+    async with run_server(config):
+        async with httpx2.AsyncClient(verify=tls_client_ssl_context) as client:
+            responses = [
+                await client.get(f"https://127.0.0.1:{unused_tcp_port}"),
+                await client.get(f"https://127.0.0.1:{unused_tcp_port}"),
+            ]
+
+    assert [response.status_code for response in responses] == [204, 204]
+    assert scopes[0]["client"] == scopes[1]["client"]
+    first_client_cert = scopes[0]["extensions"]["tls"]["client_cert"]
+    second_client_cert = scopes[1]["extensions"]["tls"]["client_cert"]
+    assert first_client_cert == client_certificate_der(tls_client_certificate)
+    assert second_client_cert is first_client_cert
+
+
+@pytest.mark.anyio
+async def test_client_certificate_in_http2_scope(
+    tls_client_certificate: trustme.LeafCert,
+    tls_client_ssl_context: ssl.SSLContext,
+    tls_certificate_server_cert_path: str,
+    tls_certificate_private_key_path: str,
+    tls_ca_certificate_pem_path: str,
+    unused_tcp_port: int,
+) -> None:
+    scopes: list[dict[str, Any]] = []
+
+    async def certificate_app(scope, receive, send):
+        scopes.append(scope)
+        await send({"type": "http.response.start", "status": 204, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    config = Config(
+        app=certificate_app,
+        http="zttp",
+        http2=True,
+        loop="asyncio",
+        lifespan="off",
+        limit_max_requests=1,
+        ssl_keyfile=tls_certificate_private_key_path,
+        ssl_certfile=tls_certificate_server_cert_path,
+        ssl_ca_certs=tls_ca_certificate_pem_path,
+        ssl_cert_reqs=ssl.CERT_REQUIRED,
+        port=unused_tcp_port,
+    )
+    async with run_server(config):
+        async with httpx2.AsyncClient(http2=True, verify=tls_client_ssl_context) as client:
+            response = await client.get(f"https://127.0.0.1:{unused_tcp_port}")
+
+    assert response.status_code == 204
+    assert response.http_version == "HTTP/2"
+    assert scopes[0]["extensions"]["tls"] == {"client_cert": client_certificate_der(tls_client_certificate)}
+
+
+@pytest.mark.anyio
+async def test_client_certificate_in_websocket_scope(
+    ws_protocol_cls: type[asyncio.Protocol],
+    tls_client_certificate: trustme.LeafCert,
+    tls_client_ssl_context: ssl.SSLContext,
+    tls_certificate_server_cert_path: str,
+    tls_certificate_private_key_path: str,
+    tls_ca_certificate_pem_path: str,
+    unused_tcp_port: int,
+) -> None:
+    scopes: list[dict[str, Any]] = []
+
+    async def certificate_app(scope, receive, send):
+        scopes.append(scope)
+        await receive()
+        await send({"type": "websocket.accept"})
+        await send({"type": "websocket.close", "code": 1000})
+
+    config = Config(
+        app=certificate_app,
+        ws=ws_protocol_cls,
+        loop="asyncio",
+        lifespan="off",
+        ssl_keyfile=tls_certificate_private_key_path,
+        ssl_certfile=tls_certificate_server_cert_path,
+        ssl_ca_certs=tls_ca_certificate_pem_path,
+        ssl_cert_reqs=ssl.CERT_REQUIRED,
+        port=unused_tcp_port,
+    )
+    async with run_server(config):
+        async with connect(f"wss://127.0.0.1:{unused_tcp_port}", ssl=tls_client_ssl_context):
+            pass
+
+    assert scopes[0]["extensions"]["tls"] == {"client_cert": client_certificate_der(tls_client_certificate)}
+
+
+@pytest.mark.anyio
+async def test_tls_scope_without_client_certificate(
+    tls_ca_ssl_context: ssl.SSLContext,
+    tls_certificate_server_cert_path: str,
+    tls_certificate_private_key_path: str,
+    tls_ca_certificate_pem_path: str,
+    unused_tcp_port: int,
+) -> None:
+    scopes: list[dict[str, Any]] = []
+
+    async def certificate_app(scope, receive, send):
+        scopes.append(scope)
+        await send({"type": "http.response.start", "status": 204, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    config = Config(
+        app=certificate_app,
+        http="h11",
+        loop="asyncio",
+        lifespan="off",
+        limit_max_requests=1,
+        ssl_keyfile=tls_certificate_private_key_path,
+        ssl_certfile=tls_certificate_server_cert_path,
+        ssl_ca_certs=tls_ca_certificate_pem_path,
+        ssl_cert_reqs=ssl.CERT_OPTIONAL,
+        port=unused_tcp_port,
+    )
+    async with run_server(config):
+        async with httpx2.AsyncClient(verify=tls_ca_ssl_context) as client:
+            response = await client.get(f"https://127.0.0.1:{unused_tcp_port}")
+
+    assert response.status_code == 204
+    assert scopes[0]["extensions"]["tls"] == {"client_cert": None}
+
+
+@pytest.mark.anyio
+async def test_required_client_certificate_rejected_before_application(
+    tls_ca_ssl_context: ssl.SSLContext,
+    tls_certificate_server_cert_path: str,
+    tls_certificate_private_key_path: str,
+    tls_ca_certificate_pem_path: str,
+    unused_tcp_port: int,
+) -> None:
+    app_called = False
+
+    async def certificate_app(scope, receive, send):
+        nonlocal app_called
+        app_called = True  # pragma: no cover - a rejected TLS handshake cannot invoke ASGI
+
+    config = Config(
+        app=certificate_app,
+        http="h11",
+        loop="asyncio",
+        lifespan="off",
+        ssl_keyfile=tls_certificate_private_key_path,
+        ssl_certfile=tls_certificate_server_cert_path,
+        ssl_ca_certs=tls_ca_certificate_pem_path,
+        ssl_cert_reqs=ssl.CERT_REQUIRED,
+        port=unused_tcp_port,
+    )
+    async with run_server(config):
+        async with httpx2.AsyncClient(verify=tls_ca_ssl_context) as client:
+            with pytest.raises((httpx2.ConnectError, httpx2.RemoteProtocolError)):
+                await client.get(f"https://127.0.0.1:{unused_tcp_port}")
+
+    assert app_called is False
+
+
+@pytest.mark.anyio
+async def test_untrusted_client_certificate_rejected_before_application(
+    tls_ca_ssl_context: ssl.SSLContext,
+    tls_certificate_server_cert_path: str,
+    tls_certificate_private_key_path: str,
+    tls_ca_certificate_pem_path: str,
+    unused_tcp_port: int,
+) -> None:
+    app_called = False
+
+    async def certificate_app(scope, receive, send):
+        nonlocal app_called
+        app_called = True  # pragma: no cover - a rejected TLS handshake cannot invoke ASGI
+
+    rogue_certificate = trustme.CA().issue_cert("untrusted-client")
+    with rogue_certificate.private_key_and_cert_chain_pem.tempfile() as certfile:
+        tls_ca_ssl_context.load_cert_chain(certfile)
+        config = Config(
+            app=certificate_app,
+            http="h11",
+            loop="asyncio",
+            lifespan="off",
+            ssl_keyfile=tls_certificate_private_key_path,
+            ssl_certfile=tls_certificate_server_cert_path,
+            ssl_ca_certs=tls_ca_certificate_pem_path,
+            ssl_cert_reqs=ssl.CERT_REQUIRED,
+            port=unused_tcp_port,
+        )
+        async with run_server(config):
+            async with httpx2.AsyncClient(verify=tls_ca_ssl_context) as client:
+                with pytest.raises((httpx2.ConnectError, httpx2.RemoteProtocolError)):
+                    await client.get(f"https://127.0.0.1:{unused_tcp_port}")
+
+    assert app_called is False
+
+
+@pytest.mark.anyio
+async def test_tls_extension_absent_without_tls(unused_tcp_port: int) -> None:
+    scopes: list[dict[str, Any]] = []
+
+    async def certificate_app(scope, receive, send):
+        scopes.append(scope)
+        await send({"type": "http.response.start", "status": 204, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    config = Config(
+        app=certificate_app,
+        http="h11",
+        loop="asyncio",
+        lifespan="off",
+        limit_max_requests=1,
+        port=unused_tcp_port,
+    )
+    async with run_server(config):
+        async with httpx2.AsyncClient() as client:
+            response = await client.get(
+                f"http://127.0.0.1:{unused_tcp_port}",
+                headers={"x-client-cert": "not-a-certificate", "x-forwarded-proto": "https"},
+            )
+
+    assert response.status_code == 204
+    assert scopes[0]["scheme"] == "https"
+    assert "extensions" not in scopes[0]
 
 
 @pytest.mark.anyio
