@@ -191,7 +191,7 @@ class ZttpH2Protocol(asyncio.Protocol):
 
     def handle_request(self, event: zttp.Request) -> None:
         if not event.target.isascii():
-            self.conn.stream(event.stream_id).reset()
+            self.conn.stream(event.stream_id).reset(0x1)  # PROTOCOL_ERROR, RFC 9113 §8.1.1
             return
         headers = (
             event.headers.to_list(lowercase_names=True)
