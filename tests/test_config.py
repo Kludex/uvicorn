@@ -276,6 +276,7 @@ def test_socket_bind() -> None:
     config.load()
     sock = config.bind_socket()
     assert isinstance(sock, socket.socket)
+    assert sock.proto == socket.IPPROTO_TCP
     sock.close()
 
 
