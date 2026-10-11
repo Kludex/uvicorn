@@ -171,6 +171,7 @@ class ZttpProtocol(asyncio.Protocol):
                     "query_string": event.query,
                     "headers": self.headers,
                     "state": self.app_state.copy(),
+                    "extensions": {"http.response.trailers": {}},
                 }
                 if self._should_upgrade():
                     self.handle_websocket_upgrade(event)
@@ -197,6 +198,10 @@ class ZttpProtocol(asyncio.Protocol):
                     default_headers=self.server_state.default_headers,
                     message_event=asyncio.Event(),
                     expect_100_continue=event.expect_continue,
+                    expect_trailers=any(
+                        name == b"te" and b"trailers" in [v.strip() for v in value.lower().split(b",")]
+                        for name, value in self.headers
+                    ),
                     on_response=self.on_response_complete,
                 )
                 if event.end_stream:
@@ -329,6 +334,7 @@ class RequestResponseCycle:
         default_headers: list[tuple[bytes, bytes]],
         message_event: asyncio.Event,
         expect_100_continue: bool,
+        expect_trailers: bool,
         on_response: Callable[..., None],
     ) -> None:
         self.scope = scope
@@ -346,6 +352,7 @@ class RequestResponseCycle:
         self.disconnected = False
         self.keep_alive = True
         self.waiting_for_100_continue = expect_100_continue
+        self.expect_trailers = expect_trailers
 
         # Request state
         self.body = bytearray()
@@ -354,9 +361,12 @@ class RequestResponseCycle:
         # Response state
         self.response_started = False
         self.response_complete = False
+        self.body_complete = False
         self.bodyless = False
         self.chunked_encoding = False
         self.expected_content_length = 0
+        self.send_trailers = False
+        self.trailers: list[tuple[bytes, bytes]] = []
 
     # ASGI exception wrapper
     async def run_asgi(self, app: ASGI3Application) -> None:
@@ -471,10 +481,12 @@ class RequestResponseCycle:
 
             # Write response status line and headers
             self.bodyless = bodyless
+            self.send_trailers = message.get("trailers", False)
+            self.expect_trailers = self.expect_trailers and self.chunked_encoding and not bodyless
             self.conn.send_response(status, headers)
             self.transport.write(self.conn.data_to_send())
 
-        elif not self.response_complete:
+        elif not self.body_complete:
             # Sending response body
             if message["type"] != "http.response.body":
                 raise RuntimeError(f"Expected ASGI message 'http.response.body', but got '{message['type']}'.")
@@ -501,10 +513,23 @@ class RequestResponseCycle:
             if not more_body:
                 if self.expected_content_length != 0:
                     raise RuntimeError("Response content shorter than Content-Length")
+                self.body_complete = True
+                if not self.send_trailers:
+                    self.conn.end_message()
+                    self.transport.write(self.conn.data_to_send())
+                    self.response_complete = True
+                    self.message_event.set()
+
+        elif self.send_trailers and not self.response_complete:
+            if message["type"] != "http.response.trailers":
+                raise RuntimeError(f"Expected ASGI message 'http.response.trailers', but got '{message['type']}'.")
+
+            self.trailers.extend(message.get("headers", []))
+            if not message.get("more_trailers", False):
+                self.conn.end_message(self.trailers if self.expect_trailers else None)
+                self.transport.write(self.conn.data_to_send())
                 self.response_complete = True
                 self.message_event.set()
-                self.conn.end_message()
-                self.transport.write(self.conn.data_to_send())
 
         else:
             # Response already sent
