@@ -1040,6 +1040,16 @@ async def test_invalid_http_request(
     assert b"Invalid HTTP request received." in protocol.transport.buffer
 
 
+async def test_invalid_head_request_non_ascii_target(http_protocol_cls: type[HTTPProtocol]):
+    app = Response("Hello, world", media_type="text/plain")
+    request = INVALID_REQUEST_TEMPLATE % b"HEAD /caf\xc3\xa9 HTTP/1.1"
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(request)
+    assert protocol.transport.buffer.startswith(b"HTTP/1.1 400 Bad Request")
+    assert protocol.transport.is_closing()
+
+
 @skip_if_no_httptools
 def test_fragmentation(unused_tcp_port: int):
     def receive_all(sock: socket.socket):
