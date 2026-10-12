@@ -1048,6 +1048,9 @@ async def test_invalid_head_request_non_ascii_target(http_protocol_cls: type[HTT
     protocol.data_received(request)
     assert protocol.transport.buffer.startswith(b"HTTP/1.1 400 Bad Request")
     assert protocol.transport.is_closing()
+    if http_protocol_cls.__name__ == "ZttpProtocol":
+        # zttp has parsed the method, so the response to HEAD has no body.
+        assert protocol.transport.buffer.endswith(b"\r\n\r\n")
 
 
 @skip_if_no_httptools
