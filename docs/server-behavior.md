@@ -88,7 +88,7 @@ To make the distinction concrete, consider `--limit-concurrency 5` with a slow a
 
 ## Server Errors
 
-Server errors will be logged at the `error` log level. All logging defaults to being written to `stdout`.
+Server errors will be logged at the `error` log level. By default, error logs are written to `stderr` and access logs to `stdout`.
 
 ### Exceptions
 
