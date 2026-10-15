@@ -116,6 +116,32 @@ async def test_invalid_upgrade(ws_protocol_cls: WSProtocol, http_protocol_cls: H
             ]
 
 
+async def test_unparseable_upgrade_is_rejected(http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
+    """A handshake the websockets parser refuses (here, a header line over its
+    8 KiB limit) is answered and closed, instead of being left open: the parser
+    records the failure in `handshake_exc` without producing an event."""
+
+    def app(scope: Scope):
+        return None
+
+    config = Config(app=app, ws=WebSocketsSansIOProtocol, http=http_protocol_cls, port=unused_tcp_port)
+    async with run_server(config):
+        async with httpx2.AsyncClient(timeout=5) as client:
+            response = await client.get(
+                f"http://127.0.0.1:{unused_tcp_port}",
+                headers={
+                    "upgrade": "websocket",
+                    "connection": "upgrade",
+                    "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+                    "sec-websocket-version": "13",
+                    "cookie": "x" * 8300,  # over websockets.http11.MAX_LINE_LENGTH (8192)
+                },
+            )
+    # 431 from websockets >= 17, which composes the response itself; 400 before.
+    assert response.status_code in (400, 431)
+    assert response.text.startswith("Failed to open a WebSocket connection: ")
+
+
 async def test_accept_connection(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
     class App(WebSocketResponse):
         async def websocket_connect(self, message: WebSocketConnectEvent):
