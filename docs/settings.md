@@ -79,7 +79,7 @@ Using Uvicorn with watchfiles will enable the following options (which are other
 * `--timeout-worker-healthcheck <int>` - Maximum number of seconds to wait for a worker to respond to a healthcheck. **Default:** *5*.
 
 !!! note
-    The `--reload` and `--workers` arguments are mutually exclusive. You cannot use both at the same time.
+    When `--reload` is enabled, it takes precedence over `--workers`: combining the two with `--workers` greater than 1 logs a warning and ignores the requested worker count.
 
 ## Logging
 
