@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="320" height="320" src="https://raw.githubusercontent.com/tomchristie/uvicorn/main/docs/uvicorn.png" alt='uvicorn'>
+  <img width="320" height="320" src="https://raw.githubusercontent.com/Kludex/uvicorn/main/docs/uvicorn.png" alt='uvicorn'>
 </p>
 
 <p align="center">
