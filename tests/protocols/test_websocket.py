@@ -118,28 +118,46 @@ async def test_invalid_upgrade(ws_protocol_cls: WSProtocol, http_protocol_cls: H
 
 async def test_unparseable_upgrade_is_rejected(http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
     """A handshake the websockets parser refuses (here, a header line over its
-    8 KiB limit) is answered and closed, instead of being left open: the parser
-    records the failure in `handshake_exc` without producing an event."""
+    8 KiB limit) is answered and the connection is closed, instead of being
+    left open: the parser records the failure in `handshake_exc` without
+    producing an event."""
 
     def app(scope: Scope):
         return None
 
+    request = (
+        b"GET / HTTP/1.1\r\n"
+        b"Host: 127.0.0.1\r\n"
+        b"Upgrade: websocket\r\n"
+        b"Connection: Upgrade\r\n"
+        b"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+        b"Sec-WebSocket-Version: 13\r\n"
+        b"Cookie: " + b"x" * 8300 + b"\r\n"  # over websockets.http11.MAX_LINE_LENGTH (8192)
+        b"\r\n"
+    )
+
+    async def exchange() -> tuple[bytes, bytes, bytes]:
+        reader, writer = await asyncio.open_connection("127.0.0.1", unused_tcp_port)
+        try:
+            writer.write(request)
+            await writer.drain()
+            status, *headers = (await reader.readuntil(b"\r\n\r\n")).split(b"\r\n")[:-2]
+            content_length = next(int(h.split(b":", 1)[1]) for h in headers if h.lower().startswith(b"content-length:"))
+            body = await reader.readexactly(content_length)
+            # The server closes the connection: nothing follows the response.
+            trailing = await reader.read()
+            return status, body, trailing
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
     config = Config(app=app, ws=WebSocketsSansIOProtocol, http=http_protocol_cls, port=unused_tcp_port)
     async with run_server(config):
-        async with httpx2.AsyncClient(timeout=5) as client:
-            response = await client.get(
-                f"http://127.0.0.1:{unused_tcp_port}",
-                headers={
-                    "upgrade": "websocket",
-                    "connection": "upgrade",
-                    "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
-                    "sec-websocket-version": "13",
-                    "cookie": "x" * 8300,  # over websockets.http11.MAX_LINE_LENGTH (8192)
-                },
-            )
+        status, body, trailing = await asyncio.wait_for(exchange(), timeout=5)
     # 431 from websockets >= 17, which composes the response itself; 400 before.
-    assert response.status_code in (400, 431)
-    assert response.text.startswith("Failed to open a WebSocket connection: ")
+    assert status in (b"HTTP/1.1 400 Bad Request", b"HTTP/1.1 431 Request Header Fields Too Large")
+    assert body.startswith(b"Failed to open a WebSocket connection: ")
+    assert trailing == b""
 
 
 async def test_accept_connection(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
