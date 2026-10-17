@@ -190,6 +190,9 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         if self.conn.parser_exc is not None:  # pragma: no cover
             self.handle_parser_exception()
             return
+        if self.conn.handshake_exc is not None and not self.handshake_initiated:
+            self.handle_handshake_exception()
+            return
         self.handle_events()
 
     def handle_events(self) -> None:
@@ -392,6 +395,31 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         output = self.conn.data_to_send()
         self.transport.write(b"".join(output))
         self.close_sent = True
+        self.transport.close()
+
+    def handle_handshake_exception(self) -> None:
+        # The request could not be parsed, e.g. a header line over websockets'
+        # limit. websockets records the error in `handshake_exc` without
+        # producing a `Request` event, so `handle_events()` has nothing to do
+        # and, left there, nothing is written back and the connection stays
+        # open until the client gives up. websockets >= 17 queues an HTTP
+        # response for a request over a limit (414, 431); earlier versions
+        # queue only an EOF, and the response is composed here instead.
+        output = [chunk for chunk in self.conn.data_to_send() if chunk]
+        if not output:  # pragma: no cover
+            assert self.conn.handshake_exc is not None
+            exc: BaseException = self.conn.handshake_exc
+            reason = str(exc)
+            while exc.__cause__ is not None:
+                exc = exc.__cause__
+                reason += f"; {exc}"
+            response = self.conn.reject(HTTPStatus.BAD_REQUEST, f"Failed to open a WebSocket connection: {reason}.\n")
+            # Serialized directly: `send_response()` asserts that no EOF was
+            # queued, and the failed parse has already queued one.
+            output = [response.serialize()]
+        self.transport.write(b"".join(output))
+        self.close_sent = True
+        self.handshake_complete = True
         self.transport.close()
 
     def on_task_complete(self, task: asyncio.Task[None]) -> None:
