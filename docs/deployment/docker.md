@@ -37,7 +37,7 @@ async def app(scope, receive, send):
             "status": 200,
             "headers": [
                 [b"content-type", b"text/plain"],
-                [b"content-length", len(body)],
+                [b"content-length", str(len(body)).encode("utf-8")],
             ],
         }
     )
