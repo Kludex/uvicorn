@@ -334,8 +334,12 @@ class H11Protocol(asyncio.Protocol):
         Called by the server to commence a graceful shutdown.
         """
         if self.cycle is None or self.cycle.response_complete:
-            event = h11.ConnectionClosed()
-            self.conn.send(event)
+            # A connection whose local h11 state already failed cannot accept
+            # ConnectionClosed, and raising here would abort the server's
+            # shutdown loop before the remaining connections are closed.
+            if self.conn.our_state != h11.ERROR:
+                event = h11.ConnectionClosed()
+                self.conn.send(event)
             self.transport.close()
         else:
             self.cycle.keep_alive = False
