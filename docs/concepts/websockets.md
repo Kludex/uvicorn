@@ -94,7 +94,8 @@ You can choose this protocol by setting the `--ws` option to `wsproto`.
 
 This implementation uses the [`websockets`](https://websockets.readthedocs.io/) package as dependency.
 
-By default, if you have `websockets` installed, Uvicorn will use this protocol.
+You can choose this protocol by setting the `--ws` option to `websockets`. It is deprecated: `--ws websockets`
+will point at the `websockets-sansio` implementation in a future release.
 
 ### WebSockets SansIO Protocol
 
@@ -102,6 +103,8 @@ Since `websockets` deprecated the API Uvicorn uses to run the previous protocol,
 protocol that uses the `websockets` SansIO API.
 
 You can choose this protocol by setting the `--ws` option to `websockets-sansio`.
+
+If you have `websockets` installed, this is the protocol Uvicorn uses by default (`--ws auto`).
 
 !!! note
     The SansIO implementation was released in Uvicorn version 0.35.0 in June 2025.
