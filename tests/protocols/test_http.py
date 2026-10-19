@@ -291,6 +291,21 @@ async def test_get_request(http_protocol_cls: type[HTTPProtocol]):
     assert b"Hello, world" in protocol.transport.buffer
 
 
+async def test_header_value_strips_surrounding_whitespace(http_protocol_cls: type[HTTPProtocol]):
+    headers: list[tuple[bytes, bytes]] = []
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert scope["type"] == "http"
+        headers.extend(scope["headers"])
+        await Response("Hello, world", media_type="text/plain")(scope, receive, send)
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(b"GET / HTTP/1.1\r\nHost: example.org\r\nX-Test: \t hello \t \r\n\r\n")
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert (b"x-test", b"hello") in headers
+
+
 @pytest.mark.parametrize(
     "char",
     [

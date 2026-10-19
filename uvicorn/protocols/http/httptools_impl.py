@@ -240,6 +240,8 @@ class HttpToolsProtocol(asyncio.Protocol):
 
     def on_header(self, name: bytes, value: bytes) -> None:
         name = name.lower()
+        # llhttp keeps trailing OWS, which https://www.rfc-editor.org/rfc/rfc9110#section-5.5 excludes from the value.
+        value = value.rstrip(b" \t")
         if name == b"expect" and value.lower() == b"100-continue":
             self.expect_100_continue = True
         self.headers.append((name, value))
