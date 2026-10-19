@@ -114,6 +114,8 @@ Graceful process shutdowns are particularly important during a restart period. D
 
 Uvicorn handles process shutdown gracefully, ensuring that connections are properly finalized, and all tasks have run to completion. During a shutdown period Uvicorn will ensure that responses and tasks must still complete within the configured timeout periods.
 
+A connection whose HTTP state machine has already failed — for example after the application caught an error while sending a response — can no longer take part in the closing handshake. Uvicorn closes such connections directly instead of raising, so a single broken connection cannot interrupt the shutdown of the others.
+
 ---
 
 ## HTTP Pipelining
