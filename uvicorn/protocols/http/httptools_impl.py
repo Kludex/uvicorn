@@ -240,6 +240,7 @@ class HttpToolsProtocol(asyncio.Protocol):
 
     def on_header(self, name: bytes, value: bytes) -> None:
         name = name.lower()
+        value = value.rstrip(b" \t")
         if name == b"expect" and value.lower() == b"100-continue":
             self.expect_100_continue = True
         self.headers.append((name, value))
