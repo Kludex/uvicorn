@@ -276,8 +276,9 @@ For more information, check [`ProxyHeadersMiddleware`](https://github.com/Kludex
 
 ### Client Port
 
-Currently if the `ProxyHeadersMiddleware` is able to retrieve a trusted client value then the client's port will be set to `0`.
-This is because port information is lost when using these headers.
+When the forwarded value includes a port (e.g. `1.2.3.4:1234` or `[2001:db8::1]:8080`), that port is used as the client port.
+
+Port information is only lost when the proxy forwards a bare host, in which case the client's port is set to `0`.
 
 ### UNIX Domain Sockets (UDS)
 
