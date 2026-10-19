@@ -65,7 +65,7 @@ For more nuanced control over which file modifications trigger reloads, install 
 Using Uvicorn with watchfiles will enable the following options (which are otherwise ignored):
 
 * `--reload-include <glob-pattern>` - Specify a glob pattern to match files or directories which will be watched. May be used multiple times. By default the following patterns are included: `*.py`. These defaults can be overwritten by including them in `--reload-exclude`.
-* `--reload-exclude <glob-pattern>` - Specify a glob pattern to match files or directories which will excluded from watching. May be used multiple times. By default the following patterns are excluded: `.*, .py[cod], .sw.*, ~*`. These defaults can be overwritten by including them in `--reload-include`.
+* `--reload-exclude <glob-pattern>` - Specify a glob pattern to match files or directories which will be excluded from watching. May be used multiple times. By default the following patterns are excluded: `.*, .py[cod], .sw.*, ~*`. These defaults can be overwritten by including them in `--reload-include`.
 
 !!! tip
     When using Uvicorn through [WSL](https://en.wikipedia.org/wiki/Windows_Subsystem_for_Linux), you might
