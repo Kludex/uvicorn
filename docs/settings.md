@@ -96,10 +96,10 @@ Using Uvicorn with watchfiles will enable the following options (which are other
 * `--http2` - Enable [HTTP/2](concepts/http2.md). This requires `--http zttp`. **Default:** *False*.
 * `--ws <str>` - Set the WebSockets protocol implementation. Either of the `websockets` and `wsproto` packages are supported. There are two versions of `websockets` supported: `websockets` and `websockets-sansio`. Use `'none'` to ignore all websocket requests. **Options:** *'auto', 'none', 'websockets', 'websockets-sansio', 'wsproto'.* **Default:** *'auto'*.
 * `--ws-max-size <int>` - Set the WebSockets max message size, in bytes. **Default:** *16777216* (16 MB).
-* `--ws-max-queue <int>` - Set the maximum length of the WebSocket incoming message queue. Only available with the `websockets` protocol. **Default:** *32*.
+* `--ws-max-queue <int>` - Set the maximum length of the WebSocket incoming message queue. Only available with the deprecated `websockets` implementation (`--ws websockets`): `websockets-sansio` and `wsproto` use an unbounded queue. **Default:** *32*.
 * `--ws-ping-interval <float>` - Set the WebSockets ping interval, in seconds. **Default:** *20.0*.
 * `--ws-ping-timeout <float>` - Set the WebSockets ping timeout, in seconds. **Default:** *20.0*.
-* `--ws-per-message-deflate <bool>` - Enable/disable WebSocket per-message-deflate compression. Only available with the `websockets` protocol. **Default:** *True*.
+* `--ws-per-message-deflate <bool>` - Enable/disable WebSocket per-message-deflate compression. Supported by every implementation: `websockets`, `websockets-sansio` and `wsproto`. **Default:** *True*.
 * `--lifespan <str>` - Set the Lifespan protocol implementation. **Options:** *'auto', 'on', 'off'.* **Default:** *'auto'*.
 * `--h11-max-incomplete-event-size <int>` - Set the maximum number of bytes to buffer of an incomplete event. Only available for `h11` HTTP protocol implementation. **Default:** *16384* (16 KB).
 
