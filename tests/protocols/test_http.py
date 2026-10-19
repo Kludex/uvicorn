@@ -8,9 +8,11 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
+import h11
 import pytest
 
 from tests.response import Response
+from tests.utils import run_server
 from uvicorn import Server
 from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGIReceiveEvent, ASGISendCallable, Scope
 from uvicorn.config import WS_PROTOCOLS, Config
@@ -898,6 +900,90 @@ async def test_shutdown_during_idle(http_protocol_cls: type[HTTPProtocol]):
     protocol.shutdown()  # type: ignore[attr-defined]
     assert protocol.transport.buffer == b""
     assert protocol.transport.is_closing()
+
+
+async def app_leaving_h11_in_error_state(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+    """Declare a longer body than is sent for ``/broken``, and swallow the error.
+
+    ``h11`` rejects the short ``EndOfMessage`` and moves ``our_state`` to
+    ``ERROR``. Applications with a broad ``except`` around ``send`` keep the
+    connection alive and registered with the server.
+    See https://github.com/Kludex/uvicorn/discussions/3108.
+    """
+    assert scope["type"] == "http"
+    declared = 10 if scope["path"] == "/broken" else 2
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 200,
+            "headers": [(b"content-length", str(declared).encode())],
+        }
+    )
+    try:
+        await send({"type": "http.response.body", "body": b"ok", "more_body": False})
+    except h11.LocalProtocolError:
+        pass
+
+
+async def test_shutdown_after_h11_enters_error_state() -> None:
+    """A connection h11 marked as ERROR is closed instead of raising."""
+    protocol = get_connected_protocol(app_leaving_h11_in_error_state, H11Protocol)
+    protocol.data_received(b"GET /broken HTTP/1.1\r\nHost: example.org\r\n\r\n")
+    await protocol.loop.run_one()
+
+    assert protocol.conn.our_state is h11.ERROR  # type: ignore[attr-defined]
+    assert protocol.cycle is not None and protocol.cycle.response_complete  # type: ignore[attr-defined]
+    assert not protocol.transport.is_closing()
+
+    protocol.shutdown()  # type: ignore[attr-defined]
+
+    assert protocol.transport.is_closing()
+
+
+async def test_server_shutdown_closes_every_connection_left_in_h11_error_state(unused_tcp_port: int):
+    """Graceful shutdown asks every connection to shut down, whatever h11 state any is in."""
+    config = Config(
+        app=app_leaving_h11_in_error_state,
+        http="h11",
+        lifespan="off",
+        loop="asyncio",
+        port=unused_tcp_port,
+    )
+
+    async with run_server(config) as server:
+        broken_reader, broken_writer = await asyncio.open_connection("127.0.0.1", unused_tcp_port)
+        broken_writer.write(b"GET /broken HTTP/1.1\r\nHost: example.org\r\n\r\n")
+        await broken_writer.drain()
+
+        def h11_error_reached() -> bool:
+            return any(
+                isinstance(protocol, H11Protocol) and protocol.conn.our_state is h11.ERROR
+                for protocol in server.server_state.connections
+            )
+
+        deadline = time.monotonic() + 5
+        while not h11_error_reached():
+            assert time.monotonic() < deadline, "connection never reached h11 ERROR state"
+            await asyncio.sleep(0.01)
+        assert b"200 OK" in await broken_reader.readuntil(b"\r\n\r\n")
+        assert await broken_reader.readexactly(2) == b"ok"
+
+        healthy_reader, healthy_writer = await asyncio.open_connection("127.0.0.1", unused_tcp_port)
+        healthy_writer.write(b"GET /ok HTTP/1.1\r\nHost: example.org\r\n\r\n")
+        await healthy_writer.drain()
+        assert b"200 OK" in await healthy_reader.readuntil(b"\r\n\r\n")
+        assert await healthy_reader.readexactly(2) == b"ok"
+        assert len(server.server_state.connections) == 2
+
+    # Exiting the context calls Server.shutdown(): both connections must be closed.
+    assert not server.server_state.connections
+    assert await broken_reader.read() == b""
+    assert await healthy_reader.read() == b""
+
+    broken_writer.close()
+    healthy_writer.close()
+    await broken_writer.wait_closed()
+    await healthy_writer.wait_closed()
 
 
 async def test_100_continue_sent_when_body_consumed(http_protocol_cls: type[HTTPProtocol]):
