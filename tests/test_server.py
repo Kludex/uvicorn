@@ -12,6 +12,7 @@ from contextlib import AbstractContextManager
 
 import httpx2
 import pytest
+from pytest_mock import MockerFixture
 
 from tests.protocols.test_http import SIMPLE_GET_REQUEST
 from tests.utils import run_server
@@ -120,6 +121,71 @@ async def test_shutdown_on_early_exit_during_startup(unused_tcp_port: int):
 
     assert startup_complete
     assert shutdown_complete, "lifespan.shutdown was not called despite startup completing"
+
+
+async def test_should_exit_wakes_main_loop(mocker: MockerFixture) -> None:
+    server = Server(Config(app=app, lifespan="off"))
+    first_tick = asyncio.Event()
+
+    async def on_tick(counter: int) -> bool:
+        if counter == 0:
+            first_tick.set()
+        return server.should_exit
+
+    mocker.patch.object(server, "on_tick", side_effect=on_tick)
+    mocker.patch("uvicorn.server.asyncio.sleep", side_effect=AssertionError("main loop must not poll for shutdown"))
+    main_loop = asyncio.create_task(server.main_loop())
+    await first_tick.wait()
+
+    server.should_exit = True
+
+    await asyncio.wait_for(main_loop, timeout=1)
+
+
+async def test_main_loop_honors_should_exit_set_before_start() -> None:
+    server = Server(Config(app=app, lifespan="off"))
+    server.should_exit = True
+
+    await server.main_loop()
+
+
+async def test_should_exit_ignores_closed_shutdown_loop(mocker: MockerFixture) -> None:
+    server = Server(Config(app=app, lifespan="off"))
+    server._shutdown_event = asyncio.Event()
+    server._shutdown_loop = mocker.Mock(spec=asyncio.AbstractEventLoop)
+    server._shutdown_loop.call_soon_threadsafe.side_effect = RuntimeError
+
+    server.should_exit = True
+
+    assert server.should_exit
+
+
+async def test_shutdown_without_connections_only_yields(mocker: MockerFixture) -> None:
+    config = Config(app=app, lifespan="off")
+    config.load()
+    server = Server(config)
+    server.lifespan = config.lifespan_class(config)
+    server.servers = []
+    sleep = mocker.patch("uvicorn.server.asyncio.sleep")
+
+    await server.shutdown()
+
+    sleep.assert_awaited_once_with(0)
+
+
+async def test_shutdown_yields_before_snapshotting_connections(mocker: MockerFixture) -> None:
+    config = Config(app=app, lifespan="off")
+    config.load()
+    server = Server(config)
+    server.lifespan = config.lifespan_class(config)
+    server.servers = []
+    connection = mocker.Mock()
+    connection.shutdown.side_effect = lambda: server.server_state.connections.remove(connection)
+    asyncio.get_running_loop().call_soon(server.server_state.connections.add, connection)
+
+    await server.shutdown()
+
+    connection.shutdown.assert_called_once_with()
 
 
 def test_run_exits_with_startup_failure_on_unloadable_app() -> None:
