@@ -152,8 +152,9 @@ async def test_main_loop_honors_should_exit_set_before_start() -> None:
 async def test_should_exit_ignores_closed_shutdown_loop(mocker: MockerFixture) -> None:
     server = Server(Config(app=app, lifespan="off"))
     server._shutdown_event = asyncio.Event()
-    server._shutdown_loop = mocker.Mock(spec=asyncio.AbstractEventLoop)
-    server._shutdown_loop.call_soon_threadsafe.side_effect = RuntimeError
+    shutdown_loop = mocker.Mock(spec=asyncio.AbstractEventLoop)
+    shutdown_loop.call_soon_threadsafe.side_effect = RuntimeError
+    server._shutdown_loop = shutdown_loop
 
     server.should_exit = True
 

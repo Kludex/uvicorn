@@ -92,15 +92,7 @@ class Server:
 
         callback = event.set if value else event.clear
         try:
-            running_loop = asyncio.get_running_loop()
-        except RuntimeError:
-            running_loop = None
-
-        try:
-            if running_loop is loop:
-                callback()
-            else:
-                loop.call_soon_threadsafe(callback)
+            loop.call_soon_threadsafe(callback)
         except RuntimeError:
             pass
 
