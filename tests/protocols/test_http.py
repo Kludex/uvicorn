@@ -306,6 +306,30 @@ async def test_header_value_strips_surrounding_whitespace(http_protocol_cls: typ
     assert (b"x-test", b"hello") in headers
 
 
+async def test_chunked_request_trailers_not_added_to_headers(http_protocol_cls: type[HTTPProtocol]):
+    headers: list[tuple[bytes, bytes]] = []
+    body = b""
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        nonlocal body
+        assert scope["type"] == "http"
+        message = await receive()
+        assert message["type"] == "http.request"
+        body = message["body"]
+        headers.extend(scope["headers"])
+        await Response("Hello, world", media_type="text/plain")(scope, receive, send)
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(
+        b"POST / HTTP/1.1\r\nHost: example.org\r\nTransfer-Encoding: chunked\r\n\r\n"
+        b"5\r\nhello\r\n0\r\nX-Trailer: oops\r\n\r\n"
+    )
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert body == b"hello"
+    assert headers == [(b"host", b"example.org"), (b"transfer-encoding", b"chunked")]
+
+
 @pytest.mark.parametrize(
     "char",
     [
