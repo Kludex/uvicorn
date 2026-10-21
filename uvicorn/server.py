@@ -322,6 +322,13 @@ class Server:
         # Give connections already accepted by the event loop a chance to register.
         await asyncio.sleep(0)
 
+        # A transport is attached to its asyncio server before the protocol's
+        # connection_made callback registers it in server_state.connections.
+        # Preserve the registration window only while such a transport is pending.
+        active_transports = sum(getattr(server, "_active_count", 0) for server in self.servers)
+        if active_transports > len(self.server_state.connections):
+            await asyncio.sleep(0.1)
+
         # Request shutdown on all existing connections.
         connections = list(self.server_state.connections)
         for connection in connections:

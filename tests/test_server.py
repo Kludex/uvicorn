@@ -136,9 +136,12 @@ async def test_should_exit_wakes_main_loop(mocker: MockerFixture) -> None:
     mocker.patch("uvicorn.server.asyncio.sleep", side_effect=AssertionError("main loop must not poll for shutdown"))
     main_loop = asyncio.create_task(server.main_loop())
     await first_tick.wait()
+    shutdown_event = server._shutdown_event
+    assert shutdown_event is not None
 
     server.should_exit = True
 
+    await asyncio.wait_for(shutdown_event.wait(), timeout=1)
     await asyncio.wait_for(main_loop, timeout=1)
 
 
@@ -190,6 +193,39 @@ async def test_shutdown_yields_before_snapshotting_connections(mocker: MockerFix
 
     connection.shutdown.assert_called_once_with()
     assert [call.args[0] for call in sleep.await_args_list] == [0, 0.1]
+
+
+async def test_shutdown_waits_for_an_accepted_connection_to_register(unused_tcp_port: int) -> None:
+    connection_made = asyncio.Event()
+    shutdown_called = asyncio.Event()
+
+    class DelayedConnectionProtocol(H11Protocol):
+        def connection_made(self, transport: asyncio.Transport) -> None:  # type: ignore[override]
+            connection_made.set()
+            asyncio.get_running_loop().call_later(0.01, super().connection_made, transport)
+
+        def shutdown(self) -> None:
+            shutdown_called.set()
+            super().shutdown()
+
+    config = Config(
+        app=app,
+        lifespan="off",
+        port=unused_tcp_port,
+        http=DelayedConnectionProtocol,
+    )
+    config.load()
+    server = Server(config)
+    server.lifespan = config.lifespan_class(config)
+    await server.startup()
+    _reader, writer = await asyncio.open_connection("127.0.0.1", unused_tcp_port)
+    await connection_made.wait()
+
+    await server.shutdown()
+
+    assert shutdown_called.is_set()
+    writer.close()
+    await writer.wait_closed()
 
 
 def test_run_exits_with_startup_failure_on_unloadable_app() -> None:
