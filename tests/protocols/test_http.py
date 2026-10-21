@@ -565,6 +565,32 @@ async def test_bodyless_response_with_transfer_encoding(http_protocol_cls: type[
     assert b"HTTP/1.1 204 No Content" in protocol.transport.buffer
 
 
+@pytest.mark.parametrize(
+    ("status", "header"),
+    [
+        pytest.param(204, (b"transfer-encoding", b"chunked"), id="204-transfer-encoding"),
+        pytest.param(304, (b"transfer-encoding", b"chunked"), id="304-transfer-encoding"),
+        pytest.param(304, (b"content-length", b"12"), id="304-content-length"),
+    ],
+)
+async def test_bodyless_response_with_framing_header(
+    http_protocol_cls: type[HTTPProtocol], status: int, header: tuple[bytes, bytes]
+):
+    """RFC 9112 §6.3 ends a 204 or 304 after the header section, whatever framing it declares."""
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send({"type": "http.response.start", "status": status, "headers": [header]})
+        await send({"type": "http.response.body", "body": b""})
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    head, _, body = protocol.transport.buffer.partition(b"\r\n\r\n")
+    assert head.startswith(b"HTTP/1.1 %d " % status)
+    assert body == b""
+    assert not protocol.transport.is_closing()
+
+
 async def test_chunked_encoding(http_protocol_cls: type[HTTPProtocol]):
     app = Response(b"Hello, world!", status_code=200, headers={"transfer-encoding": "chunked"})
 
