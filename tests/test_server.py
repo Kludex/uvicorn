@@ -195,14 +195,23 @@ async def test_shutdown_yields_before_snapshotting_connections(mocker: MockerFix
     assert [call.args[0] for call in sleep.await_args_list] == [0, 0.1]
 
 
-async def test_shutdown_waits_for_an_accepted_connection_to_register(unused_tcp_port: int) -> None:
+async def test_shutdown_waits_for_an_accepted_connection_to_register(
+    unused_tcp_port: int, mocker: MockerFixture
+) -> None:
     connection_made = asyncio.Event()
+    registration_allowed = asyncio.Event()
+    grace_started = asyncio.Event()
     shutdown_called = asyncio.Event()
 
     class DelayedConnectionProtocol(H11Protocol):
         def connection_made(self, transport: asyncio.Transport) -> None:  # type: ignore[override]
             connection_made.set()
-            asyncio.get_running_loop().call_later(0.01, super().connection_made, transport)
+
+            async def register() -> None:
+                await registration_allowed.wait()
+                super(DelayedConnectionProtocol, self).connection_made(transport)
+
+            asyncio.create_task(register())
 
         def shutdown(self) -> None:
             shutdown_called.set()
@@ -220,12 +229,24 @@ async def test_shutdown_waits_for_an_accepted_connection_to_register(unused_tcp_
     await server.startup()
     _reader, writer = await asyncio.open_connection("127.0.0.1", unused_tcp_port)
     await connection_made.wait()
+    original_sleep = asyncio.sleep
 
-    await server.shutdown()
+    async def track_sleep(delay: float) -> None:
+        if delay == 0.1:
+            grace_started.set()
+        await original_sleep(delay)
+
+    mocker.patch("uvicorn.server.asyncio.sleep", side_effect=track_sleep)
+    shutdown_task = asyncio.create_task(server.shutdown())
+
+    await asyncio.wait_for(grace_started.wait(), timeout=1)
+    registration_allowed.set()
+    await shutdown_task
 
     assert shutdown_called.is_set()
     writer.close()
-    await writer.wait_closed()
+    with contextlib.suppress(ConnectionError):
+        await writer.wait_closed()
 
 
 def test_run_exits_with_startup_failure_on_unloadable_app() -> None:
