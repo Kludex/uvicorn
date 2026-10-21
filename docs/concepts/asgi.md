@@ -171,6 +171,30 @@ async def app(scope, receive, send):
     })
 ```
 
+### Sending trailers
+
+HTTP trailers are additional headers sent after the response body. Uvicorn supports the
+[HTTP Trailers ASGI extension](https://asgi.readthedocs.io/en/latest/extensions.html#http-trailers). To send trailers, set `"trailers": True` on the
+`http.response.start` message, then send one or more `http.response.trailers` messages after the
+body completes. Set `more_trailers` to `False` on the last trailers message.
+
+Trailers are only emitted on the wire when the client sends a `TE: trailers` request header. Over
+HTTP/1.1, the response must also use chunked transfer encoding, so do not set `Content-Length`.
+Trailers are never sent for `HEAD` requests. When these conditions are not met, trailers sent by
+the application are silently dropped.
+
+Applications should also announce the trailer field names in advance via the `Trailer` response
+header, per [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110#section-6.6.2).
+
+```python
+async def app(scope, receive, send):
+    assert scope["type"] == "http"
+    headers = [(b"content-type", b"text/plain"), (b"trailer", b"x-app-status")]
+    await send({"type": "http.response.start", "status": 200, "headers": headers, "trailers": True})
+    await send({"type": "http.response.body", "body": b"Hello, world!"})
+    await send({"type": "http.response.trailers", "headers": [(b"x-app-status", b"ok")], "more_trailers": False})
+```
+
 ---
 
 ## Why ASGI?
