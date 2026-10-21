@@ -183,10 +183,13 @@ async def test_shutdown_yields_before_snapshotting_connections(mocker: MockerFix
     connection = mocker.Mock()
     connection.shutdown.side_effect = lambda: server.server_state.connections.remove(connection)
     asyncio.get_running_loop().call_soon(server.server_state.connections.add, connection)
+    original_sleep = asyncio.sleep
+    sleep = mocker.patch("uvicorn.server.asyncio.sleep", wraps=original_sleep)
 
     await server.shutdown()
 
     connection.shutdown.assert_called_once_with()
+    assert [call.args[0] for call in sleep.await_args_list] == [0, 0.1]
 
 
 def test_run_exits_with_startup_failure_on_unloadable_app() -> None:
