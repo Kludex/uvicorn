@@ -161,6 +161,34 @@ async def test_should_exit_ignores_closed_shutdown_loop(mocker: MockerFixture) -
     assert server.should_exit
 
 
+async def test_shutdown_without_connections_only_yields(mocker: MockerFixture) -> None:
+    config = Config(app=app, lifespan="off")
+    config.load()
+    server = Server(config)
+    server.lifespan = config.lifespan_class(config)
+    server.servers = []
+    sleep = mocker.patch("uvicorn.server.asyncio.sleep")
+
+    await server.shutdown()
+
+    sleep.assert_awaited_once_with(0)
+
+
+async def test_shutdown_yields_before_snapshotting_connections(mocker: MockerFixture) -> None:
+    config = Config(app=app, lifespan="off")
+    config.load()
+    server = Server(config)
+    server.lifespan = config.lifespan_class(config)
+    server.servers = []
+    connection = mocker.Mock()
+    connection.shutdown.side_effect = lambda: server.server_state.connections.remove(connection)
+    asyncio.get_running_loop().call_soon(server.server_state.connections.add, connection)
+
+    await server.shutdown()
+
+    connection.shutdown.assert_called_once_with()
+
+
 def test_run_exits_with_startup_failure_on_unloadable_app() -> None:
     """A server exits with the dedicated startup-failure code when the app can't load.
 

@@ -319,10 +319,15 @@ class Server:
         for sock in sockets or []:
             sock.close()  # pragma: full coverage
 
+        # Give connections already accepted by the event loop a chance to register.
+        await asyncio.sleep(0)
+
         # Request shutdown on all existing connections.
-        for connection in list(self.server_state.connections):
+        connections = list(self.server_state.connections)
+        for connection in connections:
             connection.shutdown()
-        await asyncio.sleep(0.1)
+        if connections:
+            await asyncio.sleep(0.1)
 
         try:
             async with asyncio.timeout(self.config.timeout_graceful_shutdown):
