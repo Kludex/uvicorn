@@ -513,6 +513,11 @@ class RequestResponseCycle:
             if not self.keep_alive and not has_connection_close:
                 content.append(b"connection: close\r\n")
 
+            if status_code in (204, 304):
+                # These never have a body: https://www.rfc-editor.org/rfc/rfc9112#section-6.3
+                self.chunked_encoding = False
+                self.expected_content_length = 0
+
             if self.chunked_encoding is None and self.scope["method"] != "HEAD" and status_code not in (204, 304):
                 # Neither content-length nor transfer-encoding specified
                 self.chunked_encoding = True
