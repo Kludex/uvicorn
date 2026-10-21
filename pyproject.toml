@@ -82,6 +82,7 @@ required-version = ">=0.9.17"
 exclude-newer = "7 days"
 
 [tool.uv.exclude-newer-package]
+certifi = "2026-10-20T23:59:59Z"
 httptools = "2026-05-26"
 zttp = "2026-09-19T23:59:59Z"
 
