@@ -1858,6 +1858,7 @@ async def test_websockets_sansio_oversized_handshake_gets_rejected(http_protocol
     ``data_received`` only checked ``parser_exc``, so an oversized upgrade left
     the connection open with nothing written.
     """
+
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:  # pragma: no cover
         pass
 
