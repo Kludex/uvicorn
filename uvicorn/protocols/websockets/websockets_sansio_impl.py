@@ -190,6 +190,9 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         if self.conn.parser_exc is not None:  # pragma: no cover
             self.handle_parser_exception()
             return
+        if self.conn.handshake_exc is not None and not self.handshake_initiated:
+            self.handle_websocket_handshake_exception()
+            return
         self.handle_events()
 
     def handle_events(self) -> None:
@@ -382,6 +385,22 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             output = self.conn.data_to_send()
             self.transport.write(b"".join(output))
             self.transport.close()
+
+    def handle_websocket_handshake_exception(self) -> None:
+        # The HTTP upgrade request could not be parsed (e.g. a header line exceeded
+        # websockets' MAX_LINE_LENGTH). Drain any rejection response websockets may
+        # have queued (websockets >= 17 replies with 414/431); fall back to a 400
+        # when nothing was queued (websockets < 17 only queues an EOF marker).
+        self.handshake_complete = True
+        self.close_sent = True
+        output = b"".join(self.conn.data_to_send())
+        if output:
+            self.transport.write(output)
+        else:
+            response = self.conn.reject(400, "Bad Request")
+            self.conn.send_response(response)
+            self.transport.write(b"".join(self.conn.data_to_send()))
+        self.transport.close()
 
     def handle_parser_exception(self) -> None:  # pragma: no cover
         assert self.conn.close_sent is not None

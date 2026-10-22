@@ -1846,3 +1846,50 @@ async def test_server_keepalive_disabled(
             protocol = list(server.server_state.connections)[0]
             assert isinstance(protocol, (_WSProtocol, WebSocketsSansIOProtocol))
             assert protocol.ping_timer is None
+
+
+async def test_websockets_sansio_oversized_handshake_gets_rejected(http_protocol_cls: HTTPProtocol) -> None:
+    """An HTTP upgrade whose request the websockets parser rejects must get a 4xx
+    response and a closed transport, not a silent hang.
+
+    Regression test for https://github.com/encode/uvicorn/issues/3202 .
+    websockets sets ``handshake_exc`` (not ``parser_exc``) when the HTTP request
+    cannot be parsed, and emits no ``Request`` event.  Prior to this fix,
+    ``data_received`` only checked ``parser_exc``, so an oversized upgrade left
+    the connection open with nothing written.
+    """
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:  # pragma: no cover
+        pass
+
+    config = Config(app=app, ws=WebSocketsSansIOProtocol, http=http_protocol_cls, lifespan="off")
+    config.load()
+    server_state = ServerState()
+    protocol = WebSocketsSansIOProtocol(config=config, server_state=server_state, app_state={})
+    transport = MockWriteTransport()
+    protocol.connection_made(transport)  # type: ignore[arg-type]
+
+    # Craft a raw HTTP upgrade with a Cookie header that exceeds websockets' 8 KiB
+    # per-line limit so that the websockets parser rejects it before emitting a
+    # Request event.
+    key = "dGhlIHNhbXBsZSBub25jZQ=="
+    cookie_value = "x" * 9000
+    raw_request = (
+        f"GET / HTTP/1.1\r\n"
+        f"Host: 127.0.0.1\r\n"
+        f"Upgrade: websocket\r\n"
+        f"Connection: Upgrade\r\n"
+        f"Sec-WebSocket-Key: {key}\r\n"
+        f"Sec-WebSocket-Version: 13\r\n"
+        f"Cookie: junk={cookie_value}\r\n"
+        f"\r\n"
+    ).encode()
+
+    protocol.data_received(raw_request)
+
+    # The transport must have been closed and must have received at least an HTTP
+    # status line indicating rejection (4xx).
+    assert transport.closed, "transport should be closed after a rejected handshake"
+    assert transport.buffer, "server should have written a response before closing"
+    status_line = transport.buffer.split(b"\r\n", 1)[0]
+    status_code = int(status_line.split(b" ", 2)[1])
+    assert 400 <= status_code < 500, f"expected a 4xx rejection, got {status_line!r}"
