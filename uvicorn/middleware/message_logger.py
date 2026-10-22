@@ -78,10 +78,10 @@ class MessageLoggerMiddleware:
         self.logger.trace(log_text, prefix, task_counter, logged_scope)  # type: ignore
         try:
             await self.app(scope, inner_receive, inner_send)
-        except BaseException as exc:
+        except BaseException:
             log_text = "%s [%d] Raised exception"
             self.logger.trace(log_text, prefix, task_counter)  # type: ignore
-            raise exc from None
+            raise
         else:
             log_text = "%s [%d] Completed"
             self.logger.trace(log_text, prefix, task_counter)  # type: ignore
