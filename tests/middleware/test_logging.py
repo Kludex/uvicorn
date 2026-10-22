@@ -67,6 +67,36 @@ async def test_trace_logging(caplog: pytest.LogCaptureFixture, logging_config: d
         assert "ASGI [2] Completed" in messages.pop(0)
 
 
+@pytest.mark.parametrize("log_level", ["info", "trace"])
+@pytest.mark.parametrize("explicit_cause", [True, False])
+async def test_error_logging_preserves_exception_chain(
+    http_protocol_cls, caplog, logging_config, unused_tcp_port: int, log_level: str, explicit_cause: bool
+):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        try:
+            raise ValueError("Backend failure")
+        except ValueError as exc:
+            if explicit_cause:
+                raise RuntimeError("Request failed") from exc
+            raise RuntimeError("Request failed")
+
+    config = Config(
+        app=app,
+        http=http_protocol_cls,
+        log_level=log_level,
+        log_config=logging_config,
+        lifespan="off",
+        port=unused_tcp_port,
+    )
+    async with run_server(config):
+        async with httpx2.AsyncClient(trust_env=False) as client:
+            response = await client.get(f"http://127.0.0.1:{unused_tcp_port}")
+
+    assert response.status_code == 500
+    assert "ValueError: Backend failure" in caplog.text
+    assert "RuntimeError: Request failed" in caplog.text
+
+
 async def test_trace_logging_on_http_protocol(http_protocol_cls, caplog, logging_config, unused_tcp_port: int):
     config = Config(
         app=app,

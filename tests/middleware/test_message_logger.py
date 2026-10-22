@@ -1,3 +1,6 @@
+import asyncio
+import traceback
+
 import httpx2
 import pytest
 
@@ -48,3 +51,34 @@ async def test_message_logger_exc(caplog: pytest.LogCaptureFixture) -> None:
         assert sum(["ASGI [1] Receive" in message for message in messages]) == 0
         assert sum(["ASGI [1] Completed" in message for message in messages]) == 0
         assert sum(["ASGI [1] Raised exception" in message for message in messages]) == 1
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("chain", ["explicit", "implicit", "suppressed"])
+@pytest.mark.parametrize("exception_type", [RuntimeError, asyncio.CancelledError])
+async def test_message_logger_preserves_exception_chain(chain: str, exception_type: type[BaseException]) -> None:
+    cause = ValueError("Backend failure")
+    error = exception_type("Request failed")
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        try:
+            raise cause
+        except ValueError:
+            if chain == "explicit":
+                raise error from cause
+            if chain == "suppressed":
+                raise error from None
+            raise error
+
+    transport = httpx2.ASGITransport(MessageLoggerMiddleware(app))  # type: ignore
+    async with httpx2.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        with pytest.raises(exception_type) as exc_info:
+            await client.get("/")
+
+    assert exc_info.value is error
+    assert error.__context__ is cause
+    assert error.__cause__ is (cause if chain == "explicit" else None)
+    assert error.__suppress_context__ is (chain != "implicit")
+    formatted = "".join(traceback.format_exception(error))
+    assert ("ValueError: Backend failure" in formatted) is (chain != "suppressed")
+    assert "Request failed" in formatted
