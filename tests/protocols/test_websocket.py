@@ -1892,4 +1892,10 @@ async def test_websockets_sansio_oversized_handshake_gets_rejected(http_protocol
     assert transport.buffer, "server should have written a response before closing"
     status_line = transport.buffer.split(b"\r\n", 1)[0]
     status_code = int(status_line.split(b" ", 2)[1])
-    assert 400 <= status_code < 500, f"expected a 4xx rejection, got {status_line!r}"
+    # websockets >= 17 queues a 431 rejection for an oversized header line;
+    # older releases only queue an EOF, so our fallback writes a plain 400.
+    import websockets as _ws
+
+    _ws_major = int(_ws.__version__.split(".")[0])
+    expected = 431 if _ws_major >= 17 else 400
+    assert status_code == expected, f"expected {expected}, got {status_line!r}"

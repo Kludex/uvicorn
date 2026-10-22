@@ -397,9 +397,13 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         if output:
             self.transport.write(output)
         else:
-            response = self.conn.reject(400, "Bad Request")
-            self.conn.send_response(response)
-            self.transport.write(b"".join(self.conn.data_to_send()))
+            # websockets < 17 queues only an EOF marker on parse failure, so
+            # data_to_send() returns nothing and conn.reject()/send_response()
+            # would assert on the already-failed connection state.  Write the
+            # error response directly to bypass the websockets state machine.
+            self.transport.write(
+                b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            )
         self.transport.close()
 
     def handle_parser_exception(self) -> None:  # pragma: no cover
