@@ -88,10 +88,9 @@ async def test_error_logging_preserves_exception_chain(
         lifespan="off",
         port=unused_tcp_port,
     )
-    with caplog_for_logger(caplog, "uvicorn.error"):
-        async with run_server(config):
-            async with httpx2.AsyncClient(trust_env=False) as client:
-                response = await client.get(f"http://127.0.0.1:{unused_tcp_port}")
+    async with run_server(config):
+        async with httpx2.AsyncClient(trust_env=False) as client:
+            response = await client.get(f"http://127.0.0.1:{unused_tcp_port}")
 
     assert response.status_code == 500
     assert "ValueError: Backend failure" in caplog.text
