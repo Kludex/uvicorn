@@ -116,6 +116,37 @@ async def test_invalid_upgrade(ws_protocol_cls: WSProtocol, http_protocol_cls: H
             ]
 
 
+async def test_rejected_handshake_oversized_header(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+):
+    if ws_protocol_cls != WebSocketsSansIOProtocol:
+        pytest.skip("Test specifically covers websockets-sansio parser rejection handling")
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        pass
+
+    config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, port=unused_tcp_port)
+    async with run_server(config):
+        reader, writer = await asyncio.open_connection("127.0.0.1", unused_tcp_port)
+        long_cookie = "x" * 9000
+        req = (
+            f"GET / HTTP/1.1\r\n"
+            f"Host: 127.0.0.1:{unused_tcp_port}\r\n"
+            f"Upgrade: websocket\r\n"
+            f"Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+            f"Sec-WebSocket-Version: 13\r\n"
+            f"Cookie: junk={long_cookie}\r\n\r\n"
+        )
+        writer.write(req.encode())
+        await writer.drain()
+
+        data = await asyncio.wait_for(reader.read(4096), timeout=3.0)
+        assert data.startswith(b"HTTP/1.1 4")
+        writer.close()
+        await writer.wait_closed()
+
+
 async def test_accept_connection(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
     class App(WebSocketResponse):
         async def websocket_connect(self, message: WebSocketConnectEvent):
