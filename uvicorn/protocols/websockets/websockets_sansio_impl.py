@@ -404,8 +404,9 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         data = b"".join(output)
         if data:
             self.transport.write(data)
-        else:
+        else:  # pragma: full coverage
             msg = "Invalid HTTP request received."
+            self.logger.warning(msg)
             content = [b"HTTP/1.1 400 Bad Request\r\n"]
             for name, value in self.default_headers:
                 content.extend([name, b": ", value, b"\r\n"])

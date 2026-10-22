@@ -141,7 +141,7 @@ async def test_rejected_handshake_oversized_header(
         writer.write(req.encode())
         await writer.drain()
 
-        data = await asyncio.wait_for(reader.read(4096), timeout=3.0)
+        data = await asyncio.wait_for(reader.read(), timeout=3.0)
         assert data.startswith(b"HTTP/1.1 4")
         writer.close()
         await writer.wait_closed()
