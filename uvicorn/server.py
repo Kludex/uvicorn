@@ -72,6 +72,7 @@ class Server:
         self.started = False
         self._should_exit = False
         self._exit_event: asyncio.Event | None = None
+        self._exit_loop: asyncio.AbstractEventLoop | None = None
         self.force_exit = False
         self.last_notified = 0.0
 
@@ -84,8 +85,12 @@ class Server:
     @should_exit.setter
     def should_exit(self, value: bool) -> None:
         self._should_exit = value
-        if value and self._exit_event is not None:
-            self._exit_event.set()
+        loop = self._exit_loop
+        if self._exit_event is not None and loop is not None and not loop.is_closed():
+            if value:
+                loop.call_soon_threadsafe(self._exit_event.set)
+            else:
+                loop.call_soon_threadsafe(self._exit_event.clear)
 
     @functools.cached_property
     def limit_max_requests(self) -> int | None:
@@ -251,6 +256,7 @@ class Server:
             )
 
     async def main_loop(self) -> None:
+        self._exit_loop = asyncio.get_running_loop()
         self._exit_event = asyncio.Event()
         counter = 0
         should_exit = await self.on_tick(counter)
@@ -303,8 +309,7 @@ class Server:
         # Request shutdown on all existing connections.
         for connection in list(self.server_state.connections):
             connection.shutdown()
-        if self.server_state.connections:
-            await asyncio.sleep(0.1)
+        await asyncio.sleep(0.1)
 
         try:
             async with asyncio.timeout(self.config.timeout_graceful_shutdown):
