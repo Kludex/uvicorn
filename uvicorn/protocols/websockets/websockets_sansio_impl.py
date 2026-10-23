@@ -190,6 +190,9 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         if self.conn.parser_exc is not None:  # pragma: no cover
             self.handle_parser_exception()
             return
+        if not self.handshake_initiated and self.conn.handshake_exc is not None:
+            self.handle_handshake_exception()
+            return
         self.handle_events()
 
     def handle_events(self) -> None:
@@ -393,6 +396,31 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.transport.write(b"".join(output))
         self.close_sent = True
         self.transport.close()
+
+    def handle_handshake_exception(self) -> None:
+        self.handshake_complete = True
+        self.close_sent = True
+        if not self.transport.is_closing():
+            output = self.conn.data_to_send()
+            output_bytes = b"".join(output)
+            if output_bytes:
+                self.transport.write(output_bytes)
+            else:
+                msg = b"Bad Request"
+                content = [b"HTTP/1.1 400 Bad Request\r\n"]
+                for name, value in self.default_headers:
+                    content.extend([name, b": ", value, b"\r\n"])
+                content.extend(
+                    [
+                        b"content-type: text/plain; charset=utf-8\r\n",
+                        b"connection: close\r\n",
+                        b"content-length: " + str(len(msg)).encode("ascii") + b"\r\n",
+                        b"\r\n",
+                        msg,
+                    ]
+                )
+                self.transport.write(b"".join(content))
+            self.transport.close()
 
     def on_task_complete(self, task: asyncio.Task[None]) -> None:
         self.tasks.discard(task)
