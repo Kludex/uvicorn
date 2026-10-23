@@ -70,11 +70,22 @@ class Server:
         self.server_state = ServerState()
 
         self.started = False
-        self.should_exit = False
+        self._should_exit = False
+        self._exit_event: asyncio.Event | None = None
         self.force_exit = False
         self.last_notified = 0.0
 
         self._captured_signals: list[int] = []
+
+    @property
+    def should_exit(self) -> bool:
+        return self._should_exit
+
+    @should_exit.setter
+    def should_exit(self, value: bool) -> None:
+        self._should_exit = value
+        if value and self._exit_event is not None:
+            self._exit_event.set()
 
     @functools.cached_property
     def limit_max_requests(self) -> int | None:
@@ -240,12 +251,14 @@ class Server:
             )
 
     async def main_loop(self) -> None:
+        self._exit_event = asyncio.Event()
         counter = 0
         should_exit = await self.on_tick(counter)
         while not should_exit:
             counter += 1
             counter = counter % 864000
-            await asyncio.sleep(0.1)
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(self._exit_event.wait(), timeout=0.1)
             should_exit = await self.on_tick(counter)
 
     async def on_tick(self, counter: int) -> bool:
@@ -290,7 +303,8 @@ class Server:
         # Request shutdown on all existing connections.
         for connection in list(self.server_state.connections):
             connection.shutdown()
-        await asyncio.sleep(0.1)
+        if self.server_state.connections:
+            await asyncio.sleep(0.1)
 
         try:
             async with asyncio.timeout(self.config.timeout_graceful_shutdown):
