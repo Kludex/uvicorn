@@ -1009,8 +1009,9 @@ async def test_server_reject_connection_with_invalid_status(
         await websocket_session(f"ws://127.0.0.1:{unused_tcp_port}")
 
 
+@pytest.mark.parametrize("include_headers", [True, False])
 async def test_server_reject_connection_with_body_nolength(
-    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int, include_headers: bool
 ):
     # test that the server can send a response with a body but no content-length
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
@@ -1022,7 +1023,10 @@ async def test_server_reject_connection_with_body_nolength(
         message = await receive()
         assert message["type"] == "websocket.connect"
 
-        await send({"type": "websocket.http.response.start", "status": 403, "headers": []})
+        response_start: WebSocketResponseStartEvent = {"type": "websocket.http.response.start", "status": 403}
+        if include_headers:
+            response_start["headers"] = []
+        await send(response_start)
         await send({"type": "websocket.http.response.body", "body": b"hardbody"})
 
     async def websocket_session(url: str):
@@ -1039,6 +1043,27 @@ async def test_server_reject_connection_with_body_nolength(
     config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
     async with run_server(config):
         await websocket_session(f"ws://127.0.0.1:{unused_tcp_port}")
+
+
+@pytest.mark.parametrize("body", [b"", b"denied"])
+async def test_server_reject_connection_with_omitted_body(
+    ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int, body: bytes
+):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert scope["type"] == "websocket"
+        message = await receive()
+        assert message["type"] == "websocket.connect"
+
+        await send({"type": "websocket.http.response.start", "status": 403, "headers": []})
+        await send({"type": "websocket.http.response.body", "more_body": True})
+        await send({"type": "websocket.http.response.body", "body": body, "more_body": True})
+        await send({"type": "websocket.http.response.body"})
+
+    config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
+    async with run_server(config):
+        response = await wsresponse(f"ws://127.0.0.1:{unused_tcp_port}")
+        assert response.status_code == 403
+        assert response.content == body
 
 
 async def test_server_reject_connection_with_invalid_msg(

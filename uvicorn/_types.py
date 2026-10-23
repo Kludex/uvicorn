@@ -179,12 +179,12 @@ WebSocketSendEvent = _WebSocketSendEventBytes | _WebSocketSendEventText
 class WebSocketResponseStartEvent(TypedDict):
     type: Literal["websocket.http.response.start"]
     status: int
-    headers: Iterable[tuple[bytes, bytes]]
+    headers: NotRequired[Iterable[tuple[bytes, bytes]]]
 
 
 class WebSocketResponseBodyEvent(TypedDict):
     type: Literal["websocket.http.response.body"]
-    body: bytes
+    body: NotRequired[bytes]
     more_body: NotRequired[bool]
 
 
