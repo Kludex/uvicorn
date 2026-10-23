@@ -276,3 +276,20 @@ async def test_reset_contextvars_asyncio(
     ) as extract_json_body:
         assert await extract_json_body(large_request) == {}
         assert await extract_json_body(SIMPLE_GET_REQUEST) == {}
+
+
+async def test_should_exit_setter_clears_exit_event() -> None:
+    """Setting should_exit=False clears the exit event, allowing a paused main_loop to resume."""
+    config = Config(app=app)
+    server = Server(config=config)
+    loop = asyncio.get_running_loop()
+    server._exit_loop = loop
+    server._exit_event = asyncio.Event()
+
+    server.should_exit = True
+    await asyncio.sleep(0)
+    assert server._exit_event.is_set()
+
+    server.should_exit = False
+    await asyncio.sleep(0)
+    assert not server._exit_event.is_set()
