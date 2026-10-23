@@ -1846,3 +1846,44 @@ async def test_server_keepalive_disabled(
             protocol = list(server.server_state.connections)[0]
             assert isinstance(protocol, (_WSProtocol, WebSocketsSansIOProtocol))
             assert protocol.ping_timer is None
+
+
+async def test_websockets_sansio_handshake_rejected_oversized_header(unused_tcp_port: int) -> None:
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        pass
+
+    config = Config(app=app, ws=WebSocketsSansIOProtocol, port=unused_tcp_port)
+    async with run_server(config):
+        reader, writer = await asyncio.open_connection("127.0.0.1", unused_tcp_port)
+        req = (
+            "GET /ws HTTP/1.1\r\n"
+            "Host: 127.0.0.1\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+            "Sec-WebSocket-Version: 13\r\n"
+            "Cookie: junk=" + "x" * 9000 + "\r\n\r\n"
+        )
+        writer.write(req.encode())
+        await writer.drain()
+
+        data = await asyncio.wait_for(reader.read(4096), timeout=3.0)
+        assert b"431 Request Header Fields Too Large" in data
+        assert await reader.read(4096) == b""
+        writer.close()
+        await writer.wait_closed()
+
+
+async def test_websockets_sansio_handshake_rejected_fallback() -> None:
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        pass
+
+    config = Config(app=app, ws=WebSocketsSansIOProtocol)
+    server_state = ServerState()
+    protocol = WebSocketsSansIOProtocol(config=config, server_state=server_state, app_state={})
+    transport = MockWriteTransport()
+    protocol.connection_made(transport)  # type: ignore[arg-type]
+    protocol.data_received(b"GARBAGE\r\n\r\n")
+
+    assert transport.closed
+    assert b"HTTP/1.1 400 Bad Request" in transport.buffer
