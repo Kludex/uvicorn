@@ -263,8 +263,11 @@ class Server:
         while not should_exit:
             counter += 1
             counter = counter % 864000
-            with contextlib.suppress(asyncio.TimeoutError):
-                await asyncio.wait_for(self._exit_event.wait(), timeout=0.1)
+            try:
+                async with asyncio.timeout(0.1):
+                    await self._exit_event.wait()
+            except TimeoutError:
+                pass
             should_exit = await self.on_tick(counter)
 
     async def on_tick(self, counter: int) -> bool:
