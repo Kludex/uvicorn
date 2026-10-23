@@ -349,7 +349,7 @@ class WebSocketProtocol(WebSocketServerProtocol):
 
         elif self.initial_response is not None:
             if message["type"] == "websocket.http.response.body":
-                body = self.initial_response[2] + message["body"]
+                body = self.initial_response[2] + message.get("body", b"")
                 self.initial_response = self.initial_response[:2] + (body,)
                 if not message.get("more_body", False):
                     self.closed_event.set()

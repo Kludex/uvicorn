@@ -432,7 +432,7 @@ class WSProtocol(asyncio.Protocol):
                 self.handshake_complete = True
                 event = events.RejectConnection(
                     status_code=message["status"],
-                    headers=list(message["headers"]),
+                    headers=list(message.get("headers", [])),
                     has_body=True,
                 )
                 output = self.conn.send(event)
@@ -477,7 +477,7 @@ class WSProtocol(asyncio.Protocol):
         elif self.response_started:
             if message["type"] == "websocket.http.response.body":
                 body_finished = not message.get("more_body", False)
-                reject_data = events.RejectData(data=message["body"], body_finished=body_finished)
+                reject_data = events.RejectData(data=message.get("body", b""), body_finished=body_finished)
                 output = self.conn.send(reject_data)
                 self.transport.write(output)
 
