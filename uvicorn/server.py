@@ -86,10 +86,7 @@ class Server:
         self._should_exit = value
         if value and hasattr(self, "_should_exit_event") and self._should_exit_event is not None:
             event = self._should_exit_event
-            try:
-                loop = event.get_loop()
-            except AttributeError:
-                loop = getattr(event, "_loop", None)
+            loop: asyncio.AbstractEventLoop | None = getattr(event, "_loop", None)
             if loop is not None and not loop.is_closed():
                 try:
                     if asyncio.get_running_loop() is loop:
