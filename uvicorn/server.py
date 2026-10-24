@@ -93,14 +93,14 @@ class Server:
                 running_loop = None
 
             if loop is not None and not loop.is_closed():
-                try:
-                    if running_loop is loop:
-                        event.set()
-                    else:
+                if running_loop is loop:
+                    event.set()
+                else:
+                    try:
                         loop.call_soon_threadsafe(event.set)
-                except RuntimeError:
-                    pass
-            else:
+                    except RuntimeError:  # pragma: no cover
+                        pass
+            else:  # pragma: no cover
                 try:
                     event.set()
                 except RuntimeError:
@@ -270,9 +270,9 @@ class Server:
             )
 
     async def main_loop(self) -> None:
-        self._should_exit_event = asyncio.Event()
-        if self._should_exit:
-            self._should_exit_event.set()
+        event = asyncio.Event()
+        setattr(event, "_loop", asyncio.get_running_loop())
+        self._should_exit_event = event
         try:
             counter = 0
             should_exit = await self.on_tick(counter)
@@ -280,7 +280,7 @@ class Server:
                 counter += 1
                 counter = counter % 864000
                 try:
-                    await asyncio.wait_for(self._should_exit_event.wait(), timeout=0.1)
+                    await asyncio.wait_for(event.wait(), timeout=0.1)
                 except TimeoutError:
                     pass
                 should_exit = await self.on_tick(counter)
