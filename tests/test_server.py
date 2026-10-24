@@ -285,9 +285,10 @@ async def test_idle_server_shutdown_promptly(unused_tcp_port: int) -> None:
     server = Server(config)
     task = asyncio.create_task(server.serve())
     while not server.started:
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(0.01)  # pragma: no cover
 
     started = time.perf_counter()
+    server.should_exit = False
     server.should_exit = True
     await task
     duration = time.perf_counter() - started
@@ -300,7 +301,7 @@ def test_idle_server_shutdown_promptly_threaded(unused_tcp_port: int) -> None:
     thread = threading.Thread(target=server.run)
     thread.start()
     while not server.started:
-        time.sleep(0.01)
+        time.sleep(0.01)  # pragma: no cover
 
     started = time.perf_counter()
     server.should_exit = True

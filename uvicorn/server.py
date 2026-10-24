@@ -85,14 +85,12 @@ class Server:
     @should_exit.setter
     def should_exit(self, value: bool) -> None:
         self._should_exit = value
-        if not hasattr(self, "_should_exit_event"):
-            return
 
         def _update_event() -> None:
             if self._should_exit:
                 self._should_exit_event.set()
             else:
-                self._should_exit_event.clear()
+                self._should_exit_event.clear()  # pragma: no cover
 
         loop = self._loop
         if loop is not None and loop.is_running():
@@ -105,7 +103,7 @@ class Server:
                 loop.call_soon_threadsafe(_update_event)
                 return
 
-        _update_event()  # pragma: no cover
+        _update_event()
 
     @functools.cached_property
     def limit_max_requests(self) -> int | None:
