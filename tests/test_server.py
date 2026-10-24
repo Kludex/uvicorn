@@ -276,3 +276,20 @@ async def test_reset_contextvars_asyncio(
     ) as extract_json_body:
         assert await extract_json_body(large_request) == {}
         assert await extract_json_body(SIMPLE_GET_REQUEST) == {}
+
+
+async def test_idle_embedded_server_stops_promptly(unused_tcp_port: int) -> None:
+    import time
+
+    config = Config(app, host="127.0.0.1", port=unused_tcp_port, lifespan="off")
+    server = Server(config=config)
+    task = asyncio.create_task(server.serve())
+    while not server.started:
+        await asyncio.sleep(0.01)
+
+    start = time.perf_counter()
+    server.should_exit = True
+    await task
+    elapsed = time.perf_counter() - start
+
+    assert elapsed < 0.08

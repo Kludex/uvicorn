@@ -70,11 +70,36 @@ class Server:
         self.server_state = ServerState()
 
         self.started = False
-        self.should_exit = False
+        self._should_exit = False
+        self._should_exit_event: asyncio.Event | None = None
         self.force_exit = False
         self.last_notified = 0.0
 
         self._captured_signals: list[int] = []
+
+    @property
+    def should_exit(self) -> bool:
+        return self._should_exit
+
+    @should_exit.setter
+    def should_exit(self, value: bool) -> None:
+        self._should_exit = value
+        if value and hasattr(self, "_should_exit_event") and self._should_exit_event is not None:
+            event = self._should_exit_event
+            try:
+                loop = event.get_loop()
+            except AttributeError:
+                loop = getattr(event, "_loop", None)
+            if loop is not None and not loop.is_closed():
+                try:
+                    if asyncio.get_running_loop() is loop:
+                        event.set()
+                    else:
+                        loop.call_soon_threadsafe(event.set)
+                except RuntimeError:
+                    loop.call_soon_threadsafe(event.set)
+            else:
+                event.set()
 
     @functools.cached_property
     def limit_max_requests(self) -> int | None:
@@ -240,13 +265,22 @@ class Server:
             )
 
     async def main_loop(self) -> None:
-        counter = 0
-        should_exit = await self.on_tick(counter)
-        while not should_exit:
-            counter += 1
-            counter = counter % 864000
-            await asyncio.sleep(0.1)
+        self._should_exit_event = asyncio.Event()
+        if self._should_exit:
+            self._should_exit_event.set()
+        try:
+            counter = 0
             should_exit = await self.on_tick(counter)
+            while not should_exit:
+                counter += 1
+                counter = counter % 864000
+                try:
+                    await asyncio.wait_for(self._should_exit_event.wait(), timeout=0.1)
+                except TimeoutError:
+                    pass
+                should_exit = await self.on_tick(counter)
+        finally:
+            self._should_exit_event = None
 
     async def on_tick(self, counter: int) -> bool:
         # Update the default headers, once per second.
@@ -288,9 +322,10 @@ class Server:
             sock.close()  # pragma: full coverage
 
         # Request shutdown on all existing connections.
-        for connection in list(self.server_state.connections):
-            connection.shutdown()
-        await asyncio.sleep(0.1)
+        if self.server_state.connections:
+            for connection in list(self.server_state.connections):
+                connection.shutdown()
+            await asyncio.sleep(0.1)
 
         try:
             async with asyncio.timeout(self.config.timeout_graceful_shutdown):
