@@ -10,6 +10,7 @@ from urllib.parse import unquote
 
 import websockets
 import websockets.legacy.handshake
+from websockets import __version__ as websockets_version
 from websockets.datastructures import Headers
 from websockets.exceptions import ConnectionClosed
 from websockets.extensions.base import ServerExtensionFactory
@@ -176,10 +177,19 @@ class WebSocketProtocol(WebSocketServerProtocol):
         for header in request_headers.get_all("Sec-WebSocket-Protocol"):
             subprotocols.extend([token.strip() for token in header.split(",")])
 
-        asgi_headers = [
-            (name.encode("ascii"), value.encode("ascii", errors="surrogateescape"))
-            for name, value in request_headers.raw_items()
-        ]
+        # websockets 17.0 documents that non-ASCII header values are encoded
+        # with ISO-8859-1. Earlier versions didn't document the behavior but
+        # we can see in the code that it used surrogate escape encoding.
+        # Move the pragma: no cover to the else: branch when 17.0 is released.
+        if websockets_version >= "17.0":  # pragma: no cover
+            asgi_headers = [
+                (name.encode("ascii"), value.encode("latin-1")) for name, value in request_headers.raw_items()
+            ]
+        else:
+            asgi_headers = [
+                (name.encode("ascii"), value.encode("ascii", errors="surrogateescape"))
+                for name, value in request_headers.raw_items()
+            ]
         path = unquote(path_portion)
         full_path = self.root_path + path
         full_raw_path = self.root_path.encode("ascii") + path_portion.encode("ascii")

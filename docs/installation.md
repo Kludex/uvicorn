@@ -17,9 +17,6 @@ The above will install Uvicorn with the minimal set of dependencies:
 - [`h11`](https://github.com/python-hyper/h11) — Pure Python sans-io HTTP/1.1 implementation.
 - [`click`](https://github.com/pallets/click) — Command line interface library.
 
-If you are running on Python 3.10 or early versions,
-[`typing_extensions`](https://github.com/python/typing_extensions) will also be installed.
-
 ## Optional Dependencies
 
 There are many optional dependencies that can be installed to add support for various features.
@@ -59,11 +56,6 @@ The `standard` extra installs the following dependencies:
     watching and code reload in python.**
 
     When `watchfiles` is installed, Uvicorn will use it by default for the `--reload` option.
-
-- **[`colorama`](https://github.com/tartley/colorama) — Cross-platform support for ANSI terminal
-    colors.**
-
-    This is installed only on Windows, to provide colored logs.
 
 - **[`python-dotenv`](https://github.com/theskumar/python-dotenv) — Reads key-value pairs from a `.env` file
     and adds them to the environment.**
