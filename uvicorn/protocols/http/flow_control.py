@@ -42,8 +42,7 @@ class FlowControl:
         if not self.write_paused:  # pragma: full coverage
             self.write_paused = True
             self._is_writable_event.clear()
-            if self._timeout_write is not None:
-                self._arm_write_timer()
+            self._watch_write_buffer()
 
     def resume_writing(self) -> None:
         if self.write_paused:  # pragma: full coverage
@@ -56,14 +55,18 @@ class FlowControl:
     def close_transport(self) -> None:
         # `close()` waits for the write buffer to drain, which never happens if the client stopped reading.
         self._transport.close()
-        if self._timeout_write is not None and self._write_timer is None and self._transport.get_write_buffer_size():
-            self._arm_write_timer()
+        self._watch_write_buffer()
 
     def connection_lost(self) -> None:
         self.resume_writing()
         if self._write_timer is not None:
             self._write_timer.cancel()
             self._write_timer = None
+
+    def _watch_write_buffer(self) -> None:
+        unsent = self._transport.get_write_buffer_size()
+        if unsent and self._timeout_write is not None and self._write_timer is None:
+            self._arm_write_timer()
 
     def _arm_write_timer(self) -> None:
         assert self._timeout_write is not None

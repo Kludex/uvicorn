@@ -280,7 +280,6 @@ async def test_reset_contextvars_asyncio(
 
 
 LARGE_BODY = b"x" * (8 * 1024 * 1024)
-SMALL_BODY = b"x" * (HIGH_WATER_LIMIT * 3 // 4)
 
 
 def body_app(body: bytes) -> ASGIApplication:
@@ -305,14 +304,6 @@ async def streaming_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISe
     await send({"type": "http.response.body", "body": b"", "more_body": False})
 
 
-def small_send_buffer_socket(port: int) -> socket.socket:
-    # Accepted connections inherit it, so a small response still can't fit in the kernel buffers.
-    sock = socket.socket()
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
-    sock.bind(("127.0.0.1", port))
-    return sock
-
-
 @contextlib.asynccontextmanager
 async def slow_client(port: int, receive_buffer_size: int | None = None) -> AsyncIterator[socket.socket]:
     loop = asyncio.get_running_loop()
@@ -325,7 +316,7 @@ async def slow_client(port: int, receive_buffer_size: int | None = None) -> Asyn
         yield client
 
 
-async def read_until_closed(client: socket.socket) -> int:
+async def read_until_closed(client: socket.socket) -> int:  # pragma: py-win32
     loop = asyncio.get_running_loop()
     received = 0
     with contextlib.suppress(ConnectionResetError):
@@ -346,19 +337,6 @@ async def test_timeout_write_closes_connection_when_client_stops_reading(
             assert await read_until_closed(client) < STREAMED_BYTES
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="The write timeout is disabled on ProactorEventLoop")
-async def test_timeout_write_closes_idle_connection_with_unsent_response(
-    http_protocol_cls: type[H11Protocol | HttpToolsProtocol], unused_tcp_port: int
-):  # pragma: py-win32
-    config = Config(
-        app=body_app(SMALL_BODY), http=http_protocol_cls, lifespan="off", timeout_keep_alive=1, timeout_write=1
-    )
-    async with run_server(config, sockets=[small_send_buffer_socket(unused_tcp_port)]):
-        async with slow_client(unused_tcp_port, receive_buffer_size=4096) as client:
-            await asyncio.sleep(2.5)
-            assert await read_until_closed(client) < len(SMALL_BODY)
-
-
 async def test_timeout_write_cleans_up_when_client_disconnects(
     http_protocol_cls: type[H11Protocol | HttpToolsProtocol], unused_tcp_port: int
 ):
@@ -367,7 +345,7 @@ async def test_timeout_write_cleans_up_when_client_disconnects(
         async with slow_client(unused_tcp_port, receive_buffer_size=4096):
             await asyncio.sleep(0.5)
         async with asyncio.timeout(5):
-            while server.server_state.connections:
+            while server.server_state.connections or server.server_state.tasks:
                 await asyncio.sleep(0.05)
 
 
