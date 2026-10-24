@@ -300,9 +300,11 @@ def test_idle_server_shutdown_promptly_threaded(unused_tcp_port: int) -> None:
     server = Server(config)
     thread = threading.Thread(target=server.run)
     thread.start()
-    while not server.started:
+    deadline = time.time() + 3
+    while not server.started and thread.is_alive() and time.time() < deadline:
         time.sleep(0.01)  # pragma: no cover
 
+    assert server.started
     started = time.perf_counter()
     server.should_exit = True
     thread.join(timeout=2)
