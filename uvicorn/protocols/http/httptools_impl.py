@@ -103,7 +103,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.connections.add(self)
 
         self.transport = transport
-        self.flow = FlowControl(transport)
+        self.flow = FlowControl(transport, self.loop, self.config.timeout_write)
         self.server = get_local_addr(transport)
         self.client = get_remote_addr(transport)
         self.scheme = "https" if is_ssl(transport) else "http"

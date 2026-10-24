@@ -6,6 +6,7 @@ import contextvars
 import json
 import logging
 import signal
+import socket
 import sys
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
@@ -276,3 +277,62 @@ async def test_reset_contextvars_asyncio(
     ) as extract_json_body:
         assert await extract_json_body(large_request) == {}
         assert await extract_json_body(SIMPLE_GET_REQUEST) == {}
+
+
+LARGE_BODY = b"x" * (8 * 1024 * 1024)
+
+
+async def large_body_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+    assert scope["type"] == "http"
+    headers = [(b"content-length", str(len(LARGE_BODY)).encode())]
+    await send({"type": "http.response.start", "status": 200, "headers": headers})
+    await send({"type": "http.response.body", "body": LARGE_BODY})
+
+
+@contextlib.asynccontextmanager
+async def slow_client(port: int, receive_buffer_size: int | None = None):
+    loop = asyncio.get_running_loop()
+    with socket.socket() as client:
+        if receive_buffer_size is not None:
+            client.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, receive_buffer_size)
+        client.setblocking(False)
+        await loop.sock_connect(client, ("127.0.0.1", port))
+        await loop.sock_sendall(client, SIMPLE_GET_REQUEST)
+        yield client
+
+
+async def test_timeout_write_closes_connection_when_client_stops_reading(
+    http_protocol_cls: type[H11Protocol | HttpToolsProtocol], unused_tcp_port: int
+):
+    config = Config(app=large_body_app, port=unused_tcp_port, http=http_protocol_cls, lifespan="off", timeout_write=1)
+    async with run_server(config):
+        async with slow_client(unused_tcp_port, receive_buffer_size=4096) as client:
+            await asyncio.sleep(1.5)
+            received = 0
+            async with asyncio.timeout(5):
+                while chunk := await asyncio.get_running_loop().sock_recv(client, 65536):
+                    received += len(chunk)
+    assert received < len(LARGE_BODY)
+
+
+async def test_timeout_write_keeps_connection_while_client_reads_slowly(
+    http_protocol_cls: type[H11Protocol | HttpToolsProtocol], unused_tcp_port: int
+):
+    config = Config(app=large_body_app, port=unused_tcp_port, http=http_protocol_cls, lifespan="off", timeout_write=1)
+    async with run_server(config):
+        async with slow_client(unused_tcp_port) as client:
+            loop = asyncio.get_running_loop()
+            response = bytearray()
+            slow_until = loop.time() + 2.5
+            while loop.time() < slow_until:
+                response += await loop.sock_recv(client, 65536)
+                await asyncio.sleep(0.03)
+            head, _, body = bytes(response).partition(b"\r\n\r\n")
+            received = len(body)
+            async with asyncio.timeout(10):
+                while received < len(LARGE_BODY):
+                    chunk = await loop.sock_recv(client, 1024 * 1024)
+                    assert chunk, "connection closed while the client was still reading"
+                    received += len(chunk)
+    assert head.startswith(b"HTTP/1.1 200 OK")
+    assert received == len(LARGE_BODY)

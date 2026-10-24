@@ -151,4 +151,5 @@ For advanced TLS scenarios that the flags above don't cover (e.g., mutual TLS, c
 ## Timeouts
 
 * `--timeout-keep-alive <int>` - Close Keep-Alive connections if no new data is received within this timeout (in seconds). **Default:** *5*.
+* `--timeout-write <int>` - Close the connection if no pending response data can be sent to the client within this timeout (in seconds). Protects against clients that stop reading, which would otherwise hold the connection and the unsent response in memory forever. A client that keeps reading, however slowly, is not affected as long as the operating system accepts more data within the timeout. **Default:** *60*.
 * `--timeout-graceful-shutdown <int>` - Maximum number of seconds to wait for graceful shutdown. After this timeout, the server will start terminating requests.

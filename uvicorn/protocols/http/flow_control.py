@@ -8,8 +8,14 @@ HIGH_WATER_LIMIT = 65536
 
 
 class FlowControl:
-    def __init__(self, transport: asyncio.Transport) -> None:
+    def __init__(
+        self, transport: asyncio.Transport, loop: asyncio.AbstractEventLoop, timeout_write: float | None = None
+    ) -> None:
         self._transport = transport
+        self._loop = loop
+        self._timeout_write = timeout_write
+        self._write_timer: asyncio.TimerHandle | None = None
+        self._write_buffer_size = 0
         self.read_paused = False
         self.write_paused = False
         self._is_writable_event = asyncio.Event()
@@ -32,11 +38,29 @@ class FlowControl:
         if not self.write_paused:  # pragma: full coverage
             self.write_paused = True
             self._is_writable_event.clear()
+            if self._timeout_write is not None:
+                self._arm_write_timer()
 
     def resume_writing(self) -> None:
         if self.write_paused:  # pragma: full coverage
             self.write_paused = False
             self._is_writable_event.set()
+            if self._write_timer is not None:
+                self._write_timer.cancel()
+                self._write_timer = None
+
+    def _arm_write_timer(self) -> None:
+        assert self._timeout_write is not None
+        self._write_buffer_size = self._transport.get_write_buffer_size()
+        self._write_timer = self._loop.call_later(self._timeout_write, self._check_write_progress)
+
+    def _check_write_progress(self) -> None:
+        # The client is still reading, just slowly: give it another window.
+        if self._transport.get_write_buffer_size() < self._write_buffer_size:
+            self._arm_write_timer()
+        else:
+            self._write_timer = None
+            self._transport.abort()
 
 
 async def service_unavailable(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
