@@ -7,6 +7,7 @@ import json
 import logging
 import signal
 import sys
+import time
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
 
@@ -276,3 +277,17 @@ async def test_reset_contextvars_asyncio(
     ) as extract_json_body:
         assert await extract_json_body(large_request) == {}
         assert await extract_json_body(SIMPLE_GET_REQUEST) == {}
+
+
+async def test_idle_server_shutdown_promptly(unused_tcp_port: int) -> None:
+    config = Config(app=dummy_app, host="127.0.0.1", port=unused_tcp_port, lifespan="off", log_level="error")
+    server = Server(config)
+    task = asyncio.create_task(server.serve())
+    while not server.started:
+        await asyncio.sleep(0.01)
+
+    started = time.perf_counter()
+    server.should_exit = True
+    await task
+    duration = time.perf_counter() - started
+    assert duration < 0.05

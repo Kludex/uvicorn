@@ -70,11 +70,24 @@ class Server:
         self.server_state = ServerState()
 
         self.started = False
-        self.should_exit = False
+        self._should_exit = False
+        self._should_exit_event = asyncio.Event()
         self.force_exit = False
         self.last_notified = 0.0
 
         self._captured_signals: list[int] = []
+
+    @property
+    def should_exit(self) -> bool:
+        return self._should_exit
+
+    @should_exit.setter
+    def should_exit(self, value: bool) -> None:
+        self._should_exit = value
+        if value:
+            self._should_exit_event.set()
+        else:
+            self._should_exit_event.clear()  # pragma: no cover
 
     @functools.cached_property
     def limit_max_requests(self) -> int | None:
@@ -88,6 +101,8 @@ class Server:
     async def serve(self, sockets: list[socket.socket] | None = None) -> None:
         with self.capture_signals():
             await self._serve(sockets)
+        if self._captured_signals:
+            await asyncio.sleep(0.001)
 
     async def _serve(self, sockets: list[socket.socket] | None = None) -> None:
         process_id = os.getpid()
@@ -245,7 +260,11 @@ class Server:
         while not should_exit:
             counter += 1
             counter = counter % 864000
-            await asyncio.sleep(0.1)
+            try:
+                async with asyncio.timeout(0.1):
+                    await self._should_exit_event.wait()
+            except TimeoutError:
+                pass
             should_exit = await self.on_tick(counter)
 
     async def on_tick(self, counter: int) -> bool:
@@ -290,7 +309,8 @@ class Server:
         # Request shutdown on all existing connections.
         for connection in list(self.server_state.connections):
             connection.shutdown()
-        await asyncio.sleep(0.1)
+        if self.server_state.connections:
+            await asyncio.sleep(0.1)
 
         try:
             async with asyncio.timeout(self.config.timeout_graceful_shutdown):
