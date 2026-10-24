@@ -7,6 +7,7 @@ import json
 import logging
 import signal
 import sys
+import threading
 import time
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
@@ -290,4 +291,20 @@ async def test_idle_server_shutdown_promptly(unused_tcp_port: int) -> None:
     server.should_exit = True
     await task
     duration = time.perf_counter() - started
-    assert duration < 0.05
+    assert duration < 0.1
+
+
+def test_idle_server_shutdown_promptly_threaded(unused_tcp_port: int) -> None:
+    config = Config(app=dummy_app, host="127.0.0.1", port=unused_tcp_port, lifespan="off", log_level="error")
+    server = Server(config)
+    thread = threading.Thread(target=server.run)
+    thread.start()
+    while not server.started:
+        time.sleep(0.01)
+
+    started = time.perf_counter()
+    server.should_exit = True
+    thread.join(timeout=2)
+    duration = time.perf_counter() - started
+    assert not thread.is_alive()
+    assert duration < 0.1

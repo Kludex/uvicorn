@@ -76,6 +76,7 @@ class Server:
         self.last_notified = 0.0
 
         self._captured_signals: list[int] = []
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     @property
     def should_exit(self) -> bool:
@@ -84,10 +85,27 @@ class Server:
     @should_exit.setter
     def should_exit(self, value: bool) -> None:
         self._should_exit = value
-        if value:
-            self._should_exit_event.set()
-        else:
-            self._should_exit_event.clear()  # pragma: no cover
+        if not hasattr(self, "_should_exit_event"):
+            return
+
+        def _update_event() -> None:
+            if self._should_exit:
+                self._should_exit_event.set()
+            else:
+                self._should_exit_event.clear()
+
+        loop = self._loop
+        if loop is not None and loop.is_running():
+            try:
+                current_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                current_loop = None
+
+            if current_loop is not loop:
+                loop.call_soon_threadsafe(_update_event)
+                return
+
+        _update_event()  # pragma: no cover
 
     @functools.cached_property
     def limit_max_requests(self) -> int | None:
@@ -105,27 +123,31 @@ class Server:
             await asyncio.sleep(0.001)
 
     async def _serve(self, sockets: list[socket.socket] | None = None) -> None:
-        process_id = os.getpid()
+        self._loop = asyncio.get_running_loop()
+        try:
+            process_id = os.getpid()
 
-        config = self.config
-        if not config.loaded:
-            config.load()
+            config = self.config
+            if not config.loaded:
+                config.load()
 
-        self.lifespan = config.lifespan_class(config)
+            self.lifespan = config.lifespan_class(config)
 
-        message = "Started server process [%d]"
-        color_message = "Started server process [" + style("%d", fg="cyan") + "]"
-        logger.info(message, process_id, extra={"color_message": color_message})
-
-        await self.startup(sockets=sockets)
-        if not self.should_exit:
-            await self.main_loop()
-        if self.started:
-            await self.shutdown(sockets=sockets)
-
-            message = "Finished server process [%d]"
-            color_message = "Finished server process [" + style("%d", fg="cyan") + "]"
+            message = "Started server process [%d]"
+            color_message = "Started server process [" + style("%d", fg="cyan") + "]"
             logger.info(message, process_id, extra={"color_message": color_message})
+
+            await self.startup(sockets=sockets)
+            if not self.should_exit:
+                await self.main_loop()
+            if self.started:
+                await self.shutdown(sockets=sockets)
+
+                message = "Finished server process [%d]"
+                color_message = "Finished server process [" + style("%d", fg="cyan") + "]"
+                logger.info(message, process_id, extra={"color_message": color_message})
+        finally:
+            self._loop = None
 
     async def startup(self, sockets: list[socket.socket] | None = None) -> None:
         await self.lifespan.startup()
