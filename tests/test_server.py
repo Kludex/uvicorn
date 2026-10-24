@@ -287,9 +287,14 @@ async def test_idle_embedded_server_stops_promptly(unused_tcp_port: int) -> None
     while not server.started:
         await asyncio.sleep(0.01)
 
+    assert server._should_exit_event is not None
+    assert not server._should_exit_event.is_set()
+
     start = time.perf_counter()
     server.should_exit = True
-    await task
-    elapsed = time.perf_counter() - start
+    assert server._should_exit_event.is_set()
 
-    assert elapsed < 0.08
+    await asyncio.wait_for(task, timeout=2.0)
+    elapsed = time.perf_counter() - start
+    # Setting should_exit wakes main_loop immediately and skips connection drain delay
+    assert elapsed < 0.2

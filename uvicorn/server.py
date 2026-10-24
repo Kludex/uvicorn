@@ -87,16 +87,24 @@ class Server:
         if value and hasattr(self, "_should_exit_event") and self._should_exit_event is not None:
             event = self._should_exit_event
             loop: asyncio.AbstractEventLoop | None = getattr(event, "_loop", None)
+            try:
+                running_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                running_loop = None
+
             if loop is not None and not loop.is_closed():
                 try:
-                    if asyncio.get_running_loop() is loop:
+                    if running_loop is loop:
                         event.set()
                     else:
                         loop.call_soon_threadsafe(event.set)
                 except RuntimeError:
-                    loop.call_soon_threadsafe(event.set)
+                    pass
             else:
-                event.set()
+                try:
+                    event.set()
+                except RuntimeError:
+                    pass
 
     @functools.cached_property
     def limit_max_requests(self) -> int | None:
