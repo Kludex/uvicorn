@@ -98,7 +98,7 @@ class ZttpProtocol(asyncio.Protocol):
         if self.cycle is not None:
             self.cycle.message_event.set()
         if self.flow is not None:
-            self.flow.resume_writing()
+            self.flow.connection_lost()
         if exc is None:
             self.transport.close()
             self._unset_keepalive_if_required()
@@ -313,7 +313,7 @@ class ZttpProtocol(asyncio.Protocol):
         delay.
         """
         if not self.transport.is_closing():
-            self.transport.close()
+            self.flow.close_transport()
 
 
 class RequestResponseCycle:
@@ -514,7 +514,7 @@ class RequestResponseCycle:
             # `should_close()` covers both directions: the request's `Connection: close`
             # or HTTP/1.0 default, and a `close` the response we just wrote declared.
             if not self.keep_alive or self.conn.should_close():
-                self.transport.close()
+                self.flow.close_transport()
             self.on_response()
 
     async def receive(self) -> ASGIReceiveEvent:

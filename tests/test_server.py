@@ -8,7 +8,7 @@ import logging
 import signal
 import socket
 import sys
-from collections.abc import Callable, Generator
+from collections.abc import AsyncIterator, Callable, Generator
 from contextlib import AbstractContextManager
 
 import httpx2
@@ -280,17 +280,41 @@ async def test_reset_contextvars_asyncio(
 
 
 LARGE_BODY = b"x" * (8 * 1024 * 1024)
+SMALL_BODY = b"x" * (HIGH_WATER_LIMIT * 3 // 4)
 
 
-async def large_body_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+def body_app(body: bytes) -> ASGIApplication:
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        assert scope["type"] == "http"
+        headers = [(b"content-length", str(len(body)).encode())]
+        await send({"type": "http.response.start", "status": 200, "headers": headers})
+        await send({"type": "http.response.body", "body": body})
+
+    return app
+
+
+STREAMED_BYTES = 64 * 1024 * 1024
+
+
+async def streaming_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
     assert scope["type"] == "http"
-    headers = [(b"content-length", str(len(LARGE_BODY)).encode())]
-    await send({"type": "http.response.start", "status": 200, "headers": headers})
-    await send({"type": "http.response.body", "body": LARGE_BODY})
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    chunk = b"x" * HIGH_WATER_LIMIT
+    for _ in range(STREAMED_BYTES // len(chunk)):
+        await send({"type": "http.response.body", "body": chunk, "more_body": True})
+    await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+
+def small_send_buffer_socket(port: int) -> socket.socket:
+    # Accepted connections inherit it, so a small response still can't fit in the kernel buffers.
+    sock = socket.socket()
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
+    sock.bind(("127.0.0.1", port))
+    return sock
 
 
 @contextlib.asynccontextmanager
-async def slow_client(port: int, receive_buffer_size: int | None = None):
+async def slow_client(port: int, receive_buffer_size: int | None = None) -> AsyncIterator[socket.socket]:
     loop = asyncio.get_running_loop()
     with socket.socket() as client:
         if receive_buffer_size is not None:
@@ -301,24 +325,58 @@ async def slow_client(port: int, receive_buffer_size: int | None = None):
         yield client
 
 
+async def read_until_closed(client: socket.socket) -> int:
+    loop = asyncio.get_running_loop()
+    received = 0
+    with contextlib.suppress(ConnectionResetError):
+        async with asyncio.timeout(5):
+            while chunk := await loop.sock_recv(client, 65536):
+                received += len(chunk)
+    return received
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="The write timeout is disabled on ProactorEventLoop")
 async def test_timeout_write_closes_connection_when_client_stops_reading(
     http_protocol_cls: type[H11Protocol | HttpToolsProtocol], unused_tcp_port: int
-):
-    config = Config(app=large_body_app, port=unused_tcp_port, http=http_protocol_cls, lifespan="off", timeout_write=1)
+):  # pragma: py-win32
+    config = Config(app=streaming_app, port=unused_tcp_port, http=http_protocol_cls, lifespan="off", timeout_write=1)
     async with run_server(config):
         async with slow_client(unused_tcp_port, receive_buffer_size=4096) as client:
-            await asyncio.sleep(1.5)
-            received = 0
-            async with asyncio.timeout(5):
-                while chunk := await asyncio.get_running_loop().sock_recv(client, 65536):
-                    received += len(chunk)
-    assert received < len(LARGE_BODY)
+            await asyncio.sleep(2)
+            assert await read_until_closed(client) < STREAMED_BYTES
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="The write timeout is disabled on ProactorEventLoop")
+async def test_timeout_write_closes_idle_connection_with_unsent_response(
+    http_protocol_cls: type[H11Protocol | HttpToolsProtocol], unused_tcp_port: int
+):  # pragma: py-win32
+    config = Config(
+        app=body_app(SMALL_BODY), http=http_protocol_cls, lifespan="off", timeout_keep_alive=1, timeout_write=1
+    )
+    async with run_server(config, sockets=[small_send_buffer_socket(unused_tcp_port)]):
+        async with slow_client(unused_tcp_port, receive_buffer_size=4096) as client:
+            await asyncio.sleep(2.5)
+            assert await read_until_closed(client) < len(SMALL_BODY)
+
+
+async def test_timeout_write_cleans_up_when_client_disconnects(
+    http_protocol_cls: type[H11Protocol | HttpToolsProtocol], unused_tcp_port: int
+):
+    config = Config(app=streaming_app, port=unused_tcp_port, http=http_protocol_cls, lifespan="off")
+    async with run_server(config) as server:
+        async with slow_client(unused_tcp_port, receive_buffer_size=4096):
+            await asyncio.sleep(0.5)
+        async with asyncio.timeout(5):
+            while server.server_state.connections:
+                await asyncio.sleep(0.05)
 
 
 async def test_timeout_write_keeps_connection_while_client_reads_slowly(
     http_protocol_cls: type[H11Protocol | HttpToolsProtocol], unused_tcp_port: int
 ):
-    config = Config(app=large_body_app, port=unused_tcp_port, http=http_protocol_cls, lifespan="off", timeout_write=1)
+    config = Config(
+        app=body_app(LARGE_BODY), port=unused_tcp_port, http=http_protocol_cls, lifespan="off", timeout_write=1
+    )
     async with run_server(config):
         async with slow_client(unused_tcp_port) as client:
             loop = asyncio.get_running_loop()

@@ -1,4 +1,5 @@
 import asyncio
+import sys
 
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 
@@ -13,6 +14,9 @@ class FlowControl:
     ) -> None:
         self._transport = transport
         self._loop = loop
+        if sys.platform == "win32" and isinstance(loop, asyncio.ProactorEventLoop):  # pragma: py-not-win32
+            # Proactor only reports a send's progress once all of it completes, so a slow reader would look stalled.
+            timeout_write = None
         self._timeout_write = timeout_write
         self._write_timer: asyncio.TimerHandle | None = None
         self._write_buffer_size = 0
@@ -48,6 +52,18 @@ class FlowControl:
             if self._write_timer is not None:
                 self._write_timer.cancel()
                 self._write_timer = None
+
+    def close_transport(self) -> None:
+        # `close()` waits for the write buffer to drain, which never happens if the client stopped reading.
+        self._transport.close()
+        if self._timeout_write is not None and self._write_timer is None and self._transport.get_write_buffer_size():
+            self._arm_write_timer()
+
+    def connection_lost(self) -> None:
+        self.resume_writing()
+        if self._write_timer is not None:
+            self._write_timer.cancel()
+            self._write_timer = None
 
     def _arm_write_timer(self) -> None:
         assert self._timeout_write is not None

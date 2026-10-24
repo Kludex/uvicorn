@@ -124,7 +124,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         if self.cycle is not None:
             self.cycle.message_event.set()
         if self.flow is not None:
-            self.flow.resume_writing()
+            self.flow.connection_lost()
         if exc is None:
             self.transport.close()
             self._unset_keepalive_if_required()
@@ -371,7 +371,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         delay.
         """
         if not self.transport.is_closing():
-            self.transport.close()
+            self.flow.close_transport()
 
 
 class RequestResponseCycle:
@@ -555,7 +555,7 @@ class RequestResponseCycle:
                 self.response_complete = True
                 self.message_event.set()
                 if not self.keep_alive:
-                    self.transport.close()
+                    self.flow.close_transport()
                 self.on_response()
 
         else:

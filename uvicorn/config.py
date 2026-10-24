@@ -231,7 +231,6 @@ class Config:
         limit_max_requests_jitter: int = 0,
         backlog: int = 2048,
         timeout_keep_alive: int = 5,
-        timeout_write: int | None = 60,
         timeout_notify: int = 30,
         timeout_graceful_shutdown: int | None = None,
         timeout_worker_healthcheck: int = 5,
@@ -248,6 +247,7 @@ class Config:
         factory: bool = False,
         h11_max_incomplete_event_size: int | None = None,
         reset_contextvars: bool = False,
+        timeout_write: int | None = 60,
     ):
         self.app = app
         self.host = host

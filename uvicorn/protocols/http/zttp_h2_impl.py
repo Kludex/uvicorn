@@ -108,7 +108,7 @@ class ZttpH2Protocol(asyncio.Protocol):
                 cycle.disconnected = True
             cycle.message_event.set()
         if self.flow is not None:
-            self.flow.resume_writing()
+            self.flow.connection_lost()
         if exc is None:
             self.transport.close()
         self._unset_keepalive_if_required()
@@ -301,7 +301,7 @@ class ZttpH2Protocol(asyncio.Protocol):
             return
         self.conn.close()
         self.flush()
-        self.transport.close()
+        self.flow.close_transport()
 
     def shutdown(self) -> None:
         """
