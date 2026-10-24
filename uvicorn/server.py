@@ -118,6 +118,8 @@ class Server:
     async def serve(self, sockets: list[socket.socket] | None = None) -> None:
         with self.capture_signals():
             await self._serve(sockets)
+        if self._captured_signals:
+            await asyncio.sleep(0)
 
     async def _serve(self, sockets: list[socket.socket] | None = None) -> None:
         process_id = os.getpid()
