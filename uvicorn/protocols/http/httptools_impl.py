@@ -239,6 +239,9 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.url += url
 
     def on_header(self, name: bytes, value: bytes) -> None:
+        if "method" in self.scope:
+            # Trailer fields of a chunked body are not request headers; h11 and zttp drop them too.
+            return
         name = name.lower()
         # llhttp keeps trailing OWS, which https://www.rfc-editor.org/rfc/rfc9110#section-5.5 excludes from the value.
         value = value.rstrip(b" \t")
