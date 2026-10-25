@@ -281,11 +281,7 @@ async def test_reset_contextvars_asyncio(
 
 async def test_idle_server_fast_shutdown(unused_tcp_port: int) -> None:
     """Idle server with no connections stops promptly upon should_exit."""
-
-    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
-        pass
-
-    config = Config(app=app, host="127.0.0.1", port=unused_tcp_port, lifespan="off")
+    config = Config(app=dummy_app, host="127.0.0.1", port=unused_tcp_port, lifespan="off")
     server = Server(config=config)
     task = asyncio.create_task(server.serve())
     while not server.started:

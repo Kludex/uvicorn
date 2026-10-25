@@ -253,8 +253,6 @@ class Server:
     async def main_loop(self) -> None:
         if self._exit_event is None:
             self._exit_event = asyncio.Event()
-        if self._should_exit:
-            self._exit_event.set()
         counter = 0
         should_exit = await self.on_tick(counter)
         while not should_exit:
