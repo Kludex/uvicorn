@@ -116,6 +116,36 @@ async def test_invalid_upgrade(ws_protocol_cls: WSProtocol, http_protocol_cls: H
             ]
 
 
+@pytest.mark.parametrize(
+    "header, status_line",
+    [
+        # header line over websockets' 8 KiB limit
+        (b"Cookie: " + b"x" * 9000, b"HTTP/1.1 431 Request Header Fields Too Large\r\n"),
+        # websockets doesn't support request bodies
+        (b"Content-Length: 5", b"HTTP/1.1 400 Bad Request\r\n"),
+    ],
+)
+async def test_unparseable_upgrade_closes_connection(
+    http_protocol_cls: HTTPProtocol, unused_tcp_port: int, header: bytes, status_line: bytes
+):
+    def app(scope: Scope):
+        return None  # pragma: no cover
+
+    config = Config(app=app, ws=WebSocketsSansIOProtocol, http=http_protocol_cls, port=unused_tcp_port)
+    async with run_server(config):
+        reader, writer = await asyncio.open_connection("127.0.0.1", unused_tcp_port)
+        writer.write(
+            b"GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+            b"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n" + header + b"\r\n\r\n"
+        )
+        response = await asyncio.wait_for(reader.read(), timeout=5)  # returns once the server closes
+        writer.close()
+
+    if websockets_version < "17.0":  # pragma: no cover
+        status_line = b"HTTP/1.1 400 Bad Request\r\n"
+    assert response.startswith(status_line)
+
+
 async def test_accept_connection(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
     class App(WebSocketResponse):
         async def websocket_connect(self, message: WebSocketConnectEvent):
