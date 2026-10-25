@@ -191,11 +191,14 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             self.handle_parser_exception()
             return
         if self.conn.handshake_exc is not None and not self.handshake_initiated:
-            # websockets couldn't parse the handshake request (e.g. a header line over its limit).
-            # It has already queued its own response (websockets >= 17) or an EOF (older versions).
+            # websockets couldn't parse the handshake request. It queues a 414/431 for exceeded limits
+            # (websockets >= 17) and only an EOF otherwise, so we answer with a 400 in that case.
             self.handshake_complete = True
             self.close_sent = True
-            self.transport.write(b"".join(self.conn.data_to_send()))
+            output = b"".join(self.conn.data_to_send())
+            if not output:
+                output = self.conn.reject(400, "Failed to open a WebSocket connection: invalid request.\n").serialize()
+            self.transport.write(output)
             self.transport.close()
             return
         self.handle_events()
