@@ -119,7 +119,7 @@ class Server:
         with self.capture_signals():
             await self._serve(sockets)
         if self._captured_signals:
-            await asyncio.sleep(0)
+            await asyncio.sleep(0.05)
 
     async def _serve(self, sockets: list[socket.socket] | None = None) -> None:
         process_id = os.getpid()
@@ -275,6 +275,8 @@ class Server:
         event = asyncio.Event()
         setattr(event, "_loop", asyncio.get_running_loop())
         self._should_exit_event = event
+        if self._should_exit:
+            event.set()
         try:
             counter = 0
             should_exit = await self.on_tick(counter)
