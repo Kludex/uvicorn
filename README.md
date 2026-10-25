@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="320" height="320" src="https://raw.githubusercontent.com/tomchristie/uvicorn/main/docs/uvicorn.png" alt='uvicorn'>
+  <img width="320" height="320" src="https://raw.githubusercontent.com/Kludex/uvicorn/main/docs/uvicorn.png" alt='uvicorn'>
 </p>
 
 <p align="center">
@@ -27,7 +27,7 @@ Until recently Python has lacked a minimal low-level server/application interfac
 async frameworks. The [ASGI specification][asgi] fills this gap, and means we're now able to
 start building a common set of tooling usable across all async frameworks.
 
-Uvicorn supports HTTP/1.1 and WebSockets.
+Uvicorn currently supports HTTP/1.1, HTTP/2 and WebSockets.
 
 ## Quickstart
 

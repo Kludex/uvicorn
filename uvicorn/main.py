@@ -58,6 +58,16 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     ctx.exit()
 
 
+def _parse_headers(ctx: click.Context, param: click.Parameter, value: tuple[str, ...]) -> list[tuple[str, str]]:
+    headers = []
+    for header in value:
+        name, sep, val = header.partition(":")
+        if not sep or not name:
+            raise click.BadParameter(f"Expected 'Name:Value' format, got {header!r}.")
+        headers.append((name, val))
+    return headers
+
+
 @click.command(context_settings={"auto_envvar_prefix": "UVICORN"})
 @click.argument("app", envvar="UVICORN_APP")
 @click.option(
@@ -129,6 +139,13 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     metavar=_metavar_from_type(HTTPProtocolType),
     default="auto",
     help="HTTP protocol implementation.",
+    show_default=True,
+)
+@click.option(
+    "--http2",
+    is_flag=True,
+    default=False,
+    help="Enable HTTP/2 support. Requires --http zttp.",
     show_default=True,
 )
 @click.option(
@@ -245,7 +262,7 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     default=None,
     help="Comma separated list of IP Addresses, IP Networks, or literals "
     "(e.g. UNIX Socket path) to trust with proxy headers. Defaults to the "
-    "$FORWARDED_ALLOW_IPS environment variable if available, or '127.0.0.1'. "
+    "$FORWARDED_ALLOW_IPS environment variable if available, or '127.0.0.1,::1'. "
     "The literal '*' means trust everything.",
 )
 @click.option(
@@ -274,7 +291,7 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
 )
 @click.option(
     "--limit-max-requests-jitter",
-    type=int,
+    type=click.IntRange(min=0),
     default=0,
     help="Maximum jitter to add to limit_max_requests."
     " Staggers worker restarts to avoid all workers restarting simultaneously.",
@@ -347,6 +364,7 @@ def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> No
     "--header",
     "headers",
     multiple=True,
+    callback=_parse_headers,
     help="Specify custom default HTTP response headers as a Name:Value pair",
 )
 @click.option(
@@ -393,6 +411,7 @@ def main(
     fd: int,
     loop: LoopFactoryType | str,
     http: HTTPProtocolType | str,
+    http2: bool,
     ws: WSProtocolType | str,
     ws_max_size: int,
     ws_max_queue: int,
@@ -430,7 +449,7 @@ def main(
     ssl_cert_reqs: int,
     ssl_ca_certs: str,
     ssl_ciphers: str | None,
-    headers: list[str],
+    headers: list[tuple[str, str]],
     use_colors: bool,
     app_dir: str,
     h11_max_incomplete_event_size: int | None,
@@ -445,6 +464,7 @@ def main(
         fd=fd,
         loop=loop,
         http=http,
+        http2=http2,
         ws=ws,
         ws_max_size=ws_max_size,
         ws_max_queue=ws_max_queue,
@@ -482,7 +502,7 @@ def main(
         ssl_cert_reqs=ssl_cert_reqs,
         ssl_ca_certs=ssl_ca_certs,
         ssl_ciphers=ssl_ciphers,
-        headers=[header.split(":", 1) for header in headers],  # type: ignore[misc]
+        headers=headers,
         use_colors=use_colors,
         factory=factory,
         app_dir=app_dir,
@@ -500,6 +520,7 @@ def run(
     fd: int | None = None,
     loop: LoopFactoryType | str = "auto",
     http: type[asyncio.Protocol] | HTTPProtocolType | str = "auto",
+    http2: bool = False,
     ws: type[asyncio.Protocol] | WSProtocolType | str = "auto",
     ws_max_size: int = 16777216,
     ws_max_queue: int = 32,
@@ -556,6 +577,7 @@ def run(
         fd=fd,
         loop=loop,
         http=http,
+        http2=http2,
         ws=ws,
         ws_max_size=ws_max_size,
         ws_max_queue=ws_max_queue,

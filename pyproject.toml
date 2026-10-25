@@ -9,7 +9,7 @@ description = "The lightning-fast ASGI server."
 readme = "README.md"
 license = "BSD-3-Clause"
 license-files = ["LICENSE.md"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
     { name = "Tom Christie", email = "tom@tomchristie.com" },
 ]
@@ -22,11 +22,11 @@ classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
     "Topic :: Internet :: WWW/HTTP",
@@ -34,7 +34,6 @@ classifiers = [
 dependencies = [
     "click>=7.0",
     "h11>=0.8",
-    "typing_extensions>=4.0; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
@@ -52,7 +51,7 @@ dev = [
     # We add uvicorn[standard] so `uv sync` considers the extras.
     "uvicorn[standard]",
     "ruff>=0.15.15",
-    "pytest==9.0.3",
+    "pytest>=9.1.1",
     "pytest-mock==3.15.1",
     "pytest-xdist[psutil]==3.8.0",
     "pytest-codspeed>=4.1.1",
@@ -70,10 +69,10 @@ dev = [
     # Explicit optionals,
     "a2wsgi==1.10.10",
     "wsproto==1.3.2",
-    "zttp>=0.0.30",
+    "zttp>=0.0.34",
 ]
 docs = [
-    "zensical==0.0.53",
+    "zensical>=0.0.57",
     "mkdocstrings-python>=2.0.3",
 ]
 
@@ -83,8 +82,9 @@ required-version = ">=0.9.17"
 exclude-newer = "7 days"
 
 [tool.uv.exclude-newer-package]
+certifi = "2026-10-20T23:59:59Z"
 httptools = "2026-05-26"
-zttp = "2026-08-29"
+zttp = "2026-09-19T23:59:59Z"
 
 [project.scripts]
 uvicorn = "uvicorn.main:main"
@@ -121,6 +121,7 @@ follow_imports = "silent"
 
 [tool.pytest.ini_options]
 addopts = "-rxXs --strict-config --strict-markers -n 8"
+faulthandler_timeout = 60
 xfail_strict = true
 filterwarnings = [
     "error",
@@ -180,9 +181,3 @@ py-not-win32 = "sys_platform != 'win32'"
 py-linux = "sys_platform == 'linux'"
 py-not-linux = "sys_platform != 'linux'"
 py-darwin = "sys_platform == 'darwin'"
-py-gte-39 = "sys_version_info >= (3, 9)"
-py-lt-39 = "sys_version_info < (3, 9)"
-py-gte-310 = "sys_version_info >= (3, 10)"
-py-lt-310 = "sys_version_info < (3, 10)"
-py-gte-311 = "sys_version_info >= (3, 11)"
-py-lt-311 = "sys_version_info < (3, 11)"

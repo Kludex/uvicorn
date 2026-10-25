@@ -116,6 +116,36 @@ async def test_invalid_upgrade(ws_protocol_cls: WSProtocol, http_protocol_cls: H
             ]
 
 
+@pytest.mark.parametrize(
+    "header, status_line",
+    [
+        # header line over websockets' 8 KiB limit
+        (b"Cookie: " + b"x" * 9000, b"HTTP/1.1 431 Request Header Fields Too Large\r\n"),
+        # websockets doesn't support request bodies
+        (b"Content-Length: 5", b"HTTP/1.1 400 Bad Request\r\n"),
+    ],
+)
+async def test_unparseable_upgrade_closes_connection(
+    http_protocol_cls: HTTPProtocol, unused_tcp_port: int, header: bytes, status_line: bytes
+):
+    def app(scope: Scope):
+        return None  # pragma: no cover
+
+    config = Config(app=app, ws=WebSocketsSansIOProtocol, http=http_protocol_cls, port=unused_tcp_port)
+    async with run_server(config):
+        reader, writer = await asyncio.open_connection("127.0.0.1", unused_tcp_port)
+        writer.write(
+            b"GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+            b"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n" + header + b"\r\n\r\n"
+        )
+        response = await asyncio.wait_for(reader.read(), timeout=5)  # returns once the server closes
+        writer.close()
+
+    if websockets_version < "17.0":  # pragma: no cover
+        status_line = b"HTTP/1.1 400 Bad Request\r\n"
+    assert response.startswith(status_line)
+
+
 async def test_accept_connection(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
     class App(WebSocketResponse):
         async def websocket_connect(self, message: WebSocketConnectEvent):
@@ -976,6 +1006,32 @@ async def test_server_reject_connection_with_multibody_response(
     assert disconnected_message == {"type": "websocket.disconnect", "code": 1006}
 
 
+async def test_server_reject_connection_does_not_log_incomplete_handshake(
+    ws_protocol_cls: WSProtocol,
+    http_protocol_cls: HTTPProtocol,
+    unused_tcp_port: int,
+    caplog: pytest.LogCaptureFixture,
+):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert scope["type"] == "websocket"
+        assert "websocket.http.response" in scope["extensions"]
+        await receive()
+        await send({"type": "websocket.http.response.start", "status": 401, "headers": []})
+        await send({"type": "websocket.http.response.body", "body": b"denied"})
+
+    async def websocket_session(url: str):
+        response = await wsresponse(url)
+        assert response.status_code == 401
+        assert response.content == b"denied"
+
+    config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
+    with caplog.at_level("ERROR", logger="uvicorn.error"):
+        async with run_server(config):
+            await websocket_session(f"ws://127.0.0.1:{unused_tcp_port}")
+
+    assert "ASGI callable returned without completing handshake." not in caplog.text
+
+
 async def test_server_reject_connection_with_invalid_status(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
 ):
@@ -1760,6 +1816,27 @@ async def test_shutdown_while_the_close_reply_is_pending(ws_protocol_cls: WSProt
         connection.shutdown()
         assert connection.transport_closed
         assert not connection.awaiting_close_reply
+
+
+async def test_shutdown_during_denial_response(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol):
+    body_started = asyncio.Event()
+    disconnect_message: ASGIReceiveEvent | None = None
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        nonlocal disconnect_message
+        await receive()
+        await send({"type": "websocket.http.response.start", "status": 401, "headers": []})
+        await send({"type": "websocket.http.response.body", "body": b"den", "more_body": True})
+        body_started.set()
+        disconnect_message = await receive()
+
+    async with MockWebSocketConnection(app, ws_protocol_cls, http_protocol_cls) as connection:
+        await body_started.wait()
+        assert not connection.transport_closed
+        connection.shutdown()
+        assert connection.transport_closed
+    await connection.app_finished()
+    assert disconnect_message == {"type": "websocket.disconnect", "code": 1006}
 
 
 async def test_send_after_peer_close_raises_client_disconnected(

@@ -109,6 +109,17 @@ def test_reload_subdir_removal(reload_directory_structure: Path) -> None:
         assert config.reload_dirs == [reload_directory_structure]
 
 
+def test_reload_nested_subdirs_removal(tmp_path: Path) -> None:
+    root = tmp_path.resolve()
+    nested = [root / "a" / "x" / "y", root / "a" / "x", root / "a", root / "b" / "z", root / "c" / "d" / "e"]
+    for directory in nested:
+        directory.mkdir(parents=True, exist_ok=True)
+
+    with as_cwd(root):
+        config = Config(app="tests.test_config:asgi_app", reload=True, reload_dirs=[str(d) for d in nested])
+        assert frozenset(config.reload_dirs) == frozenset([root / "a", root / "b" / "z", root / "c" / "d" / "e"])
+
+
 def test_reload_included_dir_is_added_to_reload_dirs(
     reload_directory_structure: Path,
 ) -> None:
@@ -254,11 +265,18 @@ def test_concrete_http_class() -> None:
     assert config.http_protocol_class is H11Protocol
 
 
+def test_http2_requires_zttp_protocol() -> None:
+    config = Config(app=asgi_app, http="h11", http2=True)
+    with pytest.raises(ValueError, match="HTTP/2 requires the `zttp` HTTP protocol"):
+        config.load()
+
+
 def test_socket_bind() -> None:
     config = Config(app=asgi_app)
     config.load()
     sock = config.bind_socket()
     assert isinstance(sock, socket.socket)
+    assert sock.proto == socket.IPPROTO_TCP
     sock.close()
 
 
@@ -416,11 +434,19 @@ def web_concurrency(request: pytest.FixtureRequest) -> Iterator[int]:
         del os.environ["WEB_CONCURRENCY"]
 
 
-@pytest.fixture(params=["127.0.0.1", "127.0.0.2"])
+@pytest.fixture(params=["::1", "127.0.0.1", "127.0.0.2"])
 def forwarded_allow_ips(request: pytest.FixtureRequest) -> Iterator[str]:
     yield request.param
     if os.getenv("FORWARDED_ALLOW_IPS"):
         del os.environ["FORWARDED_ALLOW_IPS"]
+
+
+def test_forwarded_allow_ips_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("FORWARDED_ALLOW_IPS", raising=False)
+
+    config = Config(app=asgi_app)
+
+    assert config.forwarded_allow_ips == "127.0.0.1,::1"
 
 
 def test_env_file(

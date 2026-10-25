@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import logging
-import sys
 from collections.abc import Callable, Generator
 from typing import Any, ClassVar, Literal
 from urllib.parse import unquote
@@ -191,6 +190,9 @@ class ZttpH2Protocol(asyncio.Protocol):
             # the new credit released.
 
     def handle_request(self, event: zttp.Request) -> None:
+        if not event.target.isascii():
+            self.conn.stream(event.stream_id).reset(0x1)  # PROTOCOL_ERROR, RFC 9113 §8.1.1
+            return
         headers = (
             event.headers.to_list(lowercase_names=True)
             if isinstance(event.headers, zttp.HeaderBlock)
@@ -213,6 +215,7 @@ class ZttpH2Protocol(asyncio.Protocol):
             "query_string": event.query,
             "headers": headers,
             "state": self.app_state.copy(),
+            "extensions": {"http.response.early_hint": {}, "http.response.trailers": {}},
         }
 
         # Refuse new streams once a shutdown began, and handle 503 responses
@@ -245,10 +248,7 @@ class ZttpH2Protocol(asyncio.Protocol):
         self.cycles[event.stream_id] = cycle
 
         if self.config.reset_contextvars:
-            if sys.version_info >= (3, 11):  # pragma: py-lt-311
-                task = self.loop.create_task(cycle.run_asgi(app), context=contextvars.Context())
-            else:  # pragma: py-gte-311
-                task = contextvars.Context().run(self.loop.create_task, cycle.run_asgi(app))
+            task = self.loop.create_task(cycle.run_asgi(app), context=contextvars.Context())
         else:
             task = self.loop.create_task(cycle.run_asgi(app))
         task.add_done_callback(self.tasks.discard)
@@ -373,6 +373,9 @@ class RequestResponseCycle:
         # Response state
         self.response_started = False
         self.response_complete = False
+        self.body_complete = False
+        self.trailers_expected = False
+        self.trailers: list[tuple[bytes, bytes]] = []
         self.bodyless = False
         self.expected_content_length: int | None = None
 
@@ -436,12 +439,22 @@ class RequestResponseCycle:
         if self.disconnected:
             return
 
+        if message["type"] == "http.response.early_hint" and not self.response_started:
+            hint_headers = [(b"link", link) for link in message["links"]]
+            self.stream.send_informational(103, hint_headers)
+            self.transport.write(self.conn.data_to_send())
+            return
+
         if not self.response_started:
             # Sending response status line and headers
             if message["type"] != "http.response.start":
-                raise RuntimeError(f"Expected ASGI message 'http.response.start', but got '{message['type']}'.")
+                raise RuntimeError(
+                    "Expected ASGI message 'http.response.start' or 'http.response.early_hint', "
+                    f"but got '{message['type']}'."
+                )
 
             self.response_started = True
+            self.trailers_expected = message.get("trailers", False)
 
             status = message["status"]
             headers: list[tuple[bytes, bytes]] = []
@@ -473,7 +486,7 @@ class RequestResponseCycle:
             self.stream.send_response(status, headers)
             self.transport.write(self.conn.data_to_send())
 
-        elif not self.response_complete:
+        elif not self.body_complete:
             # Sending response body
             if message["type"] != "http.response.body":
                 raise RuntimeError(f"Expected ASGI message 'http.response.body', but got '{message['type']}'.")
@@ -496,16 +509,40 @@ class RequestResponseCycle:
             if not more_body:
                 if self.expected_content_length not in (None, 0):
                     raise RuntimeError("Response content shorter than Content-Length")
+                self.body_complete = True
+                if not self.trailers_expected:
+                    self.stream.end_message()
+                    self.response_complete = True
+
+        elif not self.response_complete:
+            if message["type"] != "http.response.trailers":
+                raise RuntimeError(f"Expected ASGI message 'http.response.trailers', but got '{message['type']}'.")
+
+            send_trailers = any(
+                name == b"te" and value.lower().strip() == b"trailers" for name, value in self.scope["headers"]
+            )
+            for name, value in message["headers"]:
+                name = name.lower()
+                if name.startswith(b":"):
+                    raise RuntimeError("Pseudo headers are not allowed in HTTP response trailers")
+                if name in FORBIDDEN_HEADERS or name == b"te":
+                    continue
+                if send_trailers:
+                    self.trailers.append((name, value))
+
+            if not message.get("more_trailers", False):
+                self.stream.end_message(self.trailers or None)
                 self.response_complete = True
-                self.message_event.set()
-                self.stream.end_message()
-                self.transport.write(self.conn.data_to_send())
-                self.on_response(self.stream.stream_id)
-                self.on_response = lambda stream_id: None
 
         else:
             # Response already sent
             raise RuntimeError(f"Unexpected ASGI message '{message['type']}' sent, after response already completed.")
+
+        if self.response_complete:
+            self.message_event.set()
+            self.transport.write(self.conn.data_to_send())
+            self.on_response(self.stream.stream_id)
+            self.on_response = lambda stream_id: None
 
     async def receive(self) -> ASGIReceiveEvent:
         if not self.disconnected and not self.response_complete:

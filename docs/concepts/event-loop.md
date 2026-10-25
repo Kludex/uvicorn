@@ -19,6 +19,14 @@ When running with `--reload` or multiple workers, it uses [`SelectorEventLoop`][
 ??? info "Why can `ProactorEventLoop` fail with multiple processes on Windows?"
     If you want to know more about it, you can read the issue [#cpython/122240](https://github.com/python/cpython/issues/122240).
 
+!!! warning "psycopg async does not work with `ProactorEventLoop`"
+    On Windows, psycopg's async mode requires [`SelectorEventLoop`][asyncio.SelectorEventLoop].
+    In single-process mode, select it with the [custom event loop](#custom-event-loop) syntax:
+
+    ```bash
+    uvicorn main:app --loop asyncio:SelectorEventLoop
+    ```
+
 ## zuvloop
 
 [`zuvloop`](https://zuvloop.marcelotryle.com/) is an `asyncio` event loop powered by libuv and written in Zig.

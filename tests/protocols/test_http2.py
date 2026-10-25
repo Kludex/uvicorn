@@ -6,12 +6,13 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any, ClassVar
 
+import anyio
 import httpx2
 import pytest
 
 from tests.response import Response
 from tests.utils import run_server
-from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
+from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, ASGISendEvent, Scope
 from uvicorn.config import Config
 from uvicorn.lifespan.off import LifespanOff
 from uvicorn.lifespan.on import LifespanOn
@@ -162,7 +163,7 @@ def get_connected_protocol(
 ) -> MockProtocol:
     loop = MockLoop()
     transport = MockTransport(sslcontext=True)
-    config = Config(app=app, http="zttp2", **kwargs)
+    config = Config(app=app, http="zttp", http2=True, **kwargs)
     lifespan = lifespan or LifespanOff(config)
     server_state = ServerState()
     protocol = ZttpH2Protocol(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)  # type: ignore[arg-type]
@@ -251,6 +252,75 @@ async def test_get_request():
     assert response.ended
 
 
+@pytest.mark.parametrize("te", [None, b"trailers"])
+async def test_response_trailers(te: bytes | None, caplog: pytest.LogCaptureFixture) -> None:
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        assert scope["type"] == "http"
+        assert "http.response.trailers" in scope["extensions"]
+        await send({"type": "http.response.start", "status": 200, "trailers": True})
+        await send({"type": "http.response.body", "body": b"hello"})
+        await send(
+            {
+                "type": "http.response.trailers",
+                "headers": [(b"X-Result", b"one"), (b"connection", b"close"), (b"te", b"trailers")],
+                "more_trailers": True,
+            }
+        )
+        events = client.events(protocol.transport.buffer)
+        protocol.transport.clear_buffer()
+        assert b"".join(event.data for event in events if isinstance(event, zttp.Data)) == b"hello"
+        assert not any(isinstance(event, zttp.EndOfMessage) for event in events)
+        await send({"type": "http.response.trailers", "headers": [(b"x-result", b"two")], "more_trailers": False})
+        assert await receive() == {"type": "http.disconnect"}
+
+    protocol = get_connected_protocol(app)
+    client = H2Client()
+    headers = [(b"host", b"example.org")]
+    if te is not None:
+        headers.append((b"te", te))
+    client.request(headers=headers)
+    protocol.data_received(client.data_to_send())
+    await protocol.loop.run_one()
+    events = client.events(protocol.transport.buffer)
+    expected = [(b"x-result", b"one"), (b"x-result", b"two")] if te else []
+    assert [event.trailers for event in events if isinstance(event, zttp.EndOfMessage)] == [expected]
+    assert "Exception in ASGI application" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("message", "error"),
+    [
+        ({"type": "http.response.body", "body": b"extra"}, "Expected ASGI message 'http.response.trailers'"),
+        (
+            {"type": "http.response.trailers", "headers": [(b":status", b"200")], "more_trailers": False},
+            "Pseudo headers are not allowed",
+        ),
+        (None, "ASGI callable returned without completing response"),
+    ],
+)
+async def test_invalid_response_trailers(
+    message: ASGISendEvent | None,
+    error: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        await send({"type": "http.response.start", "status": 200, "trailers": True})
+        await send({"type": "http.response.body", "body": b""})
+        if message is not None:
+            await send(message)
+
+    protocol = get_connected_protocol(app)
+    client = H2Client()
+    stream = client.request(headers=[(b"host", b"example.org")])
+    protocol.data_received(client.data_to_send())
+    await protocol.loop.run_one()
+    assert [
+        event.stream_id for event in client.events(protocol.transport.buffer) if isinstance(event, zttp.RstStream)
+    ] == [stream.stream_id]
+    assert error in caplog.text
+    assert not protocol.transport.is_closing()
+
+
 async def test_post_request():
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         body = b""
@@ -301,6 +371,37 @@ async def test_request_scope():
     assert received_scope["raw_path"] == b"/api/path%2Fitem"
     assert received_scope["query_string"] == b"a=1&b=2"
     assert (b"host", b"example.org") in received_scope["headers"]
+    assert received_scope["extensions"] == {"http.response.early_hint": {}, "http.response.trailers": {}}
+
+
+async def test_early_hints():
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert scope["type"] == "http"
+        assert "http.response.early_hint" in scope["extensions"]
+        await send(
+            {
+                "type": "http.response.early_hint",
+                "links": [b"</style.css>; rel=preload; as=style", b"</script.js>; rel=preload; as=script"],
+            }
+        )
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"OK"})
+
+    protocol = get_connected_protocol(app)
+    client = H2Client()
+
+    client.request(b"GET", b"/")
+    protocol.data_received(client.data_to_send())
+    await protocol.loop.run_one()
+
+    responses = [event for event in client.events(protocol.transport.buffer) if isinstance(event, zttp.Response)]
+    assert [(event.status_code, list(event.headers)) for event in responses] == [
+        (
+            103,
+            [(b"link", b"</style.css>; rel=preload; as=style"), (b"link", b"</script.js>; rel=preload; as=script")],
+        ),
+        (200, []),
+    ]
 
 
 async def test_multiplexed_requests():
@@ -410,6 +511,30 @@ async def test_app_returning_without_response_returns_500():
     response = client.parse_response(protocol.transport.buffer)
     assert response.status == 500
     assert response.body == b"Internal Server Error"
+
+
+@pytest.mark.parametrize("target", [b"/caf\xc3\xa9", b"/?q=caf\xc3\xa9"])
+async def test_non_ascii_target_resets_stream(target: bytes):
+    protocol = get_connected_protocol(Response("Hello, world", media_type="text/plain"))
+    client = H2Client()
+
+    client.request(b"GET", target)
+    client.request(b"GET", b"/")
+    protocol.data_received(client.data_to_send())
+    await protocol.loop.run_one()
+
+    assert not protocol.loop._tasks
+    assert not protocol.transport.is_closing()
+    events = client.events(protocol.transport.buffer)
+    assert any(
+        isinstance(event, zttp.RstStream) and event.stream_id == 1 and event.error_code == 0x1 for event in events
+    )
+    assert any(
+        isinstance(event, zttp.Response) and event.stream_id == 3 and event.status_code == 200 for event in events
+    )
+    assert any(
+        isinstance(event, zttp.Data) and event.stream_id == 3 and event.data == b"Hello, world" for event in events
+    )
 
 
 async def test_partial_response_resets_stream():
@@ -894,7 +1019,7 @@ def get_negotiator(
 ) -> tuple[AutoZttpProtocol, MockTransport, MockLoop]:
     loop = MockLoop()
     transport = MockTransport(sslcontext=sslcontext, alpn_protocol=alpn_protocol)
-    config = Config(app=app, http="zttp", **kwargs)
+    config = Config(app=app, http="zttp", http2=True, **kwargs)
     lifespan = LifespanOff(config)
     server_state = ServerState()
     negotiator = AutoZttpProtocol(config=config, server_state=server_state, app_state=lifespan.state, _loop=loop)  # type: ignore[arg-type]
@@ -999,7 +1124,7 @@ async def test_negotiator_shutdown_closes_connection():
 
 async def test_server_installs_auto_zttp_protocol(unused_tcp_port: int):
     app = Response("Hello, world", media_type="text/plain")
-    config = Config(app=app, http="zttp", loop="asyncio", limit_max_requests=1, port=unused_tcp_port)
+    config = Config(app=app, http="zttp", http2=True, loop="asyncio", limit_max_requests=1, port=unused_tcp_port)
     async with run_server(config):
         async with httpx2.AsyncClient() as client:
             response = await client.get(f"http://127.0.0.1:{unused_tcp_port}")
@@ -1007,37 +1132,37 @@ async def test_server_installs_auto_zttp_protocol(unused_tcp_port: int):
     assert response.text == "Hello, world"
 
 
-async def test_config_http_zttp_loads_negotiator():
+async def test_config_http_zttp_loads_http1_protocol():
     config = Config(app=Response("ok"), http="zttp")
-    config.load()
-    assert config.http_protocol_class is AutoZttpProtocol
-
-
-async def test_config_http_zttp1_loads_http1_protocol():
-    config = Config(app=Response("ok"), http="zttp1")
     config.load()
     assert config.http_protocol_class is ZttpProtocol
 
 
-async def test_config_http_zttp2_loads_http2_protocol():
-    config = Config(app=Response("ok"), http="zttp2")
+async def test_config_http2_loads_negotiator():
+    config = Config(app=Response("ok"), http="zttp", http2=True)
     config.load()
-    assert config.http_protocol_class is ZttpH2Protocol
+    assert config.http_protocol_class is AutoZttpProtocol
 
 
 class CustomH2Protocol(asyncio.Protocol):
     alpn_protocols: ClassVar[list[str]] = ["h2", "http/1.1"]
 
 
-@pytest.mark.parametrize("http", ["zttp", CustomH2Protocol], ids=["zttp", "custom"])
+@pytest.mark.parametrize(
+    ("http", "http2"),
+    [("zttp", True), (CustomH2Protocol, False)],
+    ids=["zttp", "custom"],
+)
 async def test_config_http_protocol_offers_alpn_protocols(
     http: str | type[asyncio.Protocol],
+    http2: bool,
     tls_ca_certificate_pem_path: str,
     tls_ca_certificate_private_key_path: str,
 ):
     config = Config(
         app=Response("ok"),
         http=http,
+        http2=http2,
         ssl_certfile=tls_ca_certificate_pem_path,
         ssl_keyfile=tls_ca_certificate_private_key_path,
     )
@@ -1085,3 +1210,24 @@ async def test_config_http_protocol_offers_alpn_protocols(
     assert client_done and server_done
     assert client.selected_alpn_protocol() == "h2"
     assert server.selected_alpn_protocol() == "h2"
+
+
+async def test_server_sends_http2_trailers_over_tcp(unused_tcp_port: int) -> None:
+    body = b"x" * 100_000
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        await send({"type": "http.response.start", "status": 200, "trailers": True})
+        await send({"type": "http.response.body", "body": body})
+        await send({"type": "http.response.trailers", "headers": [(b"x-result", b"ok")], "more_trailers": False})
+
+    config = Config(app=app, http="zttp", http2=True, loop="asyncio", lifespan="off", port=unused_tcp_port)
+    client = H2Client()
+    client.request(headers=[(b"host", b"example.org"), (b"te", b"trailers")])
+    events: list[Any] = []
+    with anyio.fail_after(5):
+        async with run_server(config), await anyio.connect_tcp("127.0.0.1", unused_tcp_port) as stream:
+            while not any(isinstance(event, zttp.EndOfMessage) for event in events):
+                await stream.send(client.data_to_send())
+                events.extend(client.events(await stream.receive()))
+    assert b"".join(event.data for event in events if isinstance(event, zttp.Data)) == body
+    assert [event.trailers for event in events if isinstance(event, zttp.EndOfMessage)] == [[(b"x-result", b"ok")]]

@@ -20,34 +20,23 @@ HTTP/2 support requires the `zttp` package:
 pip install zttp
 ```
 
-To enable it, select the `zttp` HTTP implementation:
+To enable it, select the `zttp` HTTP implementation and pass `--http2`:
 
 === "Command Line"
     ```bash
-    uvicorn main:app --http zttp
+    uvicorn main:app --http zttp --http2
     ```
 
 === "Programmatic"
     ```python
     import uvicorn
 
-    uvicorn.run("main:app", http="zttp")
+    uvicorn.run("main:app", http="zttp", http2=True)
     ```
 
-The `zttp` implementation serves both HTTP versions: each connection is dispatched to
-HTTP/1.1 or HTTP/2 depending on what the client speaks. Two more variants pin a single
-version:
-
-| `--http` | Serves |
-| --- | --- |
-| `zttp` | HTTP/1.1 and HTTP/2 |
-| `zttp1` | HTTP/1.1 only |
-| `zttp2` | HTTP/2 only |
-
-`zttp2` is useful when every client is known to speak HTTP/2, e.g. gRPC backends or
-services behind a proxy configured for `h2c://` upstreams. Over TLS it advertises only
-`h2` via ALPN, so clients that cannot speak HTTP/2 get no negotiated protocol and the
-connection fails instead of falling back to HTTP/1.1.
+The `--http2` option makes `zttp` serve both HTTP versions. Each connection is dispatched
+to HTTP/1.1 or HTTP/2 depending on what the client speaks. Without this option, `zttp`
+serves HTTP/1.1 only. This default keeps experimental HTTP/2 support opt-in.
 
 ## Connection Methods
 
@@ -97,10 +86,10 @@ async def app(scope, receive, send):
     await send({"type": "http.response.body", "body": b"ok"})
 ```
 
-Run Uvicorn with `--http zttp` and the SSL certificate files:
+Run Uvicorn with `--http zttp --http2` and the SSL certificate files:
 
 ```bash
-uvicorn main:app --http zttp --ssl-keyfile key.pem --ssl-certfile cert.pem
+uvicorn main:app --http zttp --http2 --ssl-keyfile key.pem --ssl-certfile cert.pem
 ```
 
 You can test the connection using curl (`-k` skips certificate verification for self-signed certs):
@@ -136,7 +125,7 @@ sequenceDiagram
 Using the same `main.py`:
 
 ```bash
-uvicorn main:app --http zttp
+uvicorn main:app --http zttp --http2
 ```
 
 ```bash
@@ -166,6 +155,27 @@ async def app(scope, receive, send):
     assert scope["type"] == "http"
     print(f"HTTP Version: {scope['http_version']}")  # "2" for HTTP/2
 ```
+
+## Early Hints
+
+Uvicorn advertises the `http.response.early_hint` ASGI extension for HTTP/2 requests. You can send one or more
+`103 Early Hints` responses before the final response:
+
+```python title="main.py"
+async def app(scope, receive, send):
+    if "http.response.early_hint" in scope.get("extensions", {}):
+        await send(
+            {
+                "type": "http.response.early_hint",
+                "links": [b"</style.css>; rel=preload; as=style"],
+            }
+        )
+
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    await send({"type": "http.response.body", "body": b"ok"})
+```
+
+Each value in `links` becomes a separate `Link` header in the `103` response.
 
 ## Using with Reverse Proxies
 
@@ -218,10 +228,43 @@ For internal, low-latency connections (like proxy to backend), HTTP/1.1 with kee
 performs comparably to HTTP/2. It is simpler to configure and debug, which is why it remains the
 recommended default for most deployments.
 
+## Response Trailers
+
+Trailers are headers you send after the response body. You can use them for values that
+become available while streaming, such as a checksum or final processing statistics,
+without buffering the entire response first.
+
+They also let you serve ASGI applications that implement
+[gRPC](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md), which reports
+call results through `grpc-status` and optional `grpc-message` trailers.
+
+```python
+import uvicorn
+
+
+async def app(scope, receive, send):
+    trailers = "http.response.trailers" in scope.get("extensions", {})
+    await send({"type": "http.response.start", "status": 200, "trailers": trailers})
+    await send({"type": "http.response.body", "body": b"Hello, world!"})
+    if trailers:
+        await send({
+            "type": "http.response.trailers",
+            "headers": [(b"x-result", b"ok")],
+            "more_trailers": False,
+        })
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, http="zttp", http2=True, lifespan="off")
+```
+
+Your client must send `TE: trailers` to receive them. Set `more_trailers=True`
+to send more than one trailer message; Uvicorn combines their headers and completes the response on the last message.
+
 ## Current Limitations
 
 The implementation is young, and some protocol features are not complete yet:
 
 - HTTP/2 server push and `Expect: 100-continue` are not supported.
-- WebSockets over HTTP/2 (RFC 8441 extended `CONNECT`) are not supported. With `--http zttp`,
+- WebSockets over HTTP/2 (RFC 8441 extended `CONNECT`) are not supported. With `--http zttp --http2`,
   WebSocket connections still work - they are served over HTTP/1.1.

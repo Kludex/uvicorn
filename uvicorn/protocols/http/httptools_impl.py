@@ -5,7 +5,6 @@ import contextvars
 import http
 import logging
 import re
-import sys
 import urllib
 from asyncio.events import TimerHandle
 from collections import deque
@@ -200,8 +199,8 @@ class HttpToolsProtocol(asyncio.Protocol):
             app_state=self.app_state,
         )
         protocol.connection_made(self.transport)
-        protocol.data_received(b"".join(output))
         self.transport.set_protocol(protocol)
+        protocol.data_received(b"".join(output))
 
     def send_400_response(self, msg: str) -> None:
         content = [STATUS_LINE[400]]
@@ -241,6 +240,8 @@ class HttpToolsProtocol(asyncio.Protocol):
 
     def on_header(self, name: bytes, value: bytes) -> None:
         name = name.lower()
+        # llhttp keeps trailing OWS, which https://www.rfc-editor.org/rfc/rfc9110#section-5.5 excludes from the value.
+        value = value.rstrip(b" \t")
         if name == b"expect" and value.lower() == b"100-continue":
             self.expect_100_continue = True
         self.headers.append((name, value))
@@ -301,10 +302,7 @@ class HttpToolsProtocol(asyncio.Protocol):
             # Opt-in workaround for https://github.com/python/cpython/issues/140947:
             # asyncio can leak context vars between tasks. Hides context set in the
             # lifespan or by external instrumentation.
-            if sys.version_info >= (3, 11):  # pragma: py-lt-311
-                task = self.loop.create_task(cycle.run_asgi(app), context=contextvars.Context())
-            else:  # pragma: py-gte-311
-                task = contextvars.Context().run(self.loop.create_task, cycle.run_asgi(app))
+            task = self.loop.create_task(cycle.run_asgi(app), context=contextvars.Context())
         else:
             task = self.loop.create_task(cycle.run_asgi(app))
         task.add_done_callback(self.tasks.discard)
