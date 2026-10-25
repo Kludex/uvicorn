@@ -41,7 +41,7 @@ async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
     pass  # pragma: no cover
 
 
-async def exit_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+async def exit_on_lifespan_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
     os._exit(1)  # pragma: no cover
 
 
@@ -113,33 +113,56 @@ def test_multiprocess_health_check() -> None:
 
 
 @pytest.mark.skipif(os.name == "nt", reason="test spawns real worker processes")
-@pytest.mark.parametrize(
-    "asgi_app, steps, message",
-    [
-        (app, [Process.kill, Process.join], "exited on signal 9"),
-        (exit_app, [Process.join], "exited with code 1"),
-        (app, [], "was unresponsive and got killed"),
-    ],
-)
-def test_multiprocess_logs_why_worker_died(
-    asgi_app: Callable[..., Any],
-    steps: list[Callable[[Process], None]],
-    message: str,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    # A zero healthcheck timeout means a worker that is still booting never answers in time.
-    config = Config(app=asgi_app, workers=1, timeout_worker_healthcheck=0)
-    supervisor = Multiprocess(config, sockets=[])
+def test_multiprocess_logs_worker_killed_by_signal(caplog: pytest.LogCaptureFixture) -> None:
+    supervisor = Multiprocess(Config(app=app, workers=1), sockets=[])
     try:
         supervisor.init_processes()
         process = supervisor.processes[0]
-        for step in steps:
-            step(process)
+        process.kill()
+        process.join()
         with caplog.at_level(logging.INFO, logger="uvicorn.error"):
             supervisor.keep_subprocess_alive()
-        assert f"Child process [{process.pid}] {message}" in caplog.messages
+        assert ("uvicorn.error", logging.ERROR, f"Child process [{process.pid}] exited on signal 9") in (
+            caplog.record_tuples
+        )
     finally:
         # SIGTERM can get lost while the replacement worker is still spawning.
+        for process in supervisor.processes:
+            process.kill()
+            process.join()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="test spawns real worker processes")
+def test_multiprocess_logs_worker_exit_code(caplog: pytest.LogCaptureFixture) -> None:
+    supervisor = Multiprocess(Config(app=exit_on_lifespan_app, lifespan="on", workers=1), sockets=[])
+    try:
+        supervisor.init_processes()
+        process = supervisor.processes[0]
+        process.join()
+        with caplog.at_level(logging.INFO, logger="uvicorn.error"):
+            supervisor.keep_subprocess_alive()
+        assert ("uvicorn.error", logging.WARNING, f"Child process [{process.pid}] exited with code 1") in (
+            caplog.record_tuples
+        )
+    finally:
+        for process in supervisor.processes:
+            process.kill()
+            process.join()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="test spawns real worker processes")
+def test_multiprocess_logs_unresponsive_worker(caplog: pytest.LogCaptureFixture) -> None:
+    # A zero healthcheck timeout means a worker that is still booting never answers in time.
+    supervisor = Multiprocess(Config(app=app, workers=1, timeout_worker_healthcheck=0), sockets=[])
+    try:
+        supervisor.init_processes()
+        process = supervisor.processes[0]
+        with caplog.at_level(logging.INFO, logger="uvicorn.error"):
+            supervisor.keep_subprocess_alive()
+        assert ("uvicorn.error", logging.ERROR, f"Child process [{process.pid}] was unresponsive and got killed") in (
+            caplog.record_tuples
+        )
+    finally:
         for process in supervisor.processes:
             process.kill()
             process.join()
