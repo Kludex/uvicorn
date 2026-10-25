@@ -16,6 +16,6 @@ except ImportError:  # pragma: no cover
 
         AutoWebSocketsProtocol = WSProtocol
 else:
-    from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
+    from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
 
-    AutoWebSocketsProtocol = WebSocketProtocol
+    AutoWebSocketsProtocol = WebSocketsSansIOProtocol

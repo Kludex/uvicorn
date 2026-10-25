@@ -4,7 +4,6 @@ import asyncio
 import contextvars
 import http
 import logging
-import sys
 from collections.abc import Callable
 from typing import Any, Literal
 from urllib.parse import unquote
@@ -63,6 +62,7 @@ class H11Protocol(asyncio.Protocol):
         )
         self.ws_protocol_class = config.ws_protocol_class
         self.root_path = config.root_path
+        self.asgi_version = config.asgi_version
         self.limit_concurrency = config.limit_concurrency
         self.app_state = app_state
 
@@ -196,6 +196,9 @@ class H11Protocol(asyncio.Protocol):
                 break
 
             elif isinstance(event, h11.Request):
+                # Pipelined HTTP requests and WebSocket upgrades may be processed after the keep-alive timer is armed.
+                self._unset_keepalive_if_required()
+
                 self.headers = [(key.lower(), value) for key, value in event.headers]
                 raw_path, _, query_string = event.target.partition(b"?")
                 path = unquote(raw_path.decode("ascii"))
@@ -203,7 +206,7 @@ class H11Protocol(asyncio.Protocol):
                 full_raw_path = self.root_path.encode("ascii") + raw_path
                 self.scope = {
                     "type": "http",
-                    "asgi": {"version": self.config.asgi_version, "spec_version": "2.3"},
+                    "asgi": {"version": self.asgi_version, "spec_version": "2.3"},
                     "http_version": event.http_version.decode("ascii"),
                     "server": self.server,
                     "client": self.client,
@@ -230,14 +233,6 @@ class H11Protocol(asyncio.Protocol):
                 else:
                     app = self.app
 
-                # When starting to process a request, disable the keep-alive
-                # timeout. Normally we disable this when receiving data from
-                # client and set back when finishing processing its request.
-                # However, for pipelined requests processing finishes after
-                # already receiving the next request and thus the timer may
-                # be set here, which we don't want.
-                self._unset_keepalive_if_required()
-
                 self.cycle = RequestResponseCycle(
                     scope=self.scope,
                     conn=self.conn,
@@ -254,10 +249,7 @@ class H11Protocol(asyncio.Protocol):
                     # Opt-in workaround for https://github.com/python/cpython/issues/140947:
                     # asyncio can leak context vars between tasks. Hides context set in the
                     # lifespan or by external instrumentation.
-                    if sys.version_info >= (3, 11):  # pragma: py-lt-311
-                        task = self.loop.create_task(self.cycle.run_asgi(app), context=contextvars.Context())
-                    else:  # pragma: py-gte-311
-                        task = contextvars.Context().run(self.loop.create_task, self.cycle.run_asgi(app))
+                    task = self.loop.create_task(self.cycle.run_asgi(app), context=contextvars.Context())
                 else:
                     task = self.loop.create_task(self.cycle.run_asgi(app))
                 task.add_done_callback(self.tasks.discard)
@@ -297,8 +289,8 @@ class H11Protocol(asyncio.Protocol):
             app_state=self.app_state,
         )
         protocol.connection_made(self.transport)
-        protocol.data_received(b"".join(output))
         self.transport.set_protocol(protocol)
+        protocol.data_received(b"".join(output))
 
     def send_400_response(self, msg: str) -> None:
         reason = STATUS_PHRASES[400]

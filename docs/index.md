@@ -42,7 +42,7 @@ Until recently Python has lacked a minimal low-level server/application interfac
 async frameworks. The [ASGI specification](https://asgi.readthedocs.io/en/latest/) fills this gap,
 and means we're now able to start building a common set of tooling usable across all async frameworks.
 
-Uvicorn currently supports **HTTP/1.1** and **WebSockets**.
+Uvicorn currently supports **HTTP/1.1**, **HTTP/2** and **WebSockets**.
 
 ## Sponsorship
 
@@ -108,9 +108,7 @@ The uvicorn command line tool is the easiest way to run your application.
 
 ### Command line options
 
-```bash
-{{ uvicorn_help }}
-```
+Run `uvicorn --help` to see the full set of command line options.
 
 For more information, see the [settings documentation](settings.md).
 

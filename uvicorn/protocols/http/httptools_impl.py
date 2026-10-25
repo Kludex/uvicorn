@@ -5,7 +5,6 @@ import contextvars
 import http
 import logging
 import re
-import sys
 import urllib
 from asyncio.events import TimerHandle
 from collections import deque
@@ -23,7 +22,7 @@ from uvicorn._types import (
 )
 from uvicorn.config import Config
 from uvicorn.logging import TRACE_LOG_LEVEL
-from uvicorn.protocols.http.flow_control import CLOSE_HEADER, HIGH_WATER_LIMIT, FlowControl, service_unavailable
+from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT, FlowControl, service_unavailable
 from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr, is_ssl
 from uvicorn.server import ServerState
 
@@ -70,6 +69,7 @@ class HttpToolsProtocol(asyncio.Protocol):
 
         self.ws_protocol_class = config.ws_protocol_class
         self.root_path = config.root_path
+        self.asgi_version = config.asgi_version
         self.limit_concurrency = config.limit_concurrency
         self.app_state = app_state
 
@@ -129,7 +129,7 @@ class HttpToolsProtocol(asyncio.Protocol):
             self.transport.close()
             self._unset_keepalive_if_required()
 
-        self.parser = None
+        self.parser = None  # type: ignore[assignment]
 
     def eof_received(self) -> None:
         pass
@@ -199,8 +199,8 @@ class HttpToolsProtocol(asyncio.Protocol):
             app_state=self.app_state,
         )
         protocol.connection_made(self.transport)
-        protocol.data_received(b"".join(output))
         self.transport.set_protocol(protocol)
+        protocol.data_received(b"".join(output))
 
     def send_400_response(self, msg: str) -> None:
         content = [STATUS_LINE[400]]
@@ -224,7 +224,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.headers = []
         self.scope = {  # type: ignore[typeddict-item]
             "type": "http",
-            "asgi": {"version": self.config.asgi_version, "spec_version": "2.3"},
+            "asgi": {"version": self.asgi_version, "spec_version": "2.3"},
             "http_version": "1.1",
             "server": self.server,
             "client": self.client,
@@ -240,6 +240,8 @@ class HttpToolsProtocol(asyncio.Protocol):
 
     def on_header(self, name: bytes, value: bytes) -> None:
         name = name.lower()
+        # llhttp keeps trailing OWS, which https://www.rfc-editor.org/rfc/rfc9110#section-5.5 excludes from the value.
+        value = value.rstrip(b" \t")
         if name == b"expect" and value.lower() == b"100-continue":
             self.expect_100_continue = True
         self.headers.append((name, value))
@@ -284,7 +286,7 @@ class HttpToolsProtocol(asyncio.Protocol):
             default_headers=self.server_state.default_headers,
             message_event=asyncio.Event(),
             expect_100_continue=self.expect_100_continue,
-            keep_alive=http_version != "1.0",
+            keep_alive=http_version != "1.0" and self.parser.should_keep_alive(),
             on_response=self.on_response_complete,
         )
         if existing_cycle is None or existing_cycle.response_complete:
@@ -300,10 +302,7 @@ class HttpToolsProtocol(asyncio.Protocol):
             # Opt-in workaround for https://github.com/python/cpython/issues/140947:
             # asyncio can leak context vars between tasks. Hides context set in the
             # lifespan or by external instrumentation.
-            if sys.version_info >= (3, 11):  # pragma: py-lt-311
-                task = self.loop.create_task(cycle.run_asgi(app), context=contextvars.Context())
-            else:  # pragma: py-gte-311
-                task = contextvars.Context().run(self.loop.create_task, cycle.run_asgi(app))
+            task = self.loop.create_task(cycle.run_asgi(app), context=contextvars.Context())
         else:
             task = self.loop.create_task(cycle.run_asgi(app))
         task.add_done_callback(self.tasks.discard)
@@ -477,9 +476,6 @@ class RequestResponseCycle:
             status_code = message["status"]
             headers = self.default_headers + list(message.get("headers", []))
 
-            if CLOSE_HEADER in self.scope["headers"] and CLOSE_HEADER not in headers:
-                headers = headers + [CLOSE_HEADER]
-
             if self.access_log:
                 self.access_logger.info(
                     '%s - "%s %s HTTP/%s" %d',
@@ -492,6 +488,7 @@ class RequestResponseCycle:
 
             # Write response status line and headers
             content = [STATUS_LINE[status_code]]
+            has_connection_close = False
 
             for name, value in headers:
                 if HEADER_RE.search(name):
@@ -506,9 +503,15 @@ class RequestResponseCycle:
                 elif name == b"transfer-encoding" and value.lower() == b"chunked":
                     self.expected_content_length = 0
                     self.chunked_encoding = True
-                elif name == b"connection" and value.lower() == b"close":
-                    self.keep_alive = False
+                elif name == b"connection":
+                    connection = [token.lower().strip() for token in value.split(b",")]
+                    if b"close" in connection:
+                        self.keep_alive = False
+                        has_connection_close = True
                 content.extend([name, b": ", value, b"\r\n"])
+
+            if not self.keep_alive and not has_connection_close:
+                content.append(b"connection: close\r\n")
 
             if self.chunked_encoding is None and self.scope["method"] != "HEAD" and status_code not in (204, 304):
                 # Neither content-length nor transfer-encoding specified

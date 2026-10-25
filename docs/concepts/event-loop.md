@@ -1,9 +1,9 @@
 # Event Loop
 
-Uvicorn provides two event loop implementations that you can choose from using the [`--loop`](../settings.md#implementation) option:
+Uvicorn provides three event loop implementations that you can choose from using the [`--loop`](../settings.md#implementation) option:
 
 ```bash
-uvicorn main:app --loop <auto|asyncio|uvloop>
+uvicorn main:app --loop <auto|asyncio|uvloop|zuvloop>
 ```
 
 By default, Uvicorn uses `--loop auto`, which automatically selects:
@@ -19,28 +19,37 @@ When running with `--reload` or multiple workers, it uses [`SelectorEventLoop`][
 ??? info "Why can `ProactorEventLoop` fail with multiple processes on Windows?"
     If you want to know more about it, you can read the issue [#cpython/122240](https://github.com/python/cpython/issues/122240).
 
-!!! warning "`ProactorEventLoop` and async database drivers on Windows"
-    [`ProactorEventLoop`][asyncio.ProactorEventLoop] does not support
-    [`add_reader()`][asyncio.loop.add_reader] / [`add_writer()`][asyncio.loop.add_writer],
-    which some async database drivers depend on — notably
-    [psycopg](https://www.psycopg.org/psycopg3/docs/) and
-    [asyncpg](https://github.com/MagicStack/asyncpg).
-
-    If you see errors like `Psycopg cannot use the 'ProactorEventLoop'`, switch to
-    [`SelectorEventLoop`][asyncio.SelectorEventLoop] using the [custom event loop](#custom-event-loop)
-    syntax:
+!!! warning "psycopg async does not work with `ProactorEventLoop`"
+    On Windows, psycopg's async mode requires [`SelectorEventLoop`][asyncio.SelectorEventLoop].
+    In single-process mode, select it with the [custom event loop](#custom-event-loop) syntax:
 
     ```bash
     uvicorn main:app --loop asyncio:SelectorEventLoop
     ```
 
-    Or set it once via the environment variable:
+## zuvloop
 
+[`zuvloop`](https://zuvloop.marcelotryle.com/) is an `asyncio` event loop powered by libuv and written in Zig.
+It requires CPython 3.14 or newer.
+
+Install `zuvloop` separately:
+
+=== "pip"
     ```bash
-    set UVICORN_LOOP=asyncio:SelectorEventLoop
+    pip install zuvloop
+    ```
+=== "uv"
+    ```bash
+    uv add zuvloop
     ```
 
-    See [#2749](https://github.com/Kludex/uvicorn/discussions/2749) for more details.
+Then select it explicitly:
+
+```bash
+uvicorn main:app --loop zuvloop
+```
+
+Uvicorn does not include `zuvloop` in the `standard` extra or select it with `--loop auto`.
 
 ## Custom Event Loop
 

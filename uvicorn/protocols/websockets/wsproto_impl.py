@@ -15,7 +15,13 @@ from wsproto.connection import ConnectionState
 from wsproto.extensions import Extension, PerMessageDeflate
 from wsproto.utilities import LocalProtocolError, RemoteProtocolError
 
-from uvicorn._types import ASGI3Application, ASGISendEvent, WebSocketEvent, WebSocketReceiveEvent, WebSocketScope
+from uvicorn._types import (
+    ASGI3Application,
+    ASGISendEvent,
+    WebSocketEvent,
+    WebSocketReceiveEvent,
+    WebSocketScope,
+)
 from uvicorn.config import Config
 from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.protocols.utils import (
@@ -75,6 +81,7 @@ class WSProtocol(asyncio.Protocol):
         self.loop = _loop or asyncio.get_event_loop()
         self.logger = logging.getLogger("uvicorn.error")
         self.root_path = config.root_path
+        self.asgi_version = config.asgi_version
         self.app_state = app_state
 
         # Shared server state
@@ -92,6 +99,9 @@ class WSProtocol(asyncio.Protocol):
         self.queue: asyncio.Queue[WebSocketEvent] = asyncio.Queue()
         self.handshake_complete = False
         self.close_sent = False
+        self.disconnected = False
+        self.close_timer: TimerHandle | None = None
+        self.close_timeout = 10.0
 
         # Rejection state
         self.response_started = False
@@ -129,7 +139,7 @@ class WSProtocol(asyncio.Protocol):
 
     def connection_lost(self, exc: Exception | None) -> None:
         self.stop_keepalive()
-        code = 1005 if self.handshake_complete else 1006
+        code = 1005 if self.handshake_complete and not self.response_started else 1006
         self.queue.put_nowait({"type": "websocket.disconnect", "code": code})
         self.connections.remove(self)
 
@@ -138,6 +148,12 @@ class WSProtocol(asyncio.Protocol):
             self.logger.log(TRACE_LOG_LEVEL, "%sWebSocket connection lost", prefix)
 
         self.handshake_complete = True
+        self.disconnected = True
+        # asyncio never calls resume_writing() when a paused transport is lost.
+        self.writable.set()
+        if self.close_timer is not None:
+            self.close_timer.cancel()
+            self.close_timer = None
         if exc is None:
             self.transport.close()
 
@@ -151,13 +167,19 @@ class WSProtocol(asyncio.Protocol):
             # TODO: Remove `type: ignore` when wsproto fixes the type annotation.
             self.transport.write(self.conn.send(err.event_hint))  # type: ignore[arg-type]  # noqa: E501
             self.transport.close()
+        except LocalProtocolError:
+            # Data received after the close handshake completed, e.g. a pong the client
+            # sent while the server's close was in flight.
+            self.transport.close()
         else:
             self.handle_events()
 
     def handle_events(self) -> None:
         for event in self.conn.events():
             if self.close_sent:
-                return
+                if isinstance(event, events.CloseConnection):
+                    self.handle_close(event)
+                continue
             if isinstance(event, events.Request):
                 self.handle_connect(event)
             elif isinstance(event, (events.TextMessage, events.BytesMessage)):
@@ -183,7 +205,13 @@ class WSProtocol(asyncio.Protocol):
 
     def shutdown(self) -> None:
         self.stop_keepalive()
-        if self.handshake_complete:
+        if self.close_sent:
+            if self.close_timer is not None:
+                self.close_timer.cancel()
+                self.close_timer = None
+            self.transport.close()
+            return
+        if self.handshake_complete and not self.response_started:
             self.queue.put_nowait({"type": "websocket.disconnect", "code": 1012})
             output = self.conn.send(wsproto.events.CloseConnection(code=1012))
             self.transport.write(output)
@@ -205,7 +233,7 @@ class WSProtocol(asyncio.Protocol):
         full_raw_path = self.root_path.encode("ascii") + raw_path.encode("ascii")
         self.scope: WebSocketScope = {
             "type": "websocket",
-            "asgi": {"version": self.config.asgi_version, "spec_version": "2.4"},
+            "asgi": {"version": self.asgi_version, "spec_version": "2.4"},
             "http_version": "1.1",
             "scheme": self.scheme,
             "server": self.server,
@@ -243,6 +271,13 @@ class WSProtocol(asyncio.Protocol):
                 self.transport.pause_reading()
 
     def handle_close(self, event: events.CloseConnection) -> None:
+        if self.close_sent:
+            # The peer echoed our close frame: the closing handshake is complete.
+            if self.close_timer is not None:
+                self.close_timer.cancel()
+                self.close_timer = None
+                self.transport.close()
+            return
         if self.conn.state == ConnectionState.REMOTE_CLOSING:
             self.transport.write(self.conn.send(event.response()))
         self.queue.put_nowait({"type": "websocket.disconnect", "code": event.code, "reason": event.reason})
@@ -336,10 +371,14 @@ class WSProtocol(asyncio.Protocol):
                 self.send_500_response()
             elif result is not None:
                 self.logger.error("ASGI callable should return None, but returned '%s'.", result)
-        self.transport.close()
+        if self.close_timer is None:
+            self.transport.close()
 
     async def send(self, message: ASGISendEvent) -> None:
         await self.writable.wait()
+
+        if self.disconnected:
+            raise ClientDisconnected()
 
         if not self.handshake_complete:
             if message["type"] == "websocket.accept":
@@ -424,7 +463,10 @@ class WSProtocol(asyncio.Protocol):
                     output = self.conn.send(wsproto.events.CloseConnection(code=code, reason=reason))
                     if not self.transport.is_closing():
                         self.transport.write(output)
-                        self.transport.close()
+                        if self.read_paused:
+                            self.read_paused = False
+                            self.transport.resume_reading()
+                        self.close_timer = self.loop.call_later(self.close_timeout, self.transport.close)
 
                 else:
                     raise RuntimeError(

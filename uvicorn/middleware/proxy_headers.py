@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import ipaddress
 
 from uvicorn._types import ASGI3Application, ASGIReceiveCallable, ASGISendCallable, Scope
@@ -32,10 +33,16 @@ class ProxyHeadersMiddleware:
         client_host = client_addr[0] if client_addr else None
 
         if client_host in self.trusted_hosts:
-            headers = dict(scope["headers"])
+            x_forwarded_proto_value: bytes | None = None
+            x_forwarded_for_values: list[bytes] = []
+            for name, value in scope["headers"]:
+                if name == b"x-forwarded-proto":
+                    x_forwarded_proto_value = value
+                elif name == b"x-forwarded-for":
+                    x_forwarded_for_values.append(value)
 
-            if b"x-forwarded-proto" in headers:
-                x_forwarded_proto = headers[b"x-forwarded-proto"].decode("latin1").strip()
+            if x_forwarded_proto_value is not None:
+                x_forwarded_proto = x_forwarded_proto_value.decode("latin1").strip()
 
                 if x_forwarded_proto in {"http", "https", "ws", "wss"}:
                     if scope["type"] == "websocket":
@@ -43,8 +50,8 @@ class ProxyHeadersMiddleware:
                     else:
                         scope["scheme"] = x_forwarded_proto
 
-            if b"x-forwarded-for" in headers:
-                x_forwarded_for = headers[b"x-forwarded-for"].decode("latin1")
+            if x_forwarded_for_values:
+                x_forwarded_for = b", ".join(x_forwarded_for_values).decode("latin1")
                 host, port = self.trusted_hosts.get_trusted_client_address(x_forwarded_for)
 
                 if host:
@@ -137,6 +144,8 @@ class _TrustedHosts:
                         # Was not a valid IP Address
                         self.trusted_literals.add(host)
 
+        self._trusts = functools.lru_cache(maxsize=4096)(self._compute_trust)
+
     def __contains__(self, host: str | None) -> bool:
         if self.always_trust:
             return True
@@ -144,12 +153,16 @@ class _TrustedHosts:
         if not host:
             return False
 
+        # Don't cache hosts longer than a DNS name (253); they can't be trusted and would pin huge cache keys.
+        if len(host) > 253:
+            return self._compute_trust(host)  # pragma: no cover
+
+        return self._trusts(host)
+
+    def _compute_trust(self, host: str) -> bool:
         try:
             ip = ipaddress.ip_address(host)
-            if ip in self.trusted_hosts:
-                return True
-            return any(ip in net for net in self.trusted_networks)
-
+            return ip in self.trusted_hosts or any(ip in net for net in self.trusted_networks)
         except ValueError:
             return host in self.trusted_literals
 
