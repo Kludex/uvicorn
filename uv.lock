@@ -1,11 +1,11 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'emscripten'",
     "python_full_version >= '3.15' and sys_platform != 'emscripten'",
     "python_full_version >= '3.12' and python_full_version < '3.15' and sys_platform == 'emscripten'",
-    "python_full_version < '3.12' or (python_full_version >= '3.12' and python_full_version < '3.15' and sys_platform != 'emscripten')",
+    "(python_full_version < '3.15' and sys_platform != 'emscripten') or (python_full_version < '3.12' and sys_platform == 'emscripten')",
 ]
 
 [options]
@@ -13,9 +13,9 @@ exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for 
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
-certifi = "2026-10-20T23:59:59Z"
-httptools = "2026-05-26T22:00:00Z"
 zttp = "2026-09-19T23:59:59Z"
+certifi = "2026-10-20T23:59:59Z"
+httptools = "2026-05-26T18:30:00Z"
 
 [[package]]
 name = "a2wsgi"
@@ -1676,7 +1676,6 @@ wheels = [
 [[package]]
 name = "uvicorn"
 source = { editable = "." }
-default-groups = ["dev", "docs"]
 dependencies = [
     { name = "click" },
     { name = "h11" },
