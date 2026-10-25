@@ -116,6 +116,27 @@ async def test_invalid_upgrade(ws_protocol_cls: WSProtocol, http_protocol_cls: H
             ]
 
 
+async def test_unparseable_upgrade_closes_connection(http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
+    def app(scope: Scope):
+        return None  # pragma: no cover
+
+    config = Config(app=app, ws=WebSocketsSansIOProtocol, http=http_protocol_cls, port=unused_tcp_port)
+    async with run_server(config):
+        reader, writer = await asyncio.open_connection("127.0.0.1", unused_tcp_port)
+        writer.write(
+            b"GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+            b"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n"
+            b"Cookie: " + b"x" * 9000 + b"\r\n\r\n"  # header line over websockets' 8 KiB limit
+        )
+        response = await asyncio.wait_for(reader.read(), timeout=5)  # returns once the server closes
+        writer.close()
+
+    if websockets_version >= "17.0":
+        assert response.startswith(b"HTTP/1.1 431 Request Header Fields Too Large\r\n")
+    else:  # pragma: no cover
+        assert response == b""
+
+
 async def test_accept_connection(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
     class App(WebSocketResponse):
         async def websocket_connect(self, message: WebSocketConnectEvent):

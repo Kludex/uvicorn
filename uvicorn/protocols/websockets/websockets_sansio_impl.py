@@ -190,6 +190,14 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         if self.conn.parser_exc is not None:  # pragma: no cover
             self.handle_parser_exception()
             return
+        if self.conn.handshake_exc is not None and not self.handshake_initiated:
+            # websockets couldn't parse the handshake request (e.g. a header line over its limit).
+            # It has already queued its own response (websockets >= 17) or an EOF (older versions).
+            self.handshake_complete = True
+            self.close_sent = True
+            self.transport.write(b"".join(self.conn.data_to_send()))
+            self.transport.close()
+            return
         self.handle_events()
 
     def handle_events(self) -> None:
