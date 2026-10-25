@@ -4,11 +4,21 @@ import http
 import logging
 import sys
 from copy import copy
-from typing import Literal
+from typing import Any, Literal
 
 from uvicorn._ansi import style as ansi_style
 
 TRACE_LOG_LEVEL = 5
+
+# "200 OK", "404 Not Found", ... for every status `http.HTTPStatus` knows.
+_STATUS_PHRASES = {status.value: f"{status.value} {status.phrase}" for status in http.HTTPStatus}
+
+
+class _Fields:
+    """Lets the stdlib format styles, which read `obj.__dict__`, format a plain dict."""
+
+    def __init__(self, fields: dict[str, Any]) -> None:
+        self.__dict__ = fields
 
 
 class ColourizedFormatter(logging.Formatter):
@@ -43,26 +53,36 @@ class ColourizedFormatter(logging.Formatter):
         super().__init__(fmt=fmt, datefmt=datefmt, style=style)
 
     def color_level_name(self, level_name: str, level_no: int) -> str:
-        def default(level_name: str) -> str:
-            return str(level_name)  # pragma: no cover
-
-        func = self.level_name_colors.get(level_no, default)
-        return func(level_name)
+        colour = self.level_name_colors.get(level_no)
+        return level_name if colour is None else colour(level_name)
 
     def should_use_colors(self) -> bool:
         return True  # pragma: no cover
 
     def formatMessage(self, record: logging.LogRecord) -> str:
-        recordcopy = copy(record)
-        levelname = recordcopy.levelname
-        separator = " " * (8 - len(recordcopy.levelname))
+        # The record is shared with every other handler, so Uvicorn's fields never go onto it:
+        # the format string reads them from a separate mapping instead.
+        return super().formatMessage(_Fields(record.__dict__ | self._fields(record)))  # type: ignore[arg-type]
+
+    def _fields(self, record: logging.LogRecord) -> dict[str, Any]:
+        """The fields this formatter adds for its format string to use."""
+        levelname = record.levelname
+        separator = " " * (8 - len(levelname))
+        fields: dict[str, Any] = {}
         if self.use_colors:
-            levelname = self.color_level_name(levelname, recordcopy.levelno)
-            if "color_message" in recordcopy.__dict__:
-                recordcopy.msg = recordcopy.__dict__["color_message"]
-                recordcopy.__dict__["message"] = recordcopy.getMessage()
-        recordcopy.__dict__["levelprefix"] = levelname + ":" + separator
-        return super().formatMessage(recordcopy)
+            levelname = self.color_level_name(levelname, record.levelno)
+            if "color_message" in record.__dict__:
+                fields["message"] = self._color_message(record)
+        fields["levelprefix"] = levelname + ":" + separator
+        return fields
+
+    @staticmethod
+    def _color_message(record: logging.LogRecord) -> str:
+        # Rare (a few lines at startup), so a copy is fine here; it keeps any `getMessage()`
+        # override on a custom record class.
+        recordcopy = copy(record)
+        recordcopy.msg = record.__dict__["color_message"]
+        return recordcopy.getMessage()
 
 
 class DefaultFormatter(ColourizedFormatter):
@@ -80,38 +100,20 @@ class AccessFormatter(ColourizedFormatter):
     }
 
     def get_status_code(self, status_code: int) -> str:
-        try:
-            status_phrase = http.HTTPStatus(status_code).phrase
-        except ValueError:
-            status_phrase = ""
-        status_and_phrase = f"{status_code} {status_phrase}"
+        status_and_phrase = _STATUS_PHRASES.get(status_code) or f"{status_code} "
         if self.use_colors:
-
-            def default(code: int) -> str:
-                return status_and_phrase  # pragma: no cover
-
-            func = self.status_code_colours.get(status_code // 100, default)
-            return func(status_and_phrase)
+            colour = self.status_code_colours.get(status_code // 100)
+            if colour is not None:
+                return colour(status_and_phrase)
         return status_and_phrase
 
-    def formatMessage(self, record: logging.LogRecord) -> str:
-        recordcopy = copy(record)
-        (
-            client_addr,
-            method,
-            full_path,
-            http_version,
-            status_code,
-        ) = recordcopy.args  # type: ignore[misc]
-        status_code = self.get_status_code(int(status_code))  # type: ignore[arg-type]
+    def _fields(self, record: logging.LogRecord) -> dict[str, Any]:
+        client_addr, method, full_path, http_version, status_code = record.args  # type: ignore[misc]
         request_line = f"{method} {full_path} HTTP/{http_version}"
         if self.use_colors:
             request_line = ansi_style(request_line, bold=True)
-        recordcopy.__dict__.update(
-            {
-                "client_addr": client_addr,
-                "request_line": request_line,
-                "status_code": status_code,
-            }
-        )
-        return super().formatMessage(recordcopy)
+        return super()._fields(record) | {
+            "client_addr": client_addr,
+            "request_line": request_line,
+            "status_code": self.get_status_code(int(status_code)),  # type: ignore[arg-type]
+        }
