@@ -87,7 +87,9 @@ class Output:
 
 def normalize(text: str) -> list[str]:
     text = re.sub(r"127\.0\.0\.1:\d+", "127.0.0.1:PORT", text)
-    text = text.replace(str(os.getpid()), "PID")
+    # Only in "Started/Finished server process [PID]", where the PID may be wrapped in colour codes:
+    # the same digits can appear in a status code, a path or a date.
+    text = re.sub(rf"(server process \[(?:\x1b\[\d+m)?){os.getpid()}\b", r"\1PID", text)
     # Traceback frames depend on file paths and the Python version: keep only the header and the
     # exception line, which are the lines the formatter produces.
     return [line for line in text.splitlines() if not line.startswith(" ")]
