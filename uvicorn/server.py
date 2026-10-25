@@ -72,7 +72,7 @@ class WriteStall:
 
 
 class WriteStallMonitor:
-    """Aborts connections whose unsent data hasn't shrunk for `timeout` seconds.
+    """Aborts connections whose unsent data hasn't changed for `timeout` seconds.
 
     A client that stops reading would otherwise hold its connection, and the data waiting to be sent, forever.
     """
@@ -90,7 +90,7 @@ class WriteStallMonitor:
             if not unsent:
                 continue
             previous = self._stalls.get(connection)
-            if previous is None or unsent < previous.unsent:
+            if previous is None or unsent != previous.unsent:
                 stalls[connection] = WriteStall(unsent, now)
             elif now - previous.since >= self.timeout:
                 connection.transport.abort()

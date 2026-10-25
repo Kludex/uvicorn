@@ -307,7 +307,7 @@ WEBSOCKET_UPGRADE_REQUEST = b"\r\n".join(
 )
 
 
-async def streaming_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+async def streaming_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:  # pragma: py-win32
     assert scope["type"] == "http"
     await send({"type": "http.response.start", "status": 200, "headers": []})
     chunk = b"x" * HIGH_WATER_LIMIT
@@ -317,13 +317,9 @@ async def streaming_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISe
 
 
 @contextlib.asynccontextmanager
-async def slow_client(
-    port: int, receive_buffer_size: int | None = None, request: bytes = SIMPLE_GET_REQUEST
-) -> AsyncIterator[socket.socket]:
+async def slow_client(port: int, request: bytes = SIMPLE_GET_REQUEST) -> AsyncIterator[socket.socket]:
     loop = asyncio.get_running_loop()
     with socket.socket() as client:
-        if receive_buffer_size is not None:
-            client.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, receive_buffer_size)
         client.setblocking(False)
         await loop.sock_connect(client, ("127.0.0.1", port))
         await loop.sock_sendall(client, request)
@@ -346,12 +342,14 @@ async def test_timeout_write_closes_connection_when_client_stops_reading(
 ):  # pragma: py-win32
     config = Config(app=streaming_app, port=unused_tcp_port, http=http_protocol_cls, lifespan="off", timeout_write=1)
     async with run_server(config):
-        async with slow_client(unused_tcp_port, receive_buffer_size=4096) as client:
+        async with slow_client(unused_tcp_port) as client:
             await asyncio.sleep(3.5)
             assert await read_until_closed(client) < STREAMED_BYTES
 
 
-async def websocket_streaming_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+async def websocket_streaming_app(
+    scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
+) -> None:  # pragma: py-win32
     assert scope["type"] == "websocket"
     await receive()
     await send({"type": "websocket.accept"})
@@ -369,7 +367,7 @@ async def test_timeout_write_closes_websocket_when_client_stops_reading(
         app=websocket_streaming_app, port=unused_tcp_port, ws=ws_protocol_cls, lifespan="off", timeout_write=1
     )
     async with run_server(config):
-        async with slow_client(unused_tcp_port, receive_buffer_size=4096, request=WEBSOCKET_UPGRADE_REQUEST) as client:
+        async with slow_client(unused_tcp_port, request=WEBSOCKET_UPGRADE_REQUEST) as client:
             await asyncio.sleep(3.5)
             assert await read_until_closed(client) < STREAMED_BYTES
 
