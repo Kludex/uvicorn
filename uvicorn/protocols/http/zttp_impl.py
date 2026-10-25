@@ -146,6 +146,9 @@ class ZttpProtocol(asyncio.Protocol):
             if isinstance(event, zttp.Request):
                 # Pipelined HTTP requests and WebSocket upgrades may be processed after the keep-alive timer is armed.
                 self._unset_keepalive_if_required()
+                if not event.target.isascii():
+                    self.handle_remote_protocol_error()
+                    return
 
                 assert isinstance(event.headers, zttp.HeaderBlock)
                 self.headers = event.headers.to_list(lowercase_names=True)

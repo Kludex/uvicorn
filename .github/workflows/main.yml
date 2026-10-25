@@ -10,7 +10,7 @@ jobs:
   tests:
     name: "Python ${{ matrix.python-version }} ${{ matrix.os }}"
     runs-on: "${{ matrix.os }}"
-    timeout-minutes: 10
+    timeout-minutes: 20
 
     permissions:
       contents: read
@@ -18,8 +18,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13", "3.14", "3.14t"]
+        python-version: ["3.11", "3.12", "3.13", "3.14", "3.14t", "3.15", "3.15t"]
         os: [windows-latest, ubuntu-latest, macos-latest]
+        exclude:
+          # `cryptography` has no cp315t wheels yet, and building it needs OpenSSL.
+          - python-version: "3.15t"
+            os: windows-latest
 
     steps:
       - uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" # v7.0.1

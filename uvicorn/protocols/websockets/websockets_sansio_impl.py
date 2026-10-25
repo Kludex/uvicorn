@@ -134,7 +134,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
 
     def connection_lost(self, exc: Exception | None) -> None:
         self.stop_keepalive()
-        code = 1005 if self.handshake_complete else 1006
+        code = 1005 if self.handshake_complete and self.initial_response is None else 1006
         self.queue.put_nowait({"type": "websocket.disconnect", "code": code})
         self.connections.remove(self)
 
@@ -176,7 +176,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 self.close_timer = None
             self.transport.close()
             return
-        if self.handshake_complete:
+        if self.handshake_complete and self.initial_response is None:
             self.queue.put_nowait({"type": "websocket.disconnect", "code": 1012})
             self.conn.send_close(1012)
             output = self.conn.data_to_send()
@@ -189,6 +189,9 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.conn.receive_data(data)
         if self.conn.parser_exc is not None:  # pragma: no cover
             self.handle_parser_exception()
+            return
+        if self.conn.handshake_exc is not None and not self.handshake_initiated:
+            self.handle_handshake_exception()
             return
         self.handle_events()
 
@@ -394,6 +397,17 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.close_sent = True
         self.transport.close()
 
+    def handle_handshake_exception(self) -> None:
+        # websockets couldn't parse the handshake request. It queues a 414/431 for exceeded limits
+        # (websockets >= 17) and only an EOF otherwise, so we answer with a 400 in that case.
+        self.handshake_complete = True
+        self.close_sent = True
+        output = b"".join(self.conn.data_to_send())
+        if not output:
+            output = self.conn.reject(400, "Failed to open a WebSocket connection: invalid request.\n").serialize()
+        self.transport.write(output)
+        self.transport.close()
+
     def on_task_complete(self, task: asyncio.Task[None]) -> None:
         self.tasks.discard(task)
 
@@ -480,6 +494,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                     for name, value in list(message.get("headers", []))
                 ]
                 self.initial_response = (message["status"], headers, b"")
+                self.handshake_complete = True
             else:
                 raise RuntimeError(
                     "Expected ASGI message 'websocket.accept', 'websocket.close' "
