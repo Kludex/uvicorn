@@ -21,7 +21,7 @@ from uvicorn.config import STARTUP_FAILURE, Config
 from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT
 from uvicorn.protocols.http.h11_impl import H11Protocol
 from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
-from uvicorn.server import Server
+from uvicorn.server import Server, WriteStallMonitor
 
 pytestmark = pytest.mark.anyio
 
@@ -416,32 +416,38 @@ class StalledConnection:
         self.transport = StalledTransport(unsent)
 
 
-async def test_timeout_write_aborts_connection_without_progress():
-    server = Server(Config(app=app, timeout_write=1))
+async def test_write_stall_monitor_aborts_connection_without_progress():
+    monitor = WriteStallMonitor(timeout=1)
     stalled, idle = StalledConnection(unsent=1024), StalledConnection(unsent=0)
-    server.server_state.connections.update({stalled, idle})
 
-    await server.on_tick(0)
-    await asyncio.sleep(1.1)
-    await server.on_tick(10)
+    await monitor.check([stalled, idle], now=0)
+    await monitor.check([stalled, idle], now=0.9)
+    assert not stalled.transport.aborted
 
+    await monitor.check([stalled, idle], now=1)
     assert stalled.transport.aborted
     assert not idle.transport.aborted
 
 
-async def test_timeout_write_restarts_while_data_drains():
-    server = Server(Config(app=app, timeout_write=1))
+async def test_write_stall_monitor_restarts_while_data_drains():
+    monitor = WriteStallMonitor(timeout=1)
     connection = StalledConnection(unsent=1024)
-    server.server_state.connections.add(connection)
 
-    await server.on_tick(0)
-    await asyncio.sleep(0.6)
+    await monitor.check([connection], now=0)
     connection.transport.unsent = 512
-    await server.on_tick(10)
-    await asyncio.sleep(0.6)
-    await server.on_tick(20)
+    await monitor.check([connection], now=0.6)
+    await monitor.check([connection], now=1.5)
     assert not connection.transport.aborted
 
-    await asyncio.sleep(0.5)
-    await server.on_tick(30)
+    await monitor.check([connection], now=1.6)
     assert connection.transport.aborted
+
+
+async def test_write_stall_monitor_checks_every_connection_across_chunks():
+    monitor = WriteStallMonitor(timeout=1)
+    connections = [StalledConnection(unsent=1024) for _ in range(3000)]
+
+    await monitor.check(connections, now=0)
+    await monitor.check(connections, now=1)
+
+    assert all(connection.transport.aborted for connection in connections)
