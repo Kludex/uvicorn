@@ -182,7 +182,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 self.close_timer = None
             self.transport.close()
             return
-        if self.handshake_complete:
+        if self.handshake_complete and self.initial_response is None:
             self.queue.put_nowait({"type": "websocket.disconnect", "code": 1012})
             self.conn.send_close(1012)
             output = self.conn.data_to_send()
@@ -487,6 +487,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                     for name, value in list(message.get("headers", []))
                 ]
                 self.initial_response = (message["status"], headers, b"")
+                self.handshake_complete = True
             else:
                 raise RuntimeError(
                     "Expected ASGI message 'websocket.accept', 'websocket.close' "
@@ -540,10 +541,6 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                     self.conn.send_response(response)
                     output = self.conn.data_to_send()
                     self.close_sent = True
-                    # A denial response finishes the handshake just as an
-                    # accept does, so run_asgi must not treat the app's return
-                    # as an incomplete handshake and log an error for it.
-                    self.handshake_complete = True
                     self.transport.write(b"".join(output))
                     self.transport.close()
             else:  # pragma: no cover

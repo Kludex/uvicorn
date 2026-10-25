@@ -211,7 +211,7 @@ class WSProtocol(asyncio.Protocol):
                 self.close_timer = None
             self.transport.close()
             return
-        if self.handshake_complete:
+        if self.handshake_complete and not self.response_started:
             self.queue.put_nowait({"type": "websocket.disconnect", "code": 1012})
             output = self.conn.send(wsproto.events.CloseConnection(code=1012))
             self.transport.write(output)
