@@ -7,6 +7,7 @@ import json
 import logging
 import signal
 import sys
+import time
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
 
@@ -276,3 +277,23 @@ async def test_reset_contextvars_asyncio(
     ) as extract_json_body:
         assert await extract_json_body(large_request) == {}
         assert await extract_json_body(SIMPLE_GET_REQUEST) == {}
+
+
+async def test_idle_server_fast_shutdown(unused_tcp_port: int) -> None:
+    """Idle server with no connections stops promptly upon should_exit."""
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        pass
+
+    config = Config(app=app, host="127.0.0.1", port=unused_tcp_port, lifespan="off")
+    server = Server(config=config)
+    task = asyncio.create_task(server.serve())
+    while not server.started:
+        await asyncio.sleep(0.001)
+
+    start_time = time.perf_counter()
+    server.should_exit = True
+    await task
+    elapsed = time.perf_counter() - start_time
+    # Prior to optimization this took ~200ms (100ms main loop + 100ms shutdown drain)
+    assert elapsed < 0.08
