@@ -103,7 +103,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.connections.add(self)
 
         self.transport = transport
-        self.flow = FlowControl(transport, self.loop, self.config.timeout_write)
+        self.flow = FlowControl(transport)
         self.server = get_local_addr(transport)
         self.client = get_remote_addr(transport)
         self.scheme = "https" if is_ssl(transport) else "http"
@@ -124,7 +124,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         if self.cycle is not None:
             self.cycle.message_event.set()
         if self.flow is not None:
-            self.flow.connection_lost()
+            self.flow.resume_writing()
         if exc is None:
             self.transport.close()
             self._unset_keepalive_if_required()
@@ -371,7 +371,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         delay.
         """
         if not self.transport.is_closing():
-            self.flow.close_transport()
+            self.transport.close()
 
 
 class RequestResponseCycle:
@@ -555,7 +555,7 @@ class RequestResponseCycle:
                 self.response_complete = True
                 self.message_event.set()
                 if not self.keep_alive:
-                    self.flow.close_transport()
+                    self.transport.close()
                 self.on_response()
 
         else:

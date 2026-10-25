@@ -73,6 +73,8 @@ class Server:
         self.should_exit = False
         self.force_exit = False
         self.last_notified = 0.0
+        self._timeout_write = config.timeout_write
+        self._write_stalls: dict[Protocols, tuple[int, float]] = {}
 
         self._captured_signals: list[int] = []
 
@@ -95,6 +97,12 @@ class Server:
         config = self.config
         if not config.loaded:
             config.load()
+
+        if sys.platform == "win32" and isinstance(
+            asyncio.get_running_loop(), asyncio.ProactorEventLoop
+        ):  # pragma: py-not-win32
+            # Proactor only reports a send's progress once all of it completes, so a slow reader would look stalled.
+            self._timeout_write = None
 
         self.lifespan = config.lifespan_class(config)
 
@@ -267,6 +275,9 @@ class Server:
                     self.last_notified = current_time
                     await self.config.callback_notify()
 
+            if self._timeout_write is not None:
+                self._abort_stalled_writes(self._timeout_write, time.monotonic())
+
         # Determine if we should exit.
         if self.should_exit:
             return True
@@ -277,6 +288,22 @@ class Server:
             return True
 
         return False
+
+    def _abort_stalled_writes(self, timeout: int, now: float) -> None:
+        # A client that stops reading would otherwise hold its connection and the unsent data forever.
+        stalls: dict[Protocols, tuple[int, float]] = {}
+        for connection in self.server_state.connections:
+            unsent = connection.transport.get_write_buffer_size()
+            if not unsent:
+                continue
+            previous = self._write_stalls.get(connection)
+            if previous is None or unsent < previous[0]:
+                stalls[connection] = (unsent, now)
+            elif now - previous[1] >= timeout:
+                connection.transport.abort()
+            else:
+                stalls[connection] = previous
+        self._write_stalls = stalls
 
     async def shutdown(self, sockets: list[socket.socket] | None = None) -> None:
         logger.info("Shutting down")

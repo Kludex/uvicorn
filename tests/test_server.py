@@ -293,6 +293,18 @@ def body_app(body: bytes) -> ASGIApplication:
 
 
 STREAMED_BYTES = 64 * 1024 * 1024
+WEBSOCKET_UPGRADE_REQUEST = b"\r\n".join(
+    [
+        b"GET / HTTP/1.1",
+        b"Host: example.org",
+        b"Upgrade: websocket",
+        b"Connection: Upgrade",
+        b"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==",
+        b"Sec-WebSocket-Version: 13",
+        b"",
+        b"",
+    ]
+)
 
 
 async def streaming_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
@@ -305,14 +317,16 @@ async def streaming_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISe
 
 
 @contextlib.asynccontextmanager
-async def slow_client(port: int, receive_buffer_size: int | None = None) -> AsyncIterator[socket.socket]:
+async def slow_client(
+    port: int, receive_buffer_size: int | None = None, request: bytes = SIMPLE_GET_REQUEST
+) -> AsyncIterator[socket.socket]:
     loop = asyncio.get_running_loop()
     with socket.socket() as client:
         if receive_buffer_size is not None:
             client.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, receive_buffer_size)
         client.setblocking(False)
         await loop.sock_connect(client, ("127.0.0.1", port))
-        await loop.sock_sendall(client, SIMPLE_GET_REQUEST)
+        await loop.sock_sendall(client, request)
         yield client
 
 
@@ -333,20 +347,31 @@ async def test_timeout_write_closes_connection_when_client_stops_reading(
     config = Config(app=streaming_app, port=unused_tcp_port, http=http_protocol_cls, lifespan="off", timeout_write=1)
     async with run_server(config):
         async with slow_client(unused_tcp_port, receive_buffer_size=4096) as client:
-            await asyncio.sleep(2)
+            await asyncio.sleep(3.5)
             assert await read_until_closed(client) < STREAMED_BYTES
 
 
-async def test_timeout_write_cleans_up_when_client_disconnects(
-    http_protocol_cls: type[H11Protocol | HttpToolsProtocol], unused_tcp_port: int
-):
-    config = Config(app=streaming_app, port=unused_tcp_port, http=http_protocol_cls, lifespan="off")
-    async with run_server(config) as server:
-        async with slow_client(unused_tcp_port, receive_buffer_size=4096):
-            await asyncio.sleep(0.5)
-        async with asyncio.timeout(5):
-            while server.server_state.connections or server.server_state.tasks:
-                await asyncio.sleep(0.05)
+async def websocket_streaming_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+    assert scope["type"] == "websocket"
+    await receive()
+    await send({"type": "websocket.accept"})
+    chunk = b"x" * HIGH_WATER_LIMIT
+    with contextlib.suppress(OSError):
+        for _ in range(STREAMED_BYTES // len(chunk)):
+            await send({"type": "websocket.send", "bytes": chunk})
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="The write timeout is disabled on ProactorEventLoop")
+async def test_timeout_write_closes_websocket_when_client_stops_reading(
+    ws_protocol_cls: type[asyncio.Protocol], unused_tcp_port: int
+):  # pragma: py-win32
+    config = Config(
+        app=websocket_streaming_app, port=unused_tcp_port, ws=ws_protocol_cls, lifespan="off", timeout_write=1
+    )
+    async with run_server(config):
+        async with slow_client(unused_tcp_port, receive_buffer_size=4096, request=WEBSOCKET_UPGRADE_REQUEST) as client:
+            await asyncio.sleep(3.5)
+            assert await read_until_closed(client) < STREAMED_BYTES
 
 
 async def test_timeout_write_keeps_connection_while_client_reads_slowly(
@@ -372,3 +397,51 @@ async def test_timeout_write_keeps_connection_while_client_reads_slowly(
                     received += len(chunk)
     assert head.startswith(b"HTTP/1.1 200 OK")
     assert received == len(LARGE_BODY)
+
+
+class StalledTransport:
+    def __init__(self, unsent: int) -> None:
+        self.unsent = unsent
+        self.aborted = False
+
+    def get_write_buffer_size(self) -> int:
+        return self.unsent
+
+    def abort(self) -> None:
+        self.aborted = True
+
+
+class StalledConnection:
+    def __init__(self, unsent: int) -> None:
+        self.transport = StalledTransport(unsent)
+
+
+async def test_timeout_write_aborts_connection_without_progress():
+    server = Server(Config(app=app, timeout_write=1))
+    stalled, idle = StalledConnection(unsent=1024), StalledConnection(unsent=0)
+    server.server_state.connections.update({stalled, idle})
+
+    await server.on_tick(0)
+    await asyncio.sleep(1.1)
+    await server.on_tick(10)
+
+    assert stalled.transport.aborted
+    assert not idle.transport.aborted
+
+
+async def test_timeout_write_restarts_while_data_drains():
+    server = Server(Config(app=app, timeout_write=1))
+    connection = StalledConnection(unsent=1024)
+    server.server_state.connections.add(connection)
+
+    await server.on_tick(0)
+    await asyncio.sleep(0.6)
+    connection.transport.unsent = 512
+    await server.on_tick(10)
+    await asyncio.sleep(0.6)
+    await server.on_tick(20)
+    assert not connection.transport.aborted
+
+    await asyncio.sleep(0.5)
+    await server.on_tick(30)
+    assert connection.transport.aborted

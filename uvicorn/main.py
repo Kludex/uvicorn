@@ -308,7 +308,7 @@ def _parse_headers(ctx: click.Context, param: click.Parameter, value: tuple[str,
     "--timeout-write",
     type=int,
     default=60,
-    help="Close the connection if no pending response data can be sent to the client within this timeout (in seconds).",
+    help="Close a connection if none of its pending data can be sent to the client within this timeout (in seconds).",
     show_default=True,
 )
 @click.option(

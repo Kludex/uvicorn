@@ -94,7 +94,7 @@ class H11Protocol(asyncio.Protocol):
         self.connections.add(self)
 
         self.transport = transport
-        self.flow = FlowControl(transport, self.loop, self.config.timeout_write)
+        self.flow = FlowControl(transport)
         self.server = get_local_addr(transport)
         self.client = get_remote_addr(transport)
         self.scheme = "https" if is_ssl(transport) else "http"
@@ -123,7 +123,7 @@ class H11Protocol(asyncio.Protocol):
         if self.cycle is not None:
             self.cycle.message_event.set()
         if self.flow is not None:
-            self.flow.connection_lost()
+            self.flow.resume_writing()
         if exc is None:
             self.transport.close()
             self._unset_keepalive_if_required()
@@ -360,7 +360,7 @@ class H11Protocol(asyncio.Protocol):
         if not self.transport.is_closing():
             event = h11.ConnectionClosed()
             self.conn.send(event)
-            self.flow.close_transport()
+            self.transport.close()
 
 
 class RequestResponseCycle:
@@ -512,7 +512,7 @@ class RequestResponseCycle:
         if self.response_complete:
             if self.conn.our_state is h11.MUST_CLOSE or not self.keep_alive:
                 self.conn.send(event=h11.ConnectionClosed())
-                self.flow.close_transport()
+                self.transport.close()
             self.on_response()
 
     async def receive(self) -> ASGIReceiveEvent:

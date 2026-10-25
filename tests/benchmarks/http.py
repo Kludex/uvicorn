@@ -103,9 +103,6 @@ class MockTransport:
     def is_closing(self) -> bool:
         return self.closed
 
-    def get_write_buffer_size(self) -> int:
-        return 0
-
     def clear_buffer(self) -> None:
         self.buffer = b""
 

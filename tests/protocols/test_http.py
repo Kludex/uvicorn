@@ -175,8 +175,6 @@ class MockTransport:
         self.peername = ("127.0.0.1", 8001) if peername is None else peername
         self.sslcontext = sslcontext
         self.closed = False
-        self.aborted = False
-        self.unsent = 0
         self.buffer = b""
         self.read_paused = False
         self.protocol: asyncio.Protocol | None = None
@@ -200,13 +198,6 @@ class MockTransport:
 
     def is_closing(self):
         return self.closed
-
-    def get_write_buffer_size(self):
-        return self.unsent
-
-    def abort(self):
-        self.closed = True
-        self.aborted = True
 
     def clear_buffer(self):
         self.buffer = b""
@@ -249,11 +240,13 @@ class MockLoop:
         return await self._tasks.pop()
 
     def run_later(self, with_delay: float) -> None:
-        # Iterate over a snapshot: callbacks may schedule or cancel timers.
-        for timer_handle in list(self._later):
-            if with_delay >= timer_handle.delay and not timer_handle.cancelled:
-                timer_handle.cancel()
+        later: list[MockTimerHandle] = []
+        for timer_handle in self._later:
+            if with_delay >= timer_handle.delay:
                 timer_handle.callback(*timer_handle.args)
+            else:
+                later.append(timer_handle)
+        self._later = later
 
 
 class MockTask:
@@ -477,36 +470,6 @@ async def test_keepalive_timeout(http_protocol_cls: type[HTTPProtocol]):
     assert not protocol.transport.is_closing()
     protocol.loop.run_later(with_delay=5)
     assert protocol.transport.is_closing()
-
-
-async def test_timeout_write_aborts_closing_connection_with_unsent_data(http_protocol_cls: type[HTTPProtocol]):
-    app = Response(b"", status_code=204)
-
-    protocol = get_connected_protocol(app, http_protocol_cls, timeout_write=10)
-    protocol.data_received(SIMPLE_GET_REQUEST)
-    await protocol.loop.run_one()
-    protocol.transport.unsent = 1024
-    protocol.loop.run_later(with_delay=5)
-    assert protocol.transport.is_closing()
-    assert not protocol.transport.aborted
-    protocol.loop.run_later(with_delay=10)
-    assert protocol.transport.aborted
-
-
-async def test_timeout_write_waits_while_unsent_data_drains(http_protocol_cls: type[HTTPProtocol]):
-    app = Response(b"", status_code=204)
-
-    protocol = get_connected_protocol(app, http_protocol_cls, timeout_write=10)
-    protocol.data_received(SIMPLE_GET_REQUEST)
-    await protocol.loop.run_one()
-    protocol.transport.unsent = 1024
-    protocol.loop.run_later(with_delay=5)
-    protocol.transport.unsent = 512
-    protocol.loop.run_later(with_delay=10)
-    assert not protocol.transport.aborted
-    protocol.connection_lost(ConnectionResetError())
-    protocol.loop.run_later(with_delay=10)
-    assert not protocol.transport.aborted
 
 
 async def test_keepalive_timeout_with_pipelined_requests(http_protocol_cls: type[HTTPProtocol]):

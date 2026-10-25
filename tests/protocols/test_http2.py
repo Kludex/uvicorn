@@ -84,9 +84,6 @@ class MockTransport:
     def is_closing(self):
         return self.closed
 
-    def get_write_buffer_size(self):
-        return 0
-
     def clear_buffer(self):
         self.buffer = b""
 

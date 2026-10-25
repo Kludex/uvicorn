@@ -77,7 +77,7 @@ class ZttpProtocol(asyncio.Protocol):
         self.connections.add(self)
 
         self.transport = transport
-        self.flow = FlowControl(transport, self.loop, self.config.timeout_write)
+        self.flow = FlowControl(transport)
         self.server = get_local_addr(transport)
         self.client = get_remote_addr(transport)
         self.scheme = "https" if is_ssl(transport) else "http"
@@ -98,7 +98,7 @@ class ZttpProtocol(asyncio.Protocol):
         if self.cycle is not None:
             self.cycle.message_event.set()
         if self.flow is not None:
-            self.flow.connection_lost()
+            self.flow.resume_writing()
         if exc is None:
             self.transport.close()
             self._unset_keepalive_if_required()
@@ -313,7 +313,7 @@ class ZttpProtocol(asyncio.Protocol):
         delay.
         """
         if not self.transport.is_closing():
-            self.flow.close_transport()
+            self.transport.close()
 
 
 class RequestResponseCycle:
@@ -514,7 +514,7 @@ class RequestResponseCycle:
             # `should_close()` covers both directions: the request's `Connection: close`
             # or HTTP/1.0 default, and a `close` the response we just wrote declared.
             if not self.keep_alive or self.conn.should_close():
-                self.flow.close_transport()
+                self.transport.close()
             self.on_response()
 
     async def receive(self) -> ASGIReceiveEvent:
