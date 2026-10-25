@@ -336,7 +336,7 @@ async def read_until_closed(client: socket.socket) -> int:  # pragma: py-win32
     return received
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="The write timeout is disabled on ProactorEventLoop")
+@pytest.mark.skipif(sys.platform == "win32", reason="The write timeout only runs on SelectorEventLoop on Windows")
 async def test_timeout_write_closes_connection_when_client_stops_reading(
     http_protocol_cls: type[H11Protocol | HttpToolsProtocol], unused_tcp_port: int
 ):  # pragma: py-win32
@@ -359,7 +359,7 @@ async def websocket_streaming_app(
             await send({"type": "websocket.send", "bytes": chunk})
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="The write timeout is disabled on ProactorEventLoop")
+@pytest.mark.skipif(sys.platform == "win32", reason="The write timeout only runs on SelectorEventLoop on Windows")
 async def test_timeout_write_closes_websocket_when_client_stops_reading(
     ws_protocol_cls: type[asyncio.Protocol], unused_tcp_port: int
 ):  # pragma: py-win32

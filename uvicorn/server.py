@@ -238,9 +238,10 @@ class Server:
             # logged by `config.bind_socket()`.
             pass  # pragma: full coverage
 
-        # Proactor only reports a send's progress once all of it completes, so a slow reader would look stalled.
-        is_proactor = sys.platform == "win32" and isinstance(loop, asyncio.ProactorEventLoop)
-        if config.timeout_write is not None and not is_proactor:  # pragma: py-win32
+        # Windows' overlapped I/O, used by asyncio's Proactor and by libuv, only reports a send's
+        # progress once all of it completes, so a slow reader would look stalled.
+        progress_visible = sys.platform != "win32" or isinstance(loop, asyncio.SelectorEventLoop)
+        if config.timeout_write is not None and progress_visible:  # pragma: py-win32
             monitor = WriteStallMonitor(config.timeout_write)
             self._write_stall_watcher = loop.create_task(self._watch_write_stalls(monitor))
 
