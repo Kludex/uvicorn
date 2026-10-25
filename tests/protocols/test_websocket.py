@@ -976,6 +976,32 @@ async def test_server_reject_connection_with_multibody_response(
     assert disconnected_message == {"type": "websocket.disconnect", "code": 1006}
 
 
+async def test_server_reject_connection_does_not_log_incomplete_handshake(
+    ws_protocol_cls: WSProtocol,
+    http_protocol_cls: HTTPProtocol,
+    unused_tcp_port: int,
+    caplog: pytest.LogCaptureFixture,
+):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert scope["type"] == "websocket"
+        assert "websocket.http.response" in scope["extensions"]
+        await receive()
+        await send({"type": "websocket.http.response.start", "status": 401, "headers": []})
+        await send({"type": "websocket.http.response.body", "body": b"denied"})
+
+    async def websocket_session(url: str):
+        response = await wsresponse(url)
+        assert response.status_code == 401
+        assert response.content == b"denied"
+
+    config = Config(app=app, ws=ws_protocol_cls, http=http_protocol_cls, lifespan="off", port=unused_tcp_port)
+    with caplog.at_level("ERROR", logger="uvicorn.error"):
+        async with run_server(config):
+            await websocket_session(f"ws://127.0.0.1:{unused_tcp_port}")
+
+    assert "ASGI callable returned without completing handshake." not in caplog.text
+
+
 async def test_server_reject_connection_with_invalid_status(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int
 ):
@@ -1760,6 +1786,27 @@ async def test_shutdown_while_the_close_reply_is_pending(ws_protocol_cls: WSProt
         connection.shutdown()
         assert connection.transport_closed
         assert not connection.awaiting_close_reply
+
+
+async def test_shutdown_during_denial_response(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol):
+    body_started = asyncio.Event()
+    disconnect_message: ASGIReceiveEvent | None = None
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        nonlocal disconnect_message
+        await receive()
+        await send({"type": "websocket.http.response.start", "status": 401, "headers": []})
+        await send({"type": "websocket.http.response.body", "body": b"den", "more_body": True})
+        body_started.set()
+        disconnect_message = await receive()
+
+    async with MockWebSocketConnection(app, ws_protocol_cls, http_protocol_cls) as connection:
+        await body_started.wait()
+        assert not connection.transport_closed
+        connection.shutdown()
+        assert connection.transport_closed
+    await connection.app_finished()
+    assert disconnect_message == {"type": "websocket.disconnect", "code": 1006}
 
 
 async def test_send_after_peer_close_raises_client_disconnected(

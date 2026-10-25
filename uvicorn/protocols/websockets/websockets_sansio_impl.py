@@ -134,7 +134,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
 
     def connection_lost(self, exc: Exception | None) -> None:
         self.stop_keepalive()
-        code = 1005 if self.handshake_complete else 1006
+        code = 1005 if self.handshake_complete and self.initial_response is None else 1006
         self.queue.put_nowait({"type": "websocket.disconnect", "code": code})
         self.connections.remove(self)
 
@@ -176,7 +176,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 self.close_timer = None
             self.transport.close()
             return
-        if self.handshake_complete:
+        if self.handshake_complete and self.initial_response is None:
             self.queue.put_nowait({"type": "websocket.disconnect", "code": 1012})
             self.conn.send_close(1012)
             output = self.conn.data_to_send()
@@ -480,6 +480,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                     for name, value in list(message.get("headers", []))
                 ]
                 self.initial_response = (message["status"], headers, b"")
+                self.handshake_complete = True
             else:
                 raise RuntimeError(
                     "Expected ASGI message 'websocket.accept', 'websocket.close' "
