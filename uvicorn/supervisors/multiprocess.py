@@ -28,8 +28,10 @@ class Process:
         self,
         config: Config,
         sockets: list[socket],
+        worker_id: int,
     ) -> None:
         self.config = config
+        self.worker_id = worker_id
         self._server: Server | None = None
 
         self.parent_conn, self.child_conn = Pipe()
@@ -126,7 +128,7 @@ class Process:
     @property
     def server(self) -> Server:
         if self._server is None:
-            self._server = Server(config=self.config)
+            self._server = Server(config=self.config, worker_id=self.worker_id)
         return self._server
 
     @property
@@ -157,8 +159,8 @@ class Multiprocess:
             signal.signal(sig, lambda sig, frame: self.signal_queue.append(sig))
 
     def init_processes(self) -> None:
-        for _ in range(self.processes_num):
-            process = Process(self.config, self.sockets)
+        for worker_id in range(1, self.processes_num + 1):
+            process = Process(self.config, self.sockets, worker_id)
             process.start()
             self.processes.append(process)
 
@@ -176,7 +178,7 @@ class Multiprocess:
             if self.should_exit.is_set():
                 return
 
-            new_process = Process(self.config, self.sockets)
+            new_process = Process(self.config, self.sockets, old_process.worker_id)
             new_process.start()
 
             if not new_process.wait_until_ready(self.config.timeout_worker_healthcheck, self.should_exit):
@@ -234,7 +236,7 @@ class Multiprocess:
                 return  # pragma: full coverage
 
             logger.info(f"Child process [{process.pid}] died")
-            process = Process(self.config, self.sockets)
+            process = Process(self.config, self.sockets, process.worker_id)
             process.start()
             self.processes[idx] = process
 
@@ -267,7 +269,7 @@ class Multiprocess:
     def handle_ttin(self) -> None:  # pragma: py-win32
         logger.info("Received SIGTTIN, increasing the number of processes.")
         self.processes_num += 1
-        process = Process(self.config, self.sockets)
+        process = Process(self.config, self.sockets, len(self.processes) + 1)
         process.start()
         self.processes.append(process)
 
