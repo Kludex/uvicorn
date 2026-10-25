@@ -275,8 +275,6 @@ class Server:
         event = asyncio.Event()
         setattr(event, "_loop", asyncio.get_running_loop())
         self._should_exit_event = event
-        if self._should_exit:
-            event.set()
         try:
             counter = 0
             should_exit = await self.on_tick(counter)
