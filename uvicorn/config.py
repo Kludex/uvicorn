@@ -247,6 +247,7 @@ class Config:
         factory: bool = False,
         h11_max_incomplete_event_size: int | None = None,
         reset_contextvars: bool = False,
+        timeout_write: int | None = 60,
     ):
         self.app = app
         self.host = host
@@ -280,6 +281,7 @@ class Config:
         self.limit_max_requests_jitter = limit_max_requests_jitter
         self.backlog = backlog
         self.timeout_keep_alive = timeout_keep_alive
+        self.timeout_write = timeout_write
         self.timeout_notify = timeout_notify
         self.timeout_graceful_shutdown = timeout_graceful_shutdown
         self.timeout_worker_healthcheck = timeout_worker_healthcheck

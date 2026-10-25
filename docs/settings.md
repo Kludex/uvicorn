@@ -151,4 +151,5 @@ For advanced TLS scenarios that the flags above don't cover (e.g., mutual TLS, c
 ## Timeouts
 
 * `--timeout-keep-alive <int>` - Close Keep-Alive connections if no new data is received within this timeout (in seconds). **Default:** *5*.
+* `--timeout-write <int>` - Close a connection, HTTP or WebSocket, if none of its pending data can be sent to the client within this timeout (in seconds). Protects against clients that stop reading, which would otherwise hold the connection and the unsent data in memory forever. A client that keeps reading, however slowly, is not affected as long as the operating system accepts more data within the timeout. Connections are checked once per second. Not applied to HTTP/2 streams waiting for flow-control window, or on Windows unless the loop is asyncio's `SelectorEventLoop`, which the default `asyncio` loop uses there only with `--reload` or more than one worker. **Default:** *60*.
 * `--timeout-graceful-shutdown <int>` - Maximum number of seconds to wait for graceful shutdown. After this timeout, the server will start terminating requests.
