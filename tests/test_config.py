@@ -20,7 +20,7 @@ from pytest_mock import MockerFixture
 from tests.custom_loop_utils import CustomLoop
 from tests.utils import as_cwd, get_asyncio_default_loop_per_os
 from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallable, Environ, Scope, StartResponse
-from uvicorn.config import Config, LoopFactoryType, UvicornDeprecationWarning
+from uvicorn.config import STARTUP_FAILURE, Config, LoopFactoryType, UvicornDeprecationWarning
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from uvicorn.middleware.wsgi import WSGIMiddleware
 from uvicorn.protocols.http.h11_impl import H11Protocol
@@ -302,6 +302,29 @@ def test_ssl_config_combined(tls_certificate_key_and_chain_path: str) -> None:
     config.load()
 
     assert config.is_ssl is True
+
+
+@pytest.mark.parametrize(
+    "ssl_options",
+    [
+        pytest.param({"ssl_certfile": "does-not-exist.pem"}, id="missing-certfile"),
+        pytest.param({"ssl_version": 999}, id="invalid-ssl-version"),
+    ],
+)
+def test_ssl_config_error_is_a_startup_failure(
+    tls_certificate_key_and_chain_path: str, ssl_options: dict[str, Any], caplog: pytest.LogCaptureFixture
+) -> None:
+    """A broken TLS setup exits with `STARTUP_FAILURE`, so `--workers` stops instead of respawning forever."""
+    config = Config(app=asgi_app, **{"ssl_certfile": tls_certificate_key_and_chain_path, **ssl_options})
+    with pytest.raises(SystemExit) as exc_info:
+        config.load()
+
+    assert exc_info.value.code == STARTUP_FAILURE
+    error_messages = [
+        record.message for record in caplog.records if record.name == "uvicorn.error" and record.levelname == "ERROR"
+    ]
+    assert len(error_messages) == 1
+    assert error_messages[0].startswith("Error loading SSL context. ")
 
 
 def asgi2_app(scope: Scope) -> Callable:
