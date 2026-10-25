@@ -191,15 +191,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             self.handle_parser_exception()
             return
         if self.conn.handshake_exc is not None and not self.handshake_initiated:
-            # websockets couldn't parse the handshake request. It queues a 414/431 for exceeded limits
-            # (websockets >= 17) and only an EOF otherwise, so we answer with a 400 in that case.
-            self.handshake_complete = True
-            self.close_sent = True
-            output = b"".join(self.conn.data_to_send())
-            if not output:
-                output = self.conn.reject(400, "Failed to open a WebSocket connection: invalid request.\n").serialize()
-            self.transport.write(output)
-            self.transport.close()
+            self.handle_handshake_exception()
             return
         self.handle_events()
 
@@ -403,6 +395,17 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         output = self.conn.data_to_send()
         self.transport.write(b"".join(output))
         self.close_sent = True
+        self.transport.close()
+
+    def handle_handshake_exception(self) -> None:
+        # websockets couldn't parse the handshake request. It queues a 414/431 for exceeded limits
+        # (websockets >= 17) and only an EOF otherwise, so we answer with a 400 in that case.
+        self.handshake_complete = True
+        self.close_sent = True
+        output = b"".join(self.conn.data_to_send())
+        if not output:
+            output = self.conn.reject(400, "Failed to open a WebSocket connection: invalid request.\n").serialize()
+        self.transport.write(output)
         self.transport.close()
 
     def on_task_complete(self, task: asyncio.Task[None]) -> None:
