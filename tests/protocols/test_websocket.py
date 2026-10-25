@@ -1846,3 +1846,35 @@ async def test_server_keepalive_disabled(
             protocol = list(server.server_state.connections)[0]
             assert isinstance(protocol, (_WSProtocol, WebSocketsSansIOProtocol))
             assert protocol.ping_timer is None
+
+
+async def test_handshake_rejected_oversized_header() -> None:
+    transport = MockWriteTransport()
+    config = Config(app=lambda s, r, se: None)
+    config.load()
+    protocol = WebSocketsSansIOProtocol(config, ServerState(), {}, _loop=asyncio.get_running_loop())
+    protocol.connection_made(transport)  # type: ignore[arg-type]
+    protocol.data_received(
+        b"GET / HTTP/1.1\r\n"
+        b"Host: 127.0.0.1\r\n"
+        b"Upgrade: websocket\r\n"
+        b"Connection: Upgrade\r\n"
+        b"Sec-WebSocket-Version: 13\r\n"
+        b"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+        b"Cookie: " + (b"a" * 10000) + b"\r\n\r\n"
+    )
+    assert transport.closed
+    assert b"431 Request Header Fields Too Large" in transport.buffer
+
+
+async def test_handshake_rejected_fallback_response() -> None:
+    transport = MockWriteTransport()
+    config = Config(app=lambda s, r, se: None)
+    config.load()
+    protocol = WebSocketsSansIOProtocol(config, ServerState(), {}, _loop=asyncio.get_running_loop())
+    protocol.connection_made(transport)  # type: ignore[arg-type]
+    protocol.conn.handshake_exc = Exception("malformed handshake")
+    protocol.conn.data_to_send = lambda: []  # type: ignore[method-assign]
+    protocol.data_received(b"malformed data")
+    assert transport.closed
+    assert b"HTTP/1.1 400 Bad Request" in transport.buffer

@@ -187,6 +187,20 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
 
     def data_received(self, data: bytes) -> None:
         self.conn.receive_data(data)
+        if self.conn.handshake_exc is not None and not self.handshake_initiated:
+            output = self.conn.data_to_send()
+            data = b"".join(output)
+            if not data:
+                data = (
+                    b"HTTP/1.1 400 Bad Request\r\n"
+                    b"Content-Type: text/plain; charset=utf-8\r\n"
+                    b"Connection: close\r\n"
+                    b"Content-Length: 11\r\n\r\n"
+                    b"Bad Request"
+                )
+            self.transport.write(data)
+            self.transport.close()
+            return
         if self.conn.parser_exc is not None:  # pragma: no cover
             self.handle_parser_exception()
             return
