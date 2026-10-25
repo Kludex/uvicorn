@@ -1790,17 +1790,23 @@ async def test_shutdown_while_the_close_reply_is_pending(ws_protocol_cls: WSProt
 
 async def test_shutdown_during_denial_response(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol):
     body_started = asyncio.Event()
+    disconnect_message: ASGIReceiveEvent | None = None
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        nonlocal disconnect_message
         await receive()
         await send({"type": "websocket.http.response.start", "status": 401, "headers": []})
         await send({"type": "websocket.http.response.body", "body": b"den", "more_body": True})
         body_started.set()
+        disconnect_message = await receive()
 
     async with MockWebSocketConnection(app, ws_protocol_cls, http_protocol_cls) as connection:
         await body_started.wait()
+        assert not connection.transport_closed
         connection.shutdown()
         assert connection.transport_closed
+    await connection.app_finished()
+    assert disconnect_message == {"type": "websocket.disconnect", "code": 1006}
 
 
 async def test_send_after_peer_close_raises_client_disconnected(

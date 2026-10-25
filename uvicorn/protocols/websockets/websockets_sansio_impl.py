@@ -140,7 +140,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
 
     def connection_lost(self, exc: Exception | None) -> None:
         self.stop_keepalive()
-        code = 1005 if self.handshake_complete else 1006
+        code = 1005 if self.handshake_complete and self.initial_response is None else 1006
         self.queue.put_nowait({"type": "websocket.disconnect", "code": code})
         self.connections.remove(self)
 
