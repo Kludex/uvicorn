@@ -28,20 +28,20 @@ pytestmark = pytest.mark.anyio
 # asyncio does NOT allow raising in signal handlers, so to detect
 # raised signals raised a mutable `witness` receives the signal
 @contextlib.contextmanager
-def capture_signal_sync(sig: signal.Signals) -> Generator[list[int], None, None]:
-    """Replace `sig` handling with a normal exception via `signal"""
-    witness: list[int] = []
-    original_handler = signal.signal(sig, lambda signum, frame: witness.append(signum))
+def capture_signal_sync(sig: signal.Signals) -> Generator[asyncio.Event, None, None]:
+    """Record signal delivery through the synchronous signal handler."""
+    witness = asyncio.Event()
+    original_handler = signal.signal(sig, lambda signum, frame: witness.set())
     yield witness
     signal.signal(sig, original_handler)
 
 
 @contextlib.contextmanager
-def capture_signal_async(sig: signal.Signals) -> Generator[list[int], None, None]:  # pragma: py-win32
-    """Replace `sig` handling with a normal exception via `asyncio"""
-    witness: list[int] = []
+def capture_signal_async(sig: signal.Signals) -> Generator[asyncio.Event, None, None]:  # pragma: py-win32
+    """Record signal delivery through the asyncio signal handler."""
+    witness = asyncio.Event()
     original_handler = signal.getsignal(sig)
-    asyncio.get_running_loop().add_signal_handler(sig, witness.append, sig)
+    asyncio.get_running_loop().add_signal_handler(sig, witness.set)
     yield witness
     signal.signal(sig, original_handler)
 
@@ -68,7 +68,7 @@ else:  # pragma: py-win32
 @pytest.mark.parametrize("capture_signal", signal_captures)
 async def test_server_interrupt(
     exception_signal: signal.Signals,
-    capture_signal: Callable[[signal.Signals], AbstractContextManager[None]],
+    capture_signal: Callable[[signal.Signals], AbstractContextManager[asyncio.Event]],
     unused_tcp_port: int,
 ):  # pragma: py-win32
     """Test interrupting a Server that is run explicitly inside asyncio"""
@@ -82,14 +82,8 @@ async def test_server_interrupt(
     asyncio.create_task(interrupt_running(server))
     with capture_signal(exception_signal) as witness:
         await server.serve()
-
-        # An asyncio signal callback can be queued after serve() returns.
-        async def wait_for_signal() -> None:
-            while not witness:
-                await asyncio.sleep(0)
-
-        await asyncio.wait_for(wait_for_signal(), timeout=2.0)
-    assert witness
+        await asyncio.wait_for(witness.wait(), timeout=2.0)
+    assert witness.is_set()
     # set by the server's graceful exit handler
     assert server.should_exit
 
