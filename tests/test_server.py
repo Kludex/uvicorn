@@ -28,20 +28,20 @@ pytestmark = pytest.mark.anyio
 # asyncio does NOT allow raising in signal handlers, so to detect
 # raised signals raised a mutable `witness` receives the signal
 @contextlib.contextmanager
-def capture_signal_sync(sig: signal.Signals) -> Generator[list[int], None, None]:
-    """Replace `sig` handling with a normal exception via `signal"""
-    witness: list[int] = []
-    original_handler = signal.signal(sig, lambda signum, frame: witness.append(signum))
+def capture_signal_sync(sig: signal.Signals) -> Generator[asyncio.Event, None, None]:
+    """Record signal delivery through the synchronous signal handler."""
+    witness = asyncio.Event()
+    original_handler = signal.signal(sig, lambda signum, frame: witness.set())
     yield witness
     signal.signal(sig, original_handler)
 
 
 @contextlib.contextmanager
-def capture_signal_async(sig: signal.Signals) -> Generator[list[int], None, None]:  # pragma: py-win32
-    """Replace `sig` handling with a normal exception via `asyncio"""
-    witness: list[int] = []
+def capture_signal_async(sig: signal.Signals) -> Generator[asyncio.Event, None, None]:  # pragma: py-win32
+    """Record signal delivery through the asyncio signal handler."""
+    witness = asyncio.Event()
     original_handler = signal.getsignal(sig)
-    asyncio.get_running_loop().add_signal_handler(sig, witness.append, sig)
+    asyncio.get_running_loop().add_signal_handler(sig, witness.set)
     yield witness
     signal.signal(sig, original_handler)
 
@@ -68,7 +68,7 @@ else:  # pragma: py-win32
 @pytest.mark.parametrize("capture_signal", signal_captures)
 async def test_server_interrupt(
     exception_signal: signal.Signals,
-    capture_signal: Callable[[signal.Signals], AbstractContextManager[None]],
+    capture_signal: Callable[[signal.Signals], AbstractContextManager[asyncio.Event]],
     unused_tcp_port: int,
 ):  # pragma: py-win32
     """Test interrupting a Server that is run explicitly inside asyncio"""
@@ -82,7 +82,8 @@ async def test_server_interrupt(
     asyncio.create_task(interrupt_running(server))
     with capture_signal(exception_signal) as witness:
         await server.serve()
-    assert witness
+        await asyncio.wait_for(witness.wait(), timeout=2.0)
+    assert witness.is_set()
     # set by the server's graceful exit handler
     assert server.should_exit
 
@@ -276,3 +277,40 @@ async def test_reset_contextvars_asyncio(
     ) as extract_json_body:
         assert await extract_json_body(large_request) == {}
         assert await extract_json_body(SIMPLE_GET_REQUEST) == {}
+
+
+async def test_idle_embedded_server_stops_promptly(unused_tcp_port: int) -> None:
+    config = Config(app, host="127.0.0.1", port=unused_tcp_port, lifespan="off")
+    server = Server(config=config)
+    task = asyncio.create_task(server.serve())
+    while not server.started:
+        await asyncio.sleep(0.01)
+
+    assert server._should_exit_event is not None
+    assert not server._should_exit_event.is_set()
+
+    server.should_exit = True
+    assert server._should_exit_event.is_set()
+
+    await asyncio.wait_for(task, timeout=2.0)
+    assert server.should_exit
+
+
+async def test_idle_embedded_server_stops_promptly_from_thread(unused_tcp_port: int) -> None:
+    import threading
+
+    config = Config(app, host="127.0.0.1", port=unused_tcp_port, lifespan="off")
+    server = Server(config=config)
+    task = asyncio.create_task(server.serve())
+    while not server.started:
+        await asyncio.sleep(0.01)
+
+    assert server._should_exit_event is not None
+    assert not server._should_exit_event.is_set()
+
+    thread = threading.Thread(target=setattr, args=(server, "should_exit", True))
+    thread.start()
+    thread.join()
+
+    await asyncio.wait_for(task, timeout=2.0)
+    assert server.should_exit
