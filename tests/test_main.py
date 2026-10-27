@@ -172,6 +172,18 @@ def test_run_startup_failure(caplog: pytest.LogCaptureFixture) -> None:
     assert exit_exception.value.code == 3
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
+def test_run_uds_bind_failure_preserves_existing_file(short_socket_name: str) -> None:  # pragma: py-win32
+    uds_file = Path(short_socket_name)
+    uds_file.write_text("sentinel")
+
+    with pytest.raises(SystemExit) as exc_info:
+        run(app, uds=str(uds_file), lifespan="off")
+
+    assert exc_info.value.code == STARTUP_FAILURE
+    assert uds_file.read_text() == "sentinel"
+
+
 def test_run_match_config_params() -> None:
     config_params = {
         key: repr(value)
