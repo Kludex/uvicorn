@@ -171,7 +171,10 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
     def shutdown(self) -> None:
         self.stop_keepalive()
         if self.close_sent:
-            if self.close_timer is not None:
+            # After handle_parser_exception() (which marks the connection disconnected) the close
+            # timer aborts; keep it, as close() may wait forever for output a stalled client never
+            # reads.
+            if self.close_timer is not None and not self.disconnected:
                 self.close_timer.cancel()
                 self.close_timer = None
             self.transport.close()
@@ -187,7 +190,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
 
     def data_received(self, data: bytes) -> None:
         self.conn.receive_data(data)
-        if self.conn.parser_exc is not None:  # pragma: no cover
+        if self.conn.parser_exc is not None:
             self.handle_parser_exception()
             return
         if self.conn.handshake_exc is not None and not self.handshake_initiated:
@@ -197,6 +200,9 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
 
     def handle_events(self) -> None:
         for event in self.conn.events_received():
+            if self.disconnected:
+                # A failure earlier in this batch already closed the connection on our side.
+                return
             if isinstance(event, Request):
                 self.handle_connect(event)
             if isinstance(event, Frame):
@@ -292,9 +298,11 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         if self.curr_msg_data_type == "text":
             try:
                 self.queue.put_nowait({"type": "websocket.receive", "text": data.decode()})
-            except UnicodeDecodeError:  # pragma: no cover
+            except UnicodeDecodeError:
                 self.logger.exception("Invalid UTF-8 sequence received from client.")
-                self.conn.send_close(1007)
+                # fail() rather than send_close(): like a parser error, it queues EOF after the
+                # close frame and discards further input.
+                self.conn.fail(1007)
                 self.handle_parser_exception()
                 return
         else:
@@ -386,16 +394,58 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             self.transport.write(b"".join(output))
             self.transport.close()
 
-    def handle_parser_exception(self) -> None:  # pragma: no cover
-        assert self.conn.close_sent is not None
-        code = self.conn.close_sent.code
-        reason = self.conn.close_sent.reason
-        self.queue.put_nowait({"type": "websocket.disconnect", "code": code, "reason": reason})
+    def handle_parser_exception(self) -> None:
+        # The app's sends now raise ClientDisconnected, though the transport stays open below; this
+        # also holds when the app had already sent websocket.close. Wake any send() waiting on
+        # backpressure so it raises too.
+        self.disconnected = True
+        self.writable.set()
+        # Drop the frames parsed before the failure in this read: they are not delivered, and the
+        # transport now stays open until the client's EOF or the deadline.
+        self.conn.events_received()
+        # A message queued earlier in this read may have paused reading; resume it so the client's
+        # EOF can be read.
+        if self.read_paused:
+            self.read_paused = False
+            self.transport.resume_reading()
+        # Called again for every chunk that arrives after the failure; only the first one queues
+        # the disconnect event.
+        if not self.close_sent:
+            assert self.conn.close_sent is not None
+            code = self.conn.close_sent.code
+            reason = self.conn.close_sent.reason
+            self.queue.put_nowait({"type": "websocket.disconnect", "code": code, "reason": reason})
+            self.close_sent = True
+            # Drop the fragments of the rejected message now, not when the transport closes.
+            self.frames = []
 
-        output = self.conn.data_to_send()
-        self.transport.write(b"".join(output))
-        self.close_sent = True
-        self.transport.close()
+        # websockets queues the close frame, then an EOF (an empty chunk). Half-close rather than
+        # close the transport: closing with unread data (e.g. the rest of an oversized frame) makes
+        # the OS reset the connection, and the client may never see the close frame. websockets
+        # discards what the client sends from here until its EOF, which closes the transport.
+        for data in self.conn.data_to_send():
+            if data:
+                self.transport.write(data)
+            elif self.transport.can_write_eof():
+                try:
+                    self.transport.write_eof()
+                except OSError:
+                    # The socket is already unusable; there is no half-close to wait on.
+                    self.transport.close()
+                    return
+            else:
+                # Without a half-close (e.g. TLS) the client waits for the server to close the
+                # connection, so waiting for its EOF would only delay the close.
+                self.transport.close()
+                return
+        # Abort at the deadline: close() would wait for buffered output to drain, which never
+        # happens if the client stopped reading. An app-initiated close may already have set a
+        # close timer; keep its deadline but abort instead.
+        deadline = self.loop.time() + self.close_timeout
+        if self.close_timer is not None:
+            deadline = self.close_timer.when()
+            self.close_timer.cancel()
+        self.close_timer = self.loop.call_at(deadline, self.transport.abort)
 
     def handle_handshake_exception(self) -> None:
         # websockets couldn't parse the handshake request. It queues a 414/431 for exceeded limits
@@ -437,6 +487,11 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.transport.write(b"".join(output))
 
     async def send(self, message: ASGISendEvent) -> None:
+        # Checked before waiting too: writing a server-initiated close frame can pause writing
+        # after the connection was marked disconnected.
+        if self.disconnected:
+            raise ClientDisconnected()
+
         await self.writable.wait()
 
         if self.disconnected:
