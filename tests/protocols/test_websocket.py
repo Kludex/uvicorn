@@ -778,12 +778,14 @@ async def test_send_binary_data_to_server_bigger_than_default_on_websockets(
                 assert data == b"\x01" * client_size_sent
             else:
                 # The server rejects the oversized frame from its header, before the
-                # client finishes streaming it - the abrupt close means the client may
-                # observe 1006 instead of the close frame, so assert the code that the
-                # server delivered to the app.
-                with pytest.raises(websockets.exceptions.ConnectionClosed):
+                # client finishes streaming it. The close frame must still reach the client,
+                # and the connection must not be reset under the rest of the frame.
+                with pytest.raises(websockets.exceptions.ConnectionClosed) as exc_info:
                     await ws.send(b"\x01" * client_size_sent)
                     await ws.recv()
+                assert exc_info.value.rcvd is not None
+                assert exc_info.value.rcvd.code == expected_result
+                assert exc_info.value.__cause__ is None
 
     if expected_result != 0:
         assert disconnect_code == expected_result

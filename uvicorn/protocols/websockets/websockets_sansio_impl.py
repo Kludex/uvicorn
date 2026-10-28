@@ -187,7 +187,7 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
 
     def data_received(self, data: bytes) -> None:
         self.conn.receive_data(data)
-        if self.conn.parser_exc is not None:  # pragma: no cover
+        if self.conn.parser_exc is not None:
             self.handle_parser_exception()
             return
         if self.conn.handshake_exc is not None and not self.handshake_initiated:
@@ -386,16 +386,26 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             self.transport.write(b"".join(output))
             self.transport.close()
 
-    def handle_parser_exception(self) -> None:  # pragma: no cover
-        assert self.conn.close_sent is not None
-        code = self.conn.close_sent.code
-        reason = self.conn.close_sent.reason
-        self.queue.put_nowait({"type": "websocket.disconnect", "code": code, "reason": reason})
+    def handle_parser_exception(self) -> None:
+        # Called again for every chunk that arrives after the failure; only the first one acts.
+        if not self.close_sent:
+            assert self.conn.close_sent is not None
+            code = self.conn.close_sent.code
+            reason = self.conn.close_sent.reason
+            self.queue.put_nowait({"type": "websocket.disconnect", "code": code, "reason": reason})
+            self.close_sent = True
 
-        output = self.conn.data_to_send()
-        self.transport.write(b"".join(output))
-        self.close_sent = True
-        self.transport.close()
+        # websockets queues the close frame, then an EOF (an empty chunk). Half-close rather than
+        # close the transport: closing with unread data (e.g. the rest of an oversized frame) makes
+        # the OS reset the connection, and the client may never see the close frame. websockets
+        # discards what the client sends from here until its EOF, which closes the transport.
+        for data in self.conn.data_to_send():
+            if data:
+                self.transport.write(data)
+            elif self.transport.can_write_eof():
+                self.transport.write_eof()
+        if self.close_timer is None:
+            self.close_timer = self.loop.call_later(self.close_timeout, self.transport.close)
 
     def handle_handshake_exception(self) -> None:
         # websockets couldn't parse the handshake request. It queues a 414/431 for exceeded limits
