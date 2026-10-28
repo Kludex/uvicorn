@@ -858,8 +858,10 @@ async def test_oversized_message_after_queued_message_on_wsproto(http_protocol_c
         await app_done.wait()
 
     async def server_dropped_connections(server: Server) -> None:
-        while server.server_state.connections:
+        while True:
             await asyncio.sleep(0.01)
+            if not server.server_state.connections:
+                return
 
     config = Config(
         app=app, ws=_WSProtocol, http=http_protocol_cls, lifespan="off", ws_max_size=10, port=unused_tcp_port
