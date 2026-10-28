@@ -259,7 +259,9 @@ class WSProtocol(asyncio.Protocol):
             self.buffer.clear()
             self.close_sent = True
             # The app's sends now raise ClientDisconnected, though the transport stays open below.
+            # Wake any send() waiting on backpressure so it raises too.
             self.disconnected = True
+            self.writable.set()
             reason = f"Message exceeds the maximum size ({self.config.ws_max_size} bytes)"
             self.queue.put_nowait({"type": "websocket.disconnect", "code": 1009, "reason": reason})
             if not self.transport.is_closing():
