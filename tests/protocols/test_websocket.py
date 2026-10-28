@@ -30,8 +30,9 @@ from uvicorn._types import (
     WebSocketResponseStartEvent,
 )
 from uvicorn.config import Config
+from uvicorn.protocols.utils import ClientDisconnected
 from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
-from uvicorn.server import ServerState
+from uvicorn.server import Server, ServerState
 
 try:
     from uvicorn.protocols.websockets.wsproto_impl import WSProtocol as _WSProtocol
@@ -811,6 +812,76 @@ async def test_fragmented_message_exceeding_max_size(
     assert exc_info.value.rcvd.code == 1009
 
 
+@skip_if_no_wsproto
+@pytest.mark.parametrize("client_size_sent", [1024 * 1024 + 1, 16 * 1024 * 1024])
+async def test_oversized_message_is_closed_without_reset_on_wsproto(
+    http_protocol_cls: HTTPProtocol, client_size_sent: int, unused_tcp_port: int
+):
+    """The server rejects the message before the client finishes streaming it. The 1009 close
+    frame must reach the client, and the connection must not be reset under the rest of it."""
+
+    class App(WebSocketResponse):
+        async def websocket_connect(self, message: WebSocketConnectEvent):
+            await self.send({"type": "websocket.accept"})
+
+    config = Config(
+        app=App,
+        ws=_WSProtocol,
+        http=http_protocol_cls,
+        lifespan="off",
+        ws_max_size=1024 * 1024,
+        port=unused_tcp_port,
+    )
+    async with run_server(config):
+        ws = await connect(f"ws://127.0.0.1:{unused_tcp_port}", max_size=None, compression=None)
+        with pytest.raises(websockets.exceptions.ConnectionClosed) as exc_info:
+            await ws.send(b"\x01" * client_size_sent)
+            await ws.recv()
+        # Wait instead of leaving `async with connect()`, whose close() aborts the transport. The
+        # client already closed it after the server's EOF, while the rest of the message was still
+        # queued, and before Python 3.14 aborting such a selector transport raises AttributeError.
+        await asyncio.wait_for(ws.wait_closed(), timeout=5)
+    assert exc_info.value.rcvd is not None
+    assert exc_info.value.rcvd.code == 1009
+    assert exc_info.value.__cause__ is None
+
+
+@skip_if_no_wsproto
+async def test_oversized_message_after_queued_message_on_wsproto(http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
+    """A complete message pauses reading until the app takes it. When an oversized message follows
+    in the same read and the app never drains its queue, reading must resume so the server sees the
+    client's EOF and drops the connection, instead of holding it until the close timer fires."""
+    app_done = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()
+        await send({"type": "websocket.accept"})
+        await app_done.wait()
+
+    async def server_dropped_connections(server: Server) -> None:
+        while True:
+            await asyncio.sleep(0.01)
+            if not server.server_state.connections:
+                return
+
+    config = Config(
+        app=app, ws=_WSProtocol, http=http_protocol_cls, lifespan="off", ws_max_size=10, port=unused_tcp_port
+    )
+    async with run_server(config) as server:
+        ws = await connect(f"ws://127.0.0.1:{unused_tcp_port}")
+        try:
+            # Both messages in one write, so the server reads them in one `data_received`.
+            ws.protocol.send_text(b"queued")
+            ws.protocol.send_text(b"x" * 11)
+            ws.transport.write(b"".join(ws.protocol.data_to_send()))
+            await asyncio.wait_for(ws.wait_closed(), timeout=5)
+            await asyncio.wait_for(server_dropped_connections(server), timeout=5)
+        finally:
+            app_done.set()
+    assert ws.protocol.close_rcvd is not None
+    assert ws.protocol.close_rcvd.code == 1009
+
+
 @pytest.mark.parametrize("opcode", [Opcode.TEXT, Opcode.BINARY])
 async def test_fragmented_message_reassembly(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int, opcode: Opcode
@@ -1506,6 +1577,10 @@ class MockWriteTransport:
     def __init__(self) -> None:
         self.buffer = b""
         self.closed = False
+        self.aborted = False
+        self.eof_supported = True
+        self.eof_fails = False
+        self.eof_written = False
         self.reading_paused = False
 
     def get_extra_info(self, name: str, default: Any = None) -> Any:
@@ -1516,6 +1591,18 @@ class MockWriteTransport:
 
     def close(self) -> None:
         self.closed = True
+
+    def abort(self) -> None:
+        self.closed = True
+        self.aborted = True
+
+    def can_write_eof(self) -> bool:
+        return self.eof_supported
+
+    def write_eof(self) -> None:
+        if self.eof_fails:
+            raise OSError("socket.shutdown() failed")
+        self.eof_written = True
 
     def is_closing(self) -> bool:
         return self.closed
@@ -1602,6 +1689,14 @@ class MockWebSocketConnection:
 
     # Transport events and server operations.
 
+    def disable_half_close(self) -> None:
+        """Make the transport unable to write EOF, as with TLS."""
+        self._transport.eof_supported = False
+
+    def fail_half_close(self) -> None:
+        """Make writing EOF raise, as when the socket is already unusable."""
+        self._transport.eof_fails = True
+
     def pause_writing(self) -> None:
         self._protocol.pause_writing()
 
@@ -1621,6 +1716,14 @@ class MockWebSocketConnection:
     @property
     def transport_closed(self) -> bool:
         return self._transport.closed
+
+    @property
+    def transport_aborted(self) -> bool:
+        return self._transport.aborted
+
+    @property
+    def eof_written(self) -> bool:
+        return self._transport.eof_written
 
     @property
     def reading_paused(self) -> bool:
@@ -1805,6 +1908,205 @@ async def test_connection_lost_cancels_the_pending_close_timer(
         assert connection.awaiting_close_reply
 
     assert not connection.awaiting_close_reply
+
+
+@skip_if_no_wsproto
+async def test_oversized_message_aborts_when_the_peer_never_closes_on_wsproto(
+    http_protocol_cls: HTTPProtocol,
+):
+    """Test that a peer that never closes after an oversized message cannot keep the connection.
+
+    The server half-closes and waits for the peer's EOF, then aborts at the deadline: close()
+    would wait for buffered output that a peer that stopped reading never drains.
+    """
+    accepted = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        await receive()  # websocket.disconnect
+
+    async with MockWebSocketConnection(app, _WSProtocol, http_protocol_cls, close_timeout=0) as connection:
+        await accepted.wait()
+
+        connection.send_text("x" * (MAX_WS_BYTES + 1))
+        assert connection.eof_written
+        assert not connection.transport_closed
+
+        # Let the zero-delay close timer fire.
+        await asyncio.sleep(0.01)
+        assert connection.transport_aborted
+
+
+@skip_if_no_wsproto
+async def test_oversized_message_closes_at_once_without_half_close_on_wsproto(
+    http_protocol_cls: HTTPProtocol,
+):
+    """Test that the server closes at once when it cannot half-close, e.g. over TLS.
+
+    The client waits for the server to close the connection, so waiting for its EOF would only
+    delay the close until the deadline.
+    """
+    accepted = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        await receive()  # websocket.disconnect
+
+    async with MockWebSocketConnection(app, _WSProtocol, http_protocol_cls) as connection:
+        await accepted.wait()
+        connection.disable_half_close()
+
+        connection.send_text("x" * (MAX_WS_BYTES + 1))
+        assert connection.transport_closed
+        assert not connection.eof_written
+        assert not connection.awaiting_close_reply
+
+
+@skip_if_no_wsproto
+async def test_oversized_message_stops_parsing_the_rest_of_the_read_on_wsproto(
+    http_protocol_cls: HTTPProtocol,
+):
+    """Test that frames after an oversized message in the same read are not parsed.
+
+    A close frame right behind the oversized message would otherwise close the transport.
+    """
+    accepted = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        await receive()  # websocket.disconnect
+
+    async with MockWebSocketConnection(app, _WSProtocol, http_protocol_cls) as connection:
+        await accepted.wait()
+
+        connection.send_text("x" * (MAX_WS_BYTES + 1), flush=False)
+        connection.send_close(flush=False)
+        connection.flush()
+        assert connection.eof_written
+        assert not connection.transport_closed
+
+
+@skip_if_no_wsproto
+async def test_oversized_message_unblocks_paused_send_on_wsproto(http_protocol_cls: HTTPProtocol):
+    """Test that an oversized message releases a send blocked on backpressure with ClientDisconnected."""
+    accepted = asyncio.Event()
+    send_requested = asyncio.Event()
+    app_finished = asyncio.Event()
+    send_failed = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        await send_requested.wait()
+        try:
+            await send({"type": "websocket.send", "text": "x"})
+        except ClientDisconnected:
+            send_failed.set()
+        finally:
+            app_finished.set()
+
+    async with MockWebSocketConnection(app, _WSProtocol, http_protocol_cls) as connection:
+        await accepted.wait()
+
+        connection.pause_writing()
+        send_requested.set()
+        # Yield repeatedly so the app task reaches the blocking wait inside send().
+        for _ in range(10):
+            await asyncio.sleep(0)
+        assert not app_finished.is_set()
+
+        connection.send_text("x" * (MAX_WS_BYTES + 1))
+        await asyncio.wait_for(app_finished.wait(), timeout=1)
+        assert send_failed.is_set()
+        assert not connection.transport_closed
+
+
+@skip_if_no_wsproto
+async def test_shutdown_keeps_the_abort_deadline_after_an_oversized_message_on_wsproto(
+    http_protocol_cls: HTTPProtocol,
+):
+    """Test that server shutdown while rejecting an oversized message keeps the abort deadline.
+
+    close() may wait forever for output a stalled client never reads.
+    """
+    accepted = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        await receive()  # websocket.disconnect
+
+    async with MockWebSocketConnection(app, _WSProtocol, http_protocol_cls, close_timeout=0.05) as connection:
+        await accepted.wait()
+
+        connection.send_text("x" * (MAX_WS_BYTES + 1))
+        connection.shutdown()
+        assert connection.transport_closed
+        assert connection.awaiting_close_reply
+
+        await asyncio.sleep(0.1)
+        assert connection.transport_aborted
+
+
+@skip_if_no_wsproto
+async def test_send_after_an_oversized_message_under_backpressure_on_wsproto(http_protocol_cls: HTTPProtocol):
+    """Test that a send after the server rejected an oversized message raises ClientDisconnected, even
+    when writing the close frame paused writing."""
+    accepted = asyncio.Event()
+    send_requested = asyncio.Event()
+    app_finished = asyncio.Event()
+    send_failed = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        await send_requested.wait()
+        try:
+            await send({"type": "websocket.send", "text": "x"})
+        except ClientDisconnected:
+            send_failed.set()
+        finally:
+            app_finished.set()
+
+    async with MockWebSocketConnection(app, _WSProtocol, http_protocol_cls) as connection:
+        await accepted.wait()
+
+        connection.send_text("x" * (MAX_WS_BYTES + 1))
+        # As if writing the close frame filled the transport's buffer.
+        connection.pause_writing()
+        send_requested.set()
+        await asyncio.wait_for(app_finished.wait(), timeout=1)
+        assert send_failed.is_set()
+
+
+@skip_if_no_wsproto
+async def test_oversized_message_closes_when_half_close_fails_on_wsproto(http_protocol_cls: HTTPProtocol):
+    """Test that the server closes when writing EOF fails, instead of discarding input on an open
+    transport with no deadline."""
+    accepted = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        await receive()  # websocket.disconnect
+
+    async with MockWebSocketConnection(app, _WSProtocol, http_protocol_cls) as connection:
+        await accepted.wait()
+        connection.fail_half_close()
+
+        connection.send_text("x" * (MAX_WS_BYTES + 1))
+        assert connection.transport_closed
+        assert not connection.awaiting_close_reply
 
 
 async def test_shutdown_while_the_close_reply_is_pending(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol):

@@ -102,6 +102,7 @@ class WSProtocol(asyncio.Protocol):
         self.disconnected = False
         self.close_timer: TimerHandle | None = None
         self.close_timeout = 10.0
+        self.discard_input = False
 
         # Rejection state
         self.response_started = False
@@ -161,6 +162,8 @@ class WSProtocol(asyncio.Protocol):
         pass
 
     def data_received(self, data: bytes) -> None:
+        if self.discard_input:
+            return
         try:
             self.conn.receive_data(data)
         except RemoteProtocolError as err:
@@ -184,6 +187,9 @@ class WSProtocol(asyncio.Protocol):
                 self.handle_connect(event)
             elif isinstance(event, (events.TextMessage, events.BytesMessage)):
                 self.handle_message(event)
+                if self.discard_input:
+                    # Pulling more events would parse (and decompress) the rest of this read.
+                    break
             elif isinstance(event, events.CloseConnection):
                 self.handle_close(event)
             elif isinstance(event, events.Ping):
@@ -206,7 +212,9 @@ class WSProtocol(asyncio.Protocol):
     def shutdown(self) -> None:
         self.stop_keepalive()
         if self.close_sent:
-            if self.close_timer is not None:
+            # After an oversized message the close timer aborts; keep it, as close() may wait forever
+            # for output a stalled client never reads.
+            if self.close_timer is not None and not self.discard_input:
                 self.close_timer.cancel()
                 self.close_timer = None
             self.transport.close()
@@ -256,12 +264,39 @@ class WSProtocol(asyncio.Protocol):
         try:
             self.buffer.extend(event)
         except FrameTooLargeError:
+            self.buffer.clear()
             self.close_sent = True
+            # The app's sends now raise ClientDisconnected, though the transport stays open below.
+            # Wake any send() waiting on backpressure so it raises too.
+            self.disconnected = True
+            self.writable.set()
             reason = f"Message exceeds the maximum size ({self.config.ws_max_size} bytes)"
             self.queue.put_nowait({"type": "websocket.disconnect", "code": 1009, "reason": reason})
+            # From here on incoming data is discarded unparsed (see data_received and
+            # handle_events), so nothing more is decoded or decompressed.
+            self.discard_input = True
             if not self.transport.is_closing():
                 self.transport.write(self.conn.send(wsproto.events.CloseConnection(code=1009, reason=reason)))
-                self.transport.close()
+                if not self.transport.can_write_eof():
+                    # Without a half-close (e.g. TLS) the client waits for the server to close the
+                    # connection, so waiting for its EOF would only delay the close.
+                    self.transport.close()
+                    return
+                # Half-close rather than close: closing with the rest of the message unread makes
+                # the OS reset the connection, and the client may never see the close frame. The
+                # client's EOF closes the transport.
+                try:
+                    self.transport.write_eof()
+                except OSError:
+                    # The socket is already unusable; there is no half-close to wait on.
+                    self.transport.close()
+                    return
+                if self.read_paused:
+                    self.read_paused = False
+                    self.transport.resume_reading()
+                # Abort at the deadline: close() would wait for buffered output to drain, which
+                # never happens if the client stopped reading.
+                self.close_timer = self.loop.call_later(self.close_timeout, self.transport.abort)
             return
         if event.message_finished:
             self.queue.put_nowait(self.buffer.to_message())
@@ -375,6 +410,11 @@ class WSProtocol(asyncio.Protocol):
             self.transport.close()
 
     async def send(self, message: ASGISendEvent) -> None:
+        # Checked before waiting too: writing a server-initiated close frame can pause writing
+        # after the connection was marked disconnected.
+        if self.disconnected:
+            raise ClientDisconnected()
+
         await self.writable.wait()
 
         if self.disconnected:
