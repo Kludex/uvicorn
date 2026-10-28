@@ -832,10 +832,14 @@ async def test_oversized_message_is_closed_without_reset_on_wsproto(
         port=unused_tcp_port,
     )
     async with run_server(config):
-        async with connect(f"ws://127.0.0.1:{unused_tcp_port}", max_size=None, compression=None) as ws:
-            with pytest.raises(websockets.exceptions.ConnectionClosed) as exc_info:
-                await ws.send(b"\x01" * client_size_sent)
-                await ws.recv()
+        ws = await connect(f"ws://127.0.0.1:{unused_tcp_port}", max_size=None, compression=None)
+        with pytest.raises(websockets.exceptions.ConnectionClosed) as exc_info:
+            await ws.send(b"\x01" * client_size_sent)
+            await ws.recv()
+        # Wait instead of leaving `async with connect()`, whose close() aborts the transport. The
+        # client already closed it after the server's EOF, while the rest of the message was still
+        # queued, and before Python 3.14 aborting such a selector transport raises AttributeError.
+        await ws.wait_closed()
     assert exc_info.value.rcvd is not None
     assert exc_info.value.rcvd.code == 1009
     assert exc_info.value.__cause__ is None

@@ -102,6 +102,7 @@ class WSProtocol(asyncio.Protocol):
         self.disconnected = False
         self.close_timer: TimerHandle | None = None
         self.close_timeout = 10.0
+        self.discard_input = False
 
         # Rejection state
         self.response_started = False
@@ -161,6 +162,8 @@ class WSProtocol(asyncio.Protocol):
         pass
 
     def data_received(self, data: bytes) -> None:
+        if self.discard_input:
+            return
         try:
             self.conn.receive_data(data)
         except RemoteProtocolError as err:
@@ -266,9 +269,13 @@ class WSProtocol(asyncio.Protocol):
             self.queue.put_nowait({"type": "websocket.disconnect", "code": 1009, "reason": reason})
             if not self.transport.is_closing():
                 self.transport.write(self.conn.send(wsproto.events.CloseConnection(code=1009, reason=reason)))
-                # Wait for the client's close rather than closing now: closing with the rest of the
-                # message unread makes the OS reset the connection, and the client may never see the
-                # close frame. Events that arrive until then are dropped (see handle_events).
+                # Half-close rather than close: closing with the rest of the message unread makes
+                # the OS reset the connection, and the client may never see the close frame. Until
+                # the client's EOF closes the transport, incoming data is discarded unparsed (see
+                # data_received), so nothing more is decoded or decompressed.
+                if self.transport.can_write_eof():
+                    self.transport.write_eof()
+                self.discard_input = True
                 if self.read_paused:
                     self.read_paused = False
                     self.transport.resume_reading()
