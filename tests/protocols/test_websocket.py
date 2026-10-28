@@ -1683,6 +1683,10 @@ class MockWebSocketConnection:
     def wrote_after_eof(self) -> bool:
         return self._transport.wrote_after_eof
 
+    @property
+    def parsed_events_pending(self) -> bool:
+        return bool(self._protocol.conn.events)
+
     # Internals.
 
     def _stage(self, flush: bool) -> None:
@@ -2083,6 +2087,31 @@ async def test_invalid_utf8_half_closes_and_stops_the_batch_on_websockets_sansio
         await connection.app_finished()
 
     assert disconnect_code == 1007
+
+
+async def test_oversized_frame_drops_frames_parsed_before_it_on_websockets_sansio(http_protocol_cls: HTTPProtocol):
+    """Test that frames parsed before the oversized one in the same read are dropped, not delivered
+    and not held while the server waits for the client's EOF."""
+    accepted = asyncio.Event()
+    received: list[ASGIReceiveEvent] = []
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        received.append(await receive())
+
+    async with MockWebSocketConnection(app, WebSocketsSansIOProtocol, http_protocol_cls) as connection:
+        await accepted.wait()
+
+        connection.send_text("before", flush=False)
+        connection.send_text("x" * (MAX_WS_BYTES + 1), flush=False)
+        connection.flush()
+        assert connection.eof_written
+        assert not connection.parsed_events_pending
+        await connection.app_finished()
+
+    assert [message["type"] for message in received] == ["websocket.disconnect"]
 
 
 async def test_connection_lost_cancels_the_pending_close_timer(

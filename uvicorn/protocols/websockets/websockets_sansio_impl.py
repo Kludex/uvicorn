@@ -400,6 +400,9 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         # backpressure so it raises too.
         self.disconnected = True
         self.writable.set()
+        # Drop the frames parsed before the failure in this read: they are not delivered, and the
+        # transport now stays open until the client's EOF or the deadline.
+        self.conn.events_received()
         # Called again for every chunk that arrives after the failure; only the first one queues
         # the disconnect event.
         if not self.close_sent:
