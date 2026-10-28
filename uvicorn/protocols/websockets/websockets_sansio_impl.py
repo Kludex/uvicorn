@@ -411,7 +411,9 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             elif self.transport.can_write_eof():
                 self.transport.write_eof()
         if self.close_timer is None:
-            self.close_timer = self.loop.call_later(self.close_timeout, self.transport.close)
+            # Abort at the deadline: close() would wait for buffered output to drain, which never
+            # happens if the client stopped reading.
+            self.close_timer = self.loop.call_later(self.close_timeout, self.transport.abort)
 
     def handle_handshake_exception(self) -> None:
         # websockets couldn't parse the handshake request. It queues a 414/431 for exceeded limits
