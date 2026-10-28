@@ -839,7 +839,7 @@ async def test_oversized_message_is_closed_without_reset_on_wsproto(
         # Wait instead of leaving `async with connect()`, whose close() aborts the transport. The
         # client already closed it after the server's EOF, while the rest of the message was still
         # queued, and before Python 3.14 aborting such a selector transport raises AttributeError.
-        await ws.wait_closed()
+        await asyncio.wait_for(ws.wait_closed(), timeout=5)
     assert exc_info.value.rcvd is not None
     assert exc_info.value.rcvd.code == 1009
     assert exc_info.value.__cause__ is None
