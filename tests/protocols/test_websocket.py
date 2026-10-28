@@ -1926,6 +1926,32 @@ async def test_oversized_message_aborts_when_the_peer_never_closes_on_wsproto(
         assert connection.transport_aborted
 
 
+@skip_if_no_wsproto
+async def test_oversized_message_stops_parsing_the_rest_of_the_read_on_wsproto(
+    http_protocol_cls: HTTPProtocol,
+):
+    """Test that frames after an oversized message in the same read are not parsed.
+
+    A close frame right behind the oversized message would otherwise close the transport.
+    """
+    accepted = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        await receive()  # websocket.disconnect
+
+    async with MockWebSocketConnection(app, _WSProtocol, http_protocol_cls) as connection:
+        await accepted.wait()
+
+        connection.send_text("x" * (MAX_WS_BYTES + 1), flush=False)
+        connection.send_close(flush=False)
+        connection.flush()
+        assert connection.eof_written
+        assert not connection.transport_closed
+
+
 async def test_shutdown_while_the_close_reply_is_pending(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol):
     """Test that server shutdown does not send a second close frame during the handshake."""
     async with MockWebSocketConnection(accept_then_close_app, ws_protocol_cls, http_protocol_cls) as connection:

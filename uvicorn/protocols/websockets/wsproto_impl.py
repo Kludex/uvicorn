@@ -187,6 +187,9 @@ class WSProtocol(asyncio.Protocol):
                 self.handle_connect(event)
             elif isinstance(event, (events.TextMessage, events.BytesMessage)):
                 self.handle_message(event)
+                if self.discard_input:
+                    # Pulling more events would parse (and decompress) the rest of this read.
+                    break
             elif isinstance(event, events.CloseConnection):
                 self.handle_close(event)
             elif isinstance(event, events.Ping):
@@ -267,15 +270,16 @@ class WSProtocol(asyncio.Protocol):
             self.writable.set()
             reason = f"Message exceeds the maximum size ({self.config.ws_max_size} bytes)"
             self.queue.put_nowait({"type": "websocket.disconnect", "code": 1009, "reason": reason})
+            # From here on incoming data is discarded unparsed (see data_received and
+            # handle_events), so nothing more is decoded or decompressed.
+            self.discard_input = True
             if not self.transport.is_closing():
                 self.transport.write(self.conn.send(wsproto.events.CloseConnection(code=1009, reason=reason)))
                 # Half-close rather than close: closing with the rest of the message unread makes
-                # the OS reset the connection, and the client may never see the close frame. Until
-                # the client's EOF closes the transport, incoming data is discarded unparsed (see
-                # data_received), so nothing more is decoded or decompressed.
+                # the OS reset the connection, and the client may never see the close frame. The
+                # client's EOF closes the transport.
                 if self.transport.can_write_eof():
                     self.transport.write_eof()
-                self.discard_input = True
                 if self.read_paused:
                     self.read_paused = False
                     self.transport.resume_reading()
