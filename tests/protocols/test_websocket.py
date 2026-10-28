@@ -1510,6 +1510,8 @@ async def test_server_keepalive_ping_timeout(
 class MockWriteTransport:
     """Minimal transport for driving a websocket protocol's write path in-process."""
 
+    wrote_after_eof = False
+
     def __init__(self) -> None:
         self.buffer = b""
         self.closed = False
@@ -1523,6 +1525,7 @@ class MockWriteTransport:
         return {"sockname": ("127.0.0.1", 8000), "peername": ("127.0.0.1", 8001)}.get(name, default)
 
     def write(self, data: bytes) -> None:
+        self.wrote_after_eof = self.wrote_after_eof or self.eof_written
         self.buffer += data
 
     def close(self) -> None:
@@ -1594,6 +1597,12 @@ class MockWebSocketConnection:
     def send_text(self, text: str, flush: bool = True) -> None:
         self._read_response()
         self._client.send_text(text.encode())
+        self._stage(flush)
+
+    def send_text_bytes(self, data: bytes, flush: bool = True) -> None:
+        """Send a text frame with this exact payload, which need not be valid UTF-8."""
+        self._read_response()
+        self._client.send_text(data)
         self._stage(flush)
 
     def send_ping(self, flush: bool = True) -> None:
@@ -1668,6 +1677,10 @@ class MockWebSocketConnection:
     @property
     def awaiting_close_reply(self) -> bool:
         return self._protocol.close_timer is not None
+
+    @property
+    def wrote_after_eof(self) -> bool:
+        return self._transport.wrote_after_eof
 
     # Internals.
 
@@ -2041,6 +2054,34 @@ async def test_shutdown_keeps_the_abort_deadline_after_app_close_and_oversized_f
 
         await asyncio.sleep(0.1)
         assert connection.transport_aborted
+
+
+async def test_invalid_utf8_half_closes_and_stops_the_batch_on_websockets_sansio(http_protocol_cls: HTTPProtocol):
+    """Test that invalid UTF-8 fails the connection like a parser error: close frame then EOF, and
+    nothing from the rest of the read (here a ping) is answered after the EOF."""
+    accepted = asyncio.Event()
+    disconnect_code: int | None = None
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        nonlocal disconnect_code
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        message = await receive()
+        assert message["type"] == "websocket.disconnect"
+        disconnect_code = message["code"]
+
+    async with MockWebSocketConnection(app, WebSocketsSansIOProtocol, http_protocol_cls) as connection:
+        await accepted.wait()
+
+        connection.send_text_bytes(b"\xff", flush=False)
+        connection.send_ping(flush=False)
+        connection.flush()
+        assert connection.eof_written
+        assert not connection.wrote_after_eof
+        await connection.app_finished()
+
+    assert disconnect_code == 1007
 
 
 async def test_connection_lost_cancels_the_pending_close_timer(

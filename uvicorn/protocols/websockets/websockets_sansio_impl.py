@@ -200,6 +200,9 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
 
     def handle_events(self) -> None:
         for event in self.conn.events_received():
+            if self.disconnected:
+                # A failure earlier in this batch already closed the connection on our side.
+                return
             if isinstance(event, Request):
                 self.handle_connect(event)
             if isinstance(event, Frame):
@@ -295,9 +298,11 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         if self.curr_msg_data_type == "text":
             try:
                 self.queue.put_nowait({"type": "websocket.receive", "text": data.decode()})
-            except UnicodeDecodeError:  # pragma: no cover
+            except UnicodeDecodeError:
                 self.logger.exception("Invalid UTF-8 sequence received from client.")
-                self.conn.send_close(1007)
+                # fail() rather than send_close(): like a parser error, it queues EOF after the
+                # close frame and discards further input.
+                self.conn.fail(1007)
                 self.handle_parser_exception()
                 return
         else:
