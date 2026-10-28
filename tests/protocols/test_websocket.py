@@ -2048,6 +2048,38 @@ async def test_shutdown_keeps_the_abort_deadline_after_an_oversized_message_on_w
         assert connection.transport_aborted
 
 
+@skip_if_no_wsproto
+async def test_send_after_an_oversized_message_under_backpressure_on_wsproto(http_protocol_cls: HTTPProtocol):
+    """Test that a send after the server rejected an oversized message raises ClientDisconnected, even
+    when writing the close frame paused writing."""
+    accepted = asyncio.Event()
+    send_requested = asyncio.Event()
+    app_finished = asyncio.Event()
+    send_failed = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        await send_requested.wait()
+        try:
+            await send({"type": "websocket.send", "text": "x"})
+        except OSError:
+            send_failed.set()
+        finally:
+            app_finished.set()
+
+    async with MockWebSocketConnection(app, _WSProtocol, http_protocol_cls) as connection:
+        await accepted.wait()
+
+        connection.send_text("x" * (MAX_WS_BYTES + 1))
+        # As if writing the close frame filled the transport's buffer.
+        connection.pause_writing()
+        send_requested.set()
+        await asyncio.wait_for(app_finished.wait(), timeout=1)
+        assert send_failed.is_set()
+
+
 async def test_shutdown_while_the_close_reply_is_pending(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol):
     """Test that server shutdown does not send a second close frame during the handshake."""
     async with MockWebSocketConnection(accept_then_close_app, ws_protocol_cls, http_protocol_cls) as connection:
