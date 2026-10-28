@@ -256,6 +256,7 @@ class WSProtocol(asyncio.Protocol):
         try:
             self.buffer.extend(event)
         except FrameTooLargeError:
+            self.buffer.clear()
             self.close_sent = True
             reason = f"Message exceeds the maximum size ({self.config.ws_max_size} bytes)"
             self.queue.put_nowait({"type": "websocket.disconnect", "code": 1009, "reason": reason})
