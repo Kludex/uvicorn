@@ -30,6 +30,7 @@ from uvicorn._types import (
     WebSocketResponseStartEvent,
 )
 from uvicorn.config import Config
+from uvicorn.protocols.utils import ClientDisconnected
 from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
 from uvicorn.server import ServerState
 
@@ -1965,7 +1966,7 @@ async def test_oversized_frame_unblocks_paused_send_on_websockets_sansio(http_pr
         await send_requested.wait()
         try:
             await send({"type": "websocket.send", "text": "x"})
-        except OSError:
+        except ClientDisconnected:
             send_failed.set()
         finally:
             app_finished.set()
@@ -2001,7 +2002,7 @@ async def test_send_after_an_oversized_frame_under_backpressure_on_websockets_sa
         await send_requested.wait()
         try:
             await send({"type": "websocket.send", "text": "x"})
-        except OSError:
+        except ClientDisconnected:
             send_failed.set()
         finally:
             app_finished.set()
