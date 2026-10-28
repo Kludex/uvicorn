@@ -1856,6 +1856,26 @@ async def test_oversized_frame_aborts_when_the_peer_never_closes_on_websockets_s
         assert connection.transport_aborted
 
 
+async def test_oversized_frame_after_app_close_aborts_at_the_close_deadline_on_websockets_sansio(
+    http_protocol_cls: HTTPProtocol,
+):
+    """Test that a parser error during an app-initiated close keeps that close's deadline but aborts.
+
+    close() would wait for buffered output that a peer that stopped reading never drains.
+    """
+    async with MockWebSocketConnection(
+        accept_then_close_app, WebSocketsSansIOProtocol, http_protocol_cls, close_timeout=0.05
+    ) as connection:
+        await connection.app_finished()
+        assert connection.awaiting_close_reply
+
+        connection.send_text("x" * (MAX_WS_BYTES + 1))
+        assert not connection.transport_closed
+
+        await asyncio.sleep(0.1)
+        assert connection.transport_aborted
+
+
 async def test_oversized_frame_closes_at_once_without_half_close_on_websockets_sansio(
     http_protocol_cls: HTTPProtocol,
 ):

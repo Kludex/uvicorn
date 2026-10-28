@@ -415,10 +415,14 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 # connection, so waiting for its EOF would only delay the close.
                 self.transport.close()
                 return
-        if self.close_timer is None:
-            # Abort at the deadline: close() would wait for buffered output to drain, which never
-            # happens if the client stopped reading.
-            self.close_timer = self.loop.call_later(self.close_timeout, self.transport.abort)
+        # Abort at the deadline: close() would wait for buffered output to drain, which never
+        # happens if the client stopped reading. An app-initiated close may already have set a
+        # close timer; keep its deadline but abort instead.
+        deadline = self.loop.time() + self.close_timeout
+        if self.close_timer is not None:
+            deadline = self.close_timer.when()
+            self.close_timer.cancel()
+        self.close_timer = self.loop.call_at(deadline, self.transport.abort)
 
     def handle_handshake_exception(self) -> None:
         # websockets couldn't parse the handshake request. It queues a 414/431 for exceeded limits
