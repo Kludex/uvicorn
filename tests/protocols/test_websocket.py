@@ -790,7 +790,7 @@ async def test_send_binary_data_to_server_bigger_than_default_on_websockets(
             # Wait instead of leaving `async with connect()`, whose close() aborts the transport. The
             # client already closed it after the server's EOF, while the rest of the frame was still
             # queued, and before Python 3.14 aborting such a selector transport raises AttributeError.
-            await ws.wait_closed()
+            await asyncio.wait_for(ws.wait_closed(), timeout=5)
 
     if expected_result != 0:
         assert disconnect_code == expected_result
