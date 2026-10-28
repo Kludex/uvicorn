@@ -212,7 +212,9 @@ class WSProtocol(asyncio.Protocol):
     def shutdown(self) -> None:
         self.stop_keepalive()
         if self.close_sent:
-            if self.close_timer is not None:
+            # After an oversized message the close timer aborts; keep it, as close() may wait forever
+            # for output a stalled client never reads.
+            if self.close_timer is not None and not self.discard_input:
                 self.close_timer.cancel()
                 self.close_timer = None
             self.transport.close()
