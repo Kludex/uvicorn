@@ -264,6 +264,9 @@ class WSProtocol(asyncio.Protocol):
                 # Wait for the client's close rather than closing now: closing with the rest of the
                 # message unread makes the OS reset the connection, and the client may never see the
                 # close frame. Events that arrive until then are dropped (see handle_events).
+                if self.read_paused:
+                    self.read_paused = False
+                    self.transport.resume_reading()
                 self.close_timer = self.loop.call_later(self.close_timeout, self.transport.close)
             return
         if event.message_finished:

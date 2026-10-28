@@ -841,6 +841,35 @@ async def test_oversized_message_is_closed_without_reset_on_wsproto(
     assert exc_info.value.__cause__ is None
 
 
+@skip_if_no_wsproto
+async def test_oversized_message_after_queued_message_on_wsproto(http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
+    """A complete message pauses reading until the app takes it. When an oversized message follows
+    in the same read and the app never drains its queue, reading must resume so the client's close
+    echo completes the handshake, instead of the close timer firing."""
+    app_done = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()
+        await send({"type": "websocket.accept"})
+        await app_done.wait()
+
+    config = Config(
+        app=app, ws=_WSProtocol, http=http_protocol_cls, lifespan="off", ws_max_size=10, port=unused_tcp_port
+    )
+    async with run_server(config):
+        ws = await connect(f"ws://127.0.0.1:{unused_tcp_port}")
+        try:
+            # Both messages in one write, so the server reads them in one `data_received`.
+            ws.protocol.send_text(b"queued")
+            ws.protocol.send_text(b"x" * 11)
+            ws.transport.write(b"".join(ws.protocol.data_to_send()))
+            await asyncio.wait_for(ws.wait_closed(), timeout=5)
+        finally:
+            app_done.set()
+    assert ws.protocol.close_rcvd is not None
+    assert ws.protocol.close_rcvd.code == 1009
+
+
 @pytest.mark.parametrize("opcode", [Opcode.TEXT, Opcode.BINARY])
 async def test_fragmented_message_reassembly(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int, opcode: Opcode
