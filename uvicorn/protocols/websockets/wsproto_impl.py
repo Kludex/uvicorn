@@ -275,11 +275,15 @@ class WSProtocol(asyncio.Protocol):
             self.discard_input = True
             if not self.transport.is_closing():
                 self.transport.write(self.conn.send(wsproto.events.CloseConnection(code=1009, reason=reason)))
+                if not self.transport.can_write_eof():
+                    # Without a half-close (e.g. TLS) the client waits for the server to close the
+                    # connection, so waiting for its EOF would only delay the close.
+                    self.transport.close()
+                    return
                 # Half-close rather than close: closing with the rest of the message unread makes
                 # the OS reset the connection, and the client may never see the close frame. The
                 # client's EOF closes the transport.
-                if self.transport.can_write_eof():
-                    self.transport.write_eof()
+                self.transport.write_eof()
                 if self.read_paused:
                     self.read_paused = False
                     self.transport.resume_reading()
