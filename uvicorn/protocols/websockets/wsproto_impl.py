@@ -285,7 +285,12 @@ class WSProtocol(asyncio.Protocol):
                 # Half-close rather than close: closing with the rest of the message unread makes
                 # the OS reset the connection, and the client may never see the close frame. The
                 # client's EOF closes the transport.
-                self.transport.write_eof()
+                try:
+                    self.transport.write_eof()
+                except OSError:
+                    # The socket is already unusable; there is no half-close to wait on.
+                    self.transport.close()
+                    return
                 if self.read_paused:
                     self.read_paused = False
                     self.transport.resume_reading()

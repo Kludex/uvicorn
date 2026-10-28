@@ -1578,6 +1578,7 @@ class MockWriteTransport:
         self.closed = False
         self.aborted = False
         self.eof_supported = True
+        self.eof_fails = False
         self.eof_written = False
         self.reading_paused = False
 
@@ -1598,6 +1599,8 @@ class MockWriteTransport:
         return self.eof_supported
 
     def write_eof(self) -> None:
+        if self.eof_fails:
+            raise OSError("socket.shutdown() failed")
         self.eof_written = True
 
     def is_closing(self) -> bool:
@@ -1688,6 +1691,10 @@ class MockWebSocketConnection:
     def disable_half_close(self) -> None:
         """Make the transport unable to write EOF, as with TLS."""
         self._transport.eof_supported = False
+
+    def fail_half_close(self) -> None:
+        """Make writing EOF raise, as when the socket is already unusable."""
+        self._transport.eof_fails = True
 
     def pause_writing(self) -> None:
         self._protocol.pause_writing()
@@ -2078,6 +2085,27 @@ async def test_send_after_an_oversized_message_under_backpressure_on_wsproto(htt
         send_requested.set()
         await asyncio.wait_for(app_finished.wait(), timeout=1)
         assert send_failed.is_set()
+
+
+@skip_if_no_wsproto
+async def test_oversized_message_closes_when_half_close_fails_on_wsproto(http_protocol_cls: HTTPProtocol):
+    """Test that the server closes when writing EOF fails, instead of discarding input on an open
+    transport with no deadline."""
+    accepted = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        await receive()  # websocket.disconnect
+
+    async with MockWebSocketConnection(app, _WSProtocol, http_protocol_cls) as connection:
+        await accepted.wait()
+        connection.fail_half_close()
+
+        connection.send_text("x" * (MAX_WS_BYTES + 1))
+        assert connection.transport_closed
+        assert not connection.awaiting_close_reply
 
 
 async def test_shutdown_while_the_close_reply_is_pending(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol):
