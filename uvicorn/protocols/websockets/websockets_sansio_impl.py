@@ -394,6 +394,8 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             reason = self.conn.close_sent.reason
             self.queue.put_nowait({"type": "websocket.disconnect", "code": code, "reason": reason})
             self.close_sent = True
+            # Drop the fragments of the rejected message now, not when the transport closes.
+            self.frames = []
 
         # websockets queues the close frame, then an EOF (an empty chunk). Half-close rather than
         # close the transport: closing with unread data (e.g. the rest of an oversized frame) makes
