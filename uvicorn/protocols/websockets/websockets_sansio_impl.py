@@ -403,6 +403,11 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         # Drop the frames parsed before the failure in this read: they are not delivered, and the
         # transport now stays open until the client's EOF or the deadline.
         self.conn.events_received()
+        # A message queued earlier in this read may have paused reading; resume it so the client's
+        # EOF can be read.
+        if self.read_paused:
+            self.read_paused = False
+            self.transport.resume_reading()
         # Called again for every chunk that arrives after the failure; only the first one queues
         # the disconnect event.
         if not self.close_sent:

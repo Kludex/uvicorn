@@ -2114,6 +2114,31 @@ async def test_oversized_frame_drops_frames_parsed_before_it_on_websockets_sansi
     assert [message["type"] for message in received] == ["websocket.disconnect"]
 
 
+async def test_invalid_utf8_after_queued_message_resumes_reading_on_websockets_sansio(
+    http_protocol_cls: HTTPProtocol,
+):
+    """Test that a failure after a queued message in the same read resumes reading, so the client's
+    EOF can still be read when the app does not drain its queue."""
+    accepted = asyncio.Event()
+    app_done = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        await app_done.wait()
+
+    async with MockWebSocketConnection(app, WebSocketsSansIOProtocol, http_protocol_cls) as connection:
+        await accepted.wait()
+
+        connection.send_text("queued", flush=False)
+        connection.send_text_bytes(b"\xff", flush=False)
+        connection.flush()
+        assert connection.eof_written
+        assert not connection.reading_paused
+        app_done.set()
+
+
 async def test_connection_lost_cancels_the_pending_close_timer(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol
 ):
