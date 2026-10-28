@@ -1576,6 +1576,8 @@ class MockWriteTransport:
     def __init__(self) -> None:
         self.buffer = b""
         self.closed = False
+        self.aborted = False
+        self.eof_written = False
         self.reading_paused = False
 
     def get_extra_info(self, name: str, default: Any = None) -> Any:
@@ -1586,6 +1588,16 @@ class MockWriteTransport:
 
     def close(self) -> None:
         self.closed = True
+
+    def abort(self) -> None:
+        self.closed = True
+        self.aborted = True
+
+    def can_write_eof(self) -> bool:
+        return True
+
+    def write_eof(self) -> None:
+        self.eof_written = True
 
     def is_closing(self) -> bool:
         return self.closed
@@ -1691,6 +1703,14 @@ class MockWebSocketConnection:
     @property
     def transport_closed(self) -> bool:
         return self._transport.closed
+
+    @property
+    def transport_aborted(self) -> bool:
+        return self._transport.aborted
+
+    @property
+    def eof_written(self) -> bool:
+        return self._transport.eof_written
 
     @property
     def reading_paused(self) -> bool:
@@ -1875,6 +1895,35 @@ async def test_connection_lost_cancels_the_pending_close_timer(
         assert connection.awaiting_close_reply
 
     assert not connection.awaiting_close_reply
+
+
+@skip_if_no_wsproto
+async def test_oversized_message_aborts_when_the_peer_never_closes_on_wsproto(
+    http_protocol_cls: HTTPProtocol,
+):
+    """Test that a peer that never closes after an oversized message cannot keep the connection.
+
+    The server half-closes and waits for the peer's EOF, then aborts at the deadline: close()
+    would wait for buffered output that a peer that stopped reading never drains.
+    """
+    accepted = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        await receive()  # websocket.disconnect
+
+    async with MockWebSocketConnection(app, _WSProtocol, http_protocol_cls, close_timeout=0) as connection:
+        await accepted.wait()
+
+        connection.send_text("x" * (MAX_WS_BYTES + 1))
+        assert connection.eof_written
+        assert not connection.transport_closed
+
+        # Let the zero-delay close timer fire.
+        await asyncio.sleep(0.01)
+        assert connection.transport_aborted
 
 
 async def test_shutdown_while_the_close_reply_is_pending(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol):

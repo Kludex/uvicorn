@@ -279,7 +279,9 @@ class WSProtocol(asyncio.Protocol):
                 if self.read_paused:
                     self.read_paused = False
                     self.transport.resume_reading()
-                self.close_timer = self.loop.call_later(self.close_timeout, self.transport.close)
+                # Abort at the deadline: close() would wait for buffered output to drain, which
+                # never happens if the client stopped reading.
+                self.close_timer = self.loop.call_later(self.close_timeout, self.transport.abort)
             return
         if event.message_finished:
             self.queue.put_nowait(self.buffer.to_message())
