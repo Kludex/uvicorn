@@ -394,6 +394,8 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             reason = self.conn.close_sent.reason
             self.queue.put_nowait({"type": "websocket.disconnect", "code": code, "reason": reason})
             self.close_sent = True
+            # The app's sends now raise ClientDisconnected, though the transport stays open below.
+            self.disconnected = True
             # Drop the fragments of the rejected message now, not when the transport closes.
             self.frames = []
 
