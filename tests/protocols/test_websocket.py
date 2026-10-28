@@ -1966,6 +1966,37 @@ async def test_oversized_frame_unblocks_paused_send_on_websockets_sansio(http_pr
         assert not connection.transport_closed
 
 
+async def test_send_after_an_oversized_frame_under_backpressure_on_websockets_sansio(http_protocol_cls: HTTPProtocol):
+    """Test that a send after the server rejected an oversized frame raises ClientDisconnected, even
+    when writing the close frame paused writing."""
+    accepted = asyncio.Event()
+    send_requested = asyncio.Event()
+    app_finished = asyncio.Event()
+    send_failed = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        await send_requested.wait()
+        try:
+            await send({"type": "websocket.send", "text": "x"})
+        except OSError:
+            send_failed.set()
+        finally:
+            app_finished.set()
+
+    async with MockWebSocketConnection(app, WebSocketsSansIOProtocol, http_protocol_cls) as connection:
+        await accepted.wait()
+
+        connection.send_text("x" * (MAX_WS_BYTES + 1))
+        # As if writing the close frame filled the transport's buffer.
+        connection.pause_writing()
+        send_requested.set()
+        await asyncio.wait_for(app_finished.wait(), timeout=1)
+        assert send_failed.is_set()
+
+
 async def test_connection_lost_cancels_the_pending_close_timer(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol
 ):

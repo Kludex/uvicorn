@@ -467,6 +467,11 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
         self.transport.write(b"".join(output))
 
     async def send(self, message: ASGISendEvent) -> None:
+        # Checked before waiting too: writing a server-initiated close frame can pause writing
+        # after the connection was marked disconnected.
+        if self.disconnected:
+            raise ClientDisconnected()
+
         await self.writable.wait()
 
         if self.disconnected:
