@@ -171,9 +171,10 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
     def shutdown(self) -> None:
         self.stop_keepalive()
         if self.close_sent:
-            # After a parser error the close timer aborts; keep it, as close() may wait forever for
-            # output a stalled client never reads.
-            if self.close_timer is not None and self.conn.parser_exc is None:
+            # After handle_parser_exception() (which marks the connection disconnected) the close
+            # timer aborts; keep it, as close() may wait forever for output a stalled client never
+            # reads.
+            if self.close_timer is not None and not self.disconnected:
                 self.close_timer.cancel()
                 self.close_timer = None
             self.transport.close()
