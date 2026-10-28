@@ -2024,6 +2024,25 @@ async def test_oversized_frame_closes_when_half_close_fails_on_websockets_sansio
         assert not connection.awaiting_close_reply
 
 
+async def test_shutdown_keeps_the_abort_deadline_after_app_close_and_oversized_frame_on_websockets_sansio(
+    http_protocol_cls: HTTPProtocol,
+):
+    """Test that a parser error after the app's websocket.close still keeps the abort deadline
+    through server shutdown."""
+    async with MockWebSocketConnection(
+        accept_then_close_app, WebSocketsSansIOProtocol, http_protocol_cls, close_timeout=0.05
+    ) as connection:
+        await connection.app_finished()
+
+        connection.send_text("x" * (MAX_WS_BYTES + 1))
+        connection.shutdown()
+        assert connection.transport_closed
+        assert connection.awaiting_close_reply
+
+        await asyncio.sleep(0.1)
+        assert connection.transport_aborted
+
+
 async def test_connection_lost_cancels_the_pending_close_timer(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol
 ):

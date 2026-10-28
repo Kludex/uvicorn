@@ -390,17 +390,19 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
             self.transport.close()
 
     def handle_parser_exception(self) -> None:
-        # Called again for every chunk that arrives after the failure; only the first one acts.
+        # The app's sends now raise ClientDisconnected, though the transport stays open below; this
+        # also holds when the app had already sent websocket.close. Wake any send() waiting on
+        # backpressure so it raises too.
+        self.disconnected = True
+        self.writable.set()
+        # Called again for every chunk that arrives after the failure; only the first one queues
+        # the disconnect event.
         if not self.close_sent:
             assert self.conn.close_sent is not None
             code = self.conn.close_sent.code
             reason = self.conn.close_sent.reason
             self.queue.put_nowait({"type": "websocket.disconnect", "code": code, "reason": reason})
             self.close_sent = True
-            # The app's sends now raise ClientDisconnected, though the transport stays open below.
-            # Wake any send() waiting on backpressure so it raises too.
-            self.disconnected = True
-            self.writable.set()
             # Drop the fragments of the rejected message now, not when the transport closes.
             self.frames = []
 
