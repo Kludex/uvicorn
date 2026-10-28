@@ -410,6 +410,11 @@ class WebSocketsSansIOProtocol(asyncio.Protocol):
                 self.transport.write(data)
             elif self.transport.can_write_eof():
                 self.transport.write_eof()
+            else:
+                # Without a half-close (e.g. TLS) the client waits for the server to close the
+                # connection, so waiting for its EOF would only delay the close.
+                self.transport.close()
+                return
         if self.close_timer is None:
             # Abort at the deadline: close() would wait for buffered output to drain, which never
             # happens if the client stopped reading.

@@ -1514,6 +1514,7 @@ class MockWriteTransport:
         self.buffer = b""
         self.closed = False
         self.aborted = False
+        self.eof_supported = True
         self.eof_written = False
         self.reading_paused = False
 
@@ -1531,7 +1532,7 @@ class MockWriteTransport:
         self.aborted = True
 
     def can_write_eof(self) -> bool:
-        return True
+        return self.eof_supported
 
     def write_eof(self) -> None:
         self.eof_written = True
@@ -1620,6 +1621,10 @@ class MockWebSocketConnection:
         self._protocol.data_received(data)
 
     # Transport events and server operations.
+
+    def disable_half_close(self) -> None:
+        """Make the transport unable to write EOF, as with TLS."""
+        self._transport.eof_supported = False
 
     def pause_writing(self) -> None:
         self._protocol.pause_writing()
@@ -1849,6 +1854,32 @@ async def test_oversized_frame_aborts_when_the_peer_never_closes_on_websockets_s
         # Let the zero-delay close timer fire.
         await asyncio.sleep(0.01)
         assert connection.transport_aborted
+
+
+async def test_oversized_frame_closes_at_once_without_half_close_on_websockets_sansio(
+    http_protocol_cls: HTTPProtocol,
+):
+    """Test that the server closes at once when it cannot half-close, e.g. over TLS.
+
+    The client waits for the server to close the connection, so waiting for its EOF would only
+    delay the close until the deadline.
+    """
+    accepted = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        await receive()  # websocket.disconnect
+
+    async with MockWebSocketConnection(app, WebSocketsSansIOProtocol, http_protocol_cls) as connection:
+        await accepted.wait()
+        connection.disable_half_close()
+
+        connection.send_text("x" * (MAX_WS_BYTES + 1))
+        assert connection.transport_closed
+        assert not connection.eof_written
+        assert not connection.awaiting_close_reply
 
 
 async def test_connection_lost_cancels_the_pending_close_timer(
