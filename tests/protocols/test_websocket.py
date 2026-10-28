@@ -1902,6 +1902,35 @@ async def test_oversized_frame_closes_at_once_without_half_close_on_websockets_s
         assert not connection.awaiting_close_reply
 
 
+async def test_shutdown_keeps_the_abort_deadline_after_an_oversized_frame_on_websockets_sansio(
+    http_protocol_cls: HTTPProtocol,
+):
+    """Test that server shutdown during a parser-error close keeps the abort deadline.
+
+    close() may wait forever for output a stalled client never reads.
+    """
+    accepted = asyncio.Event()
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await receive()  # websocket.connect
+        await send({"type": "websocket.accept"})
+        accepted.set()
+        await receive()  # websocket.disconnect
+
+    async with MockWebSocketConnection(
+        app, WebSocketsSansIOProtocol, http_protocol_cls, close_timeout=0.05
+    ) as connection:
+        await accepted.wait()
+
+        connection.send_text("x" * (MAX_WS_BYTES + 1))
+        connection.shutdown()
+        assert connection.transport_closed
+        assert connection.awaiting_close_reply
+
+        await asyncio.sleep(0.1)
+        assert connection.transport_aborted
+
+
 async def test_oversized_frame_unblocks_paused_send_on_websockets_sansio(http_protocol_cls: HTTPProtocol):
     """Test that a parser error releases a send blocked on backpressure with ClientDisconnected."""
     accepted = asyncio.Event()
