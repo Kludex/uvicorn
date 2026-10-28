@@ -771,21 +771,26 @@ async def test_send_binary_data_to_server_bigger_than_default_on_websockets(
     )
     async with run_server(config):
         # Compression is disabled so `ws_max_size` applies to the sizes sent on the wire.
-        async with connect(f"ws://127.0.0.1:{unused_tcp_port}", max_size=None, compression=None) as ws:
-            if expected_result == 0:
+        if expected_result == 0:
+            async with connect(f"ws://127.0.0.1:{unused_tcp_port}", max_size=None, compression=None) as ws:
                 await ws.send(b"\x01" * client_size_sent)
                 data = await ws.recv()
                 assert data == b"\x01" * client_size_sent
-            else:
-                # The server rejects the oversized frame from its header, before the
-                # client finishes streaming it. The close frame must still reach the client,
-                # and the connection must not be reset under the rest of the frame.
-                with pytest.raises(websockets.exceptions.ConnectionClosed) as exc_info:
-                    await ws.send(b"\x01" * client_size_sent)
-                    await ws.recv()
-                assert exc_info.value.rcvd is not None
-                assert exc_info.value.rcvd.code == expected_result
-                assert exc_info.value.__cause__ is None
+        else:
+            # The server rejects the oversized frame from its header, before the
+            # client finishes streaming it. The close frame must still reach the client,
+            # and the connection must not be reset under the rest of the frame.
+            ws = await connect(f"ws://127.0.0.1:{unused_tcp_port}", max_size=None, compression=None)
+            with pytest.raises(websockets.exceptions.ConnectionClosed) as exc_info:
+                await ws.send(b"\x01" * client_size_sent)
+                await ws.recv()
+            assert exc_info.value.rcvd is not None
+            assert exc_info.value.rcvd.code == expected_result
+            assert exc_info.value.__cause__ is None
+            # Wait instead of leaving `async with connect()`, whose close() aborts the transport. The
+            # client already closed it after the server's EOF, while the rest of the frame was still
+            # queued, and before Python 3.14 aborting such a selector transport raises AttributeError.
+            await ws.wait_closed()
 
     if expected_result != 0:
         assert disconnect_code == expected_result
