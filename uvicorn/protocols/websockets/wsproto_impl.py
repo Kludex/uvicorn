@@ -261,7 +261,10 @@ class WSProtocol(asyncio.Protocol):
             self.queue.put_nowait({"type": "websocket.disconnect", "code": 1009, "reason": reason})
             if not self.transport.is_closing():
                 self.transport.write(self.conn.send(wsproto.events.CloseConnection(code=1009, reason=reason)))
-                self.transport.close()
+                # Wait for the client's close rather than closing now: closing with the rest of the
+                # message unread makes the OS reset the connection, and the client may never see the
+                # close frame. Events that arrive until then are dropped (see handle_events).
+                self.close_timer = self.loop.call_later(self.close_timeout, self.transport.close)
             return
         if event.message_finished:
             self.queue.put_nowait(self.buffer.to_message())

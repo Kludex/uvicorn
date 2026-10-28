@@ -811,6 +811,36 @@ async def test_fragmented_message_exceeding_max_size(
     assert exc_info.value.rcvd.code == 1009
 
 
+@skip_if_no_wsproto
+@pytest.mark.parametrize("client_size_sent", [1024 * 1024 + 1, 16 * 1024 * 1024])
+async def test_oversized_message_is_closed_without_reset_on_wsproto(
+    http_protocol_cls: HTTPProtocol, client_size_sent: int, unused_tcp_port: int
+):
+    """The server rejects the message before the client finishes streaming it. The 1009 close
+    frame must reach the client, and the connection must not be reset under the rest of it."""
+
+    class App(WebSocketResponse):
+        async def websocket_connect(self, message: WebSocketConnectEvent):
+            await self.send({"type": "websocket.accept"})
+
+    config = Config(
+        app=App,
+        ws=_WSProtocol,
+        http=http_protocol_cls,
+        lifespan="off",
+        ws_max_size=1024 * 1024,
+        port=unused_tcp_port,
+    )
+    async with run_server(config):
+        async with connect(f"ws://127.0.0.1:{unused_tcp_port}", max_size=None, compression=None) as ws:
+            with pytest.raises(websockets.exceptions.ConnectionClosed) as exc_info:
+                await ws.send(b"\x01" * client_size_sent)
+                await ws.recv()
+    assert exc_info.value.rcvd is not None
+    assert exc_info.value.rcvd.code == 1009
+    assert exc_info.value.__cause__ is None
+
+
 @pytest.mark.parametrize("opcode", [Opcode.TEXT, Opcode.BINARY])
 async def test_fragmented_message_reassembly(
     ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int, opcode: Opcode
