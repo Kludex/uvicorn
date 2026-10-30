@@ -399,7 +399,9 @@ def test_log_config_use_colors_does_not_mutate_caller_mapping(mocked_logging_con
     assert custom_log_config == before
 
 
-def test_log_config_use_colors_does_not_mutate_default_logging_config() -> None:
+def test_log_config_use_colors_does_not_mutate_default_logging_config(
+    mocked_logging_config_module: MagicMock,
+) -> None:
     """
     `LOGGING_CONFIG` is the default value of the `log_config` parameter, so
     writing `use_colors` into it leaked into every later `Config` in the
