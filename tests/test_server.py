@@ -6,6 +6,7 @@ import contextvars
 import json
 import logging
 import signal
+import socket
 import sys
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
@@ -14,7 +15,7 @@ import httpx2
 import pytest
 
 from tests.protocols.test_http import SIMPLE_GET_REQUEST
-from tests.utils import run_server
+from tests.utils import has_ipv6, run_server
 from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.config import STARTUP_FAILURE, Config
 from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT
@@ -120,6 +121,71 @@ async def test_shutdown_on_early_exit_during_startup(unused_tcp_port: int):
 
     assert startup_complete
     assert shutdown_complete, "lifespan.shutdown was not called despite startup completing"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="binding '::' behaves differently on Windows CI")
+@pytest.mark.skipif(not has_ipv6("::"), reason="IPV6 not enabled")
+async def test_ipv6_v6only_false_accepts_ipv4_in_single_worker_mode(  # pragma: py-win32
+    unused_tcp_port: int,
+) -> None:
+    """An explicit ipv6_v6only=False makes single-worker mode accept IPv4
+    connections on a dual-stack '::' bind, instead of asyncio's
+    create_server() silently forcing IPv6-only. Regression for #2945.
+    """
+    config = Config(app=app, host="::", port=unused_tcp_port, ipv6_v6only=False)
+    async with run_server(config):
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"http://127.0.0.1:{unused_tcp_port}")
+            assert response.status_code == 200
+
+            response = await client.get(f"http://[::1]:{unused_tcp_port}")
+            assert response.status_code == 200
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows SO_REUSEADDR lets both sockets bind the same address, so the bind "
+    "failure this test relies on never happens there (confirmed via a hung CI run)",
+)
+@pytest.mark.skipif(not has_ipv6("::"), reason="IPV6 not enabled")
+async def test_ipv6_v6only_bind_failure_runs_lifespan_shutdown() -> None:  # pragma: py-win32
+    """The explicit-bind path (taken when ipv6_v6only is set) still runs lifespan
+    shutdown on a bind failure, matching the plain OSError path below it.
+
+    config.bind_socket() calls sys.exit() itself on a bind failure, raising
+    SystemExit rather than OSError, so the surrounding `except OSError` alone
+    wouldn't catch it and lifespan.shutdown() would be skipped.
+    """
+    shutdown_complete = False
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        nonlocal shutdown_complete
+        if scope["type"] == "lifespan":
+            while True:
+                message = await receive()
+                if message["type"] == "lifespan.startup":
+                    await send({"type": "lifespan.startup.complete"})
+                elif message["type"] == "lifespan.shutdown":
+                    await send({"type": "lifespan.shutdown.complete"})
+                    shutdown_complete = True
+                    return
+
+    blocker = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+    try:
+        blocker.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        blocker.bind(("::", 0))
+        blocker.listen(1)
+        port = blocker.getsockname()[1]
+
+        config = Config(app=app, host="::", port=port, ipv6_v6only=False, lifespan="on")
+        config.load_app()
+        server = Server(config=config)
+        with pytest.raises(SystemExit):
+            await server.serve()
+    finally:
+        blocker.close()
+
+    assert shutdown_complete, "lifespan.shutdown was not called despite the bind failure"
 
 
 def test_run_exits_with_startup_failure_on_unloadable_app() -> None:
