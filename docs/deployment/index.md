@@ -285,8 +285,8 @@ Although it is common for UNIX Domain Sockets to be used for communicating betwe
 
 For example:
 
-- when NGINX itself is running behind a UDS it will add the literal `unix:` as the client in the `X-Forwarded-For` header.
-- When Uvicorn is running behind a UDS the initial client will be `None`.
+- when NGINX itself is running behind an UDS it will add the literal `unix:` as the client in the `X-Forwarded-For` header.
+- When Uvicorn is running behind an UDS the initial client will be `None`.
 
 ### Trust Everything
 
