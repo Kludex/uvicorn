@@ -13,8 +13,15 @@ from uvicorn import Config, Server
 
 
 @asynccontextmanager
-async def run_server(config: Config, sockets: list[socket] | None = None) -> AsyncIterator[Server]:
-    server = Server(config=config)
+async def run_server(
+    config: Config,
+    sockets: list[socket] | None = None,
+    *,
+    worker_id: int = 1,
+    server: Server | None = None,
+) -> AsyncIterator[Server]:
+    if server is None:
+        server = Server(config=config, worker_id=worker_id)
     task = asyncio.create_task(server.serve(sockets=sockets))
     while not server.started:
         await asyncio.sleep(0.05)

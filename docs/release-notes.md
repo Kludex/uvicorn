@@ -2,6 +2,12 @@
 toc_depth: 2
 ---
 
+## Unreleased
+
+### Added
+
+* Add a stable `uvicorn_worker_id` in ASGI lifespan state (and `UVICORN_WORKER_ID`). Single-process mode uses `1`; `--workers` assigns a unique ID per worker.
+
 ## 0.54.0 (September 24, 2026)
 
 HTTP/2 support remains experimental. Install `zttp>=0.0.34` and enable it with `--http zttp --http2`.
