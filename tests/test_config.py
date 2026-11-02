@@ -694,3 +694,41 @@ def test_setup_event_loop_is_removed(caplog: pytest.LogCaptureFixture) -> None:
         AttributeError, match="The `setup_event_loop` method was replaced by `get_loop_factory` in uvicorn 0.36.0."
     ):
         config.setup_event_loop()
+
+
+@pytest.mark.anyio
+async def test_async_context_manager_app_factory_lifespan() -> None:
+    import contextlib
+
+    events: list[str] = []
+
+    @contextlib.asynccontextmanager
+    async def create_app() -> Any:
+        events.append("factory:startup")
+        try:
+            yield asgi_app
+        finally:
+            events.append("factory:shutdown")
+
+    config = Config(app=create_app, factory=True)
+    config.load()
+    assert config.interface == "asgi3"
+
+    sent_messages: list[dict[str, Any]] = []
+    queue: list[dict[str, str]] = [
+        {"type": "lifespan.startup"},
+        {"type": "lifespan.shutdown"},
+    ]
+
+    async def receive() -> dict[str, str]:
+        return queue.pop(0)
+
+    async def send(msg: dict[str, Any]) -> None:
+        sent_messages.append(msg)
+
+    await config.loaded_app({"type": "lifespan"}, receive, send)
+    assert events == ["factory:startup", "factory:shutdown"]
+    assert sent_messages == [
+        {"type": "lifespan.startup.complete"},
+        {"type": "lifespan.shutdown.complete"},
+    ]

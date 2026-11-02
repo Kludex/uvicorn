@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import inspect
 import json
 import logging
@@ -509,17 +510,34 @@ class Config:
 
         self.loaded_app = self.load_app()
 
-        try:
-            self.loaded_app = self.loaded_app()
-        except TypeError as exc:
-            if self.factory:
-                logger.error("Error loading ASGI app factory: %s", exc)
-                sys.exit(STARTUP_FAILURE)
-        else:
+        if inspect.isasyncgenfunction(self.loaded_app):
+            self.loaded_app = _AsyncContextFactoryApp(contextlib.asynccontextmanager(self.loaded_app))
             if not self.factory:
                 logger.warning(
                     "ASGI app factory detected. Using it, but please consider setting the --factory flag explicitly."
                 )
+        else:
+            orig_factory = self.loaded_app
+            try:
+                invoked_app = self.loaded_app()
+            except TypeError as exc:
+                if self.factory:
+                    logger.error("Error loading ASGI app factory: %s", exc)
+                    sys.exit(STARTUP_FAILURE)
+            else:
+                if inspect.isasyncgen(invoked_app):
+                    self.loaded_app = _AsyncContextFactoryApp(
+                        contextlib.asynccontextmanager(orig_factory),
+                        initial_cm=contextlib.asynccontextmanager(lambda: invoked_app)(),
+                    )
+                elif hasattr(invoked_app, "__aenter__") and hasattr(invoked_app, "__aexit__"):
+                    self.loaded_app = _AsyncContextFactoryApp(orig_factory, initial_cm=invoked_app)
+                else:
+                    self.loaded_app = invoked_app
+                if not self.factory:
+                    logger.warning(
+                        "ASGI app factory detected. Using it, but please consider setting the --factory flag explicitly."
+                    )
 
         if self.interface == "auto":
             if inspect.isclass(self.loaded_app):
@@ -615,3 +633,45 @@ class Config:
     @property
     def should_reload(self) -> bool:
         return isinstance(self.app, str) and self.reload
+
+
+class _AsyncContextFactoryApp:
+    """Wraps an async context manager or async generator ASGI app factory in an ASGI3 lifespan-managed callable."""
+
+    def __init__(self, factory: Callable[[], Any], initial_cm: Any | None = None) -> None:
+        self._factory = factory
+        self._initial_cm = initial_cm
+        self._active_cm: Any | None = None
+        self._inner_app: Any | None = None
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] == "lifespan":
+            started = False
+            message = await receive()
+            if message["type"] != "lifespan.startup":
+                return
+            cm = self._initial_cm if self._initial_cm is not None else self._factory()
+            self._initial_cm = None
+            self._active_cm = cm
+            try:
+                self._inner_app = await cm.__aenter__()
+                await send({"type": "lifespan.startup.complete"})
+                started = True
+                shutdown_msg = await receive()
+                if shutdown_msg["type"] == "lifespan.shutdown":
+                    await cm.__aexit__(None, None, None)
+                    await send({"type": "lifespan.shutdown.complete"})
+            except BaseException as exc:
+                if started:
+                    await send({"type": "lifespan.shutdown.failed", "message": str(exc)})
+                else:
+                    await send({"type": "lifespan.startup.failed", "message": str(exc)})
+                raise
+            return
+
+        if self._inner_app is None:
+            cm = self._initial_cm if self._initial_cm is not None else self._factory()
+            self._initial_cm = None
+            self._active_cm = cm
+            self._inner_app = await cm.__aenter__()
+        await self._inner_app(scope, receive, send)
