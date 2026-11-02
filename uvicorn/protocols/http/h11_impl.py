@@ -141,7 +141,9 @@ class H11Protocol(asyncio.Protocol):
         upgrade = None
         for name, value in self.headers:
             if name == b"connection":
-                connection = [token.lower().strip() for token in value.split(b",")]
+                # Repeated field lines are combined before the tokens are read.
+                # See https://www.rfc-editor.org/rfc/rfc9112.html#section-7.2
+                connection += [token.lower().strip() for token in value.split(b",")]
             if name == b"upgrade":
                 upgrade = value.lower()
         if b"upgrade" in connection:
