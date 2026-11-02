@@ -473,7 +473,11 @@ class Config:
                     alpn_protocols=alpn_protocols,
                 )
 
-            context = self.ssl_context_factory(self, default_factory)
+            try:
+                context = self.ssl_context_factory(self, default_factory)
+            except (OSError, ValueError) as exc:
+                logger.error("Error loading SSL context. %s", exc)
+                sys.exit(STARTUP_FAILURE)
             if not isinstance(context, ssl.SSLContext):
                 raise TypeError(f"`ssl_context_factory` must return an `ssl.SSLContext`, got {type(context).__name__}")
             self.ssl: ssl.SSLContext | None = context

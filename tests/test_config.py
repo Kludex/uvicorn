@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import socket
+import ssl
 import sys
 from collections.abc import Callable, Iterator
 from contextlib import closing
@@ -309,6 +310,14 @@ def test_ssl_config_combined(tls_certificate_key_and_chain_path: str) -> None:
     [
         pytest.param({"ssl_certfile": "does-not-exist.pem"}, id="missing-certfile"),
         pytest.param({"ssl_version": 999}, id="invalid-ssl-version"),
+        pytest.param(
+            {"ssl_certfile": "does-not-exist.pem", "ssl_context_factory": lambda config, default: default()},
+            id="factory-calls-default",
+        ),
+        pytest.param(
+            {"ssl_context_factory": lambda config, default: ssl.create_default_context(cafile="does-not-exist.pem")},
+            id="factory-own-tls-error",
+        ),
     ],
 )
 def test_ssl_config_error_is_a_startup_failure(
