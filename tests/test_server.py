@@ -17,7 +17,7 @@ from tests.protocols.test_http import SIMPLE_GET_REQUEST
 from tests.utils import run_server
 from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.config import STARTUP_FAILURE, Config
-from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT
+from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT, FlowControl
 from uvicorn.protocols.http.h11_impl import H11Protocol
 from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
 from uvicorn.server import Server
@@ -224,6 +224,61 @@ async def test_contextvars_preserved_by_default(
 
     async with _raw_server(app=app, http_protocol_cls=http_protocol_cls, port=unused_tcp_port) as extract_json_body:
         assert await extract_json_body(SIMPLE_GET_REQUEST) == {"ctx": "outer-value"}
+
+
+async def test_contextvars_after_reading_resumes(
+    http_protocol_cls: type[H11Protocol | HttpToolsProtocol], unused_tcp_port: int, monkeypatch: pytest.MonkeyPatch
+):
+    """A request after one whose reads were paused and resumed starts from the connection's context."""
+    outer: contextvars.ContextVar[str] = contextvars.ContextVar("outer")
+    request: contextvars.ContextVar[str | None] = contextvars.ContextVar("request", default=None)
+    paused = asyncio.Event()
+    pause_reading = FlowControl.pause_reading
+
+    def track_pause(flow: FlowControl) -> None:
+        pause_reading(flow)
+        paused.set()
+
+    monkeypatch.setattr(FlowControl, "pause_reading", track_pause)
+    large_body = b"a" * (HIGH_WATER_LIMIT + 1)
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        assert scope["type"] == "http"
+        seen = {"request": request.get(), "outer": outer.get("MISSING")}
+        token = request.set(scope["path"])
+        try:
+            if scope["path"] == "/large-body":
+                # Resume reading from this task only once the large body has paused it.
+                async with asyncio.timeout(5):
+                    await paused.wait()
+            received = b""
+            while True:
+                message = await receive()
+                assert message["type"] == "http.request"
+                received += message["body"]
+                if not message["more_body"]:
+                    break
+            assert received == (large_body if scope["path"] == "/large-body" else b"")
+            body = json.dumps(seen).encode("utf-8")
+            headers = [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode("utf-8"))]
+            await send({"type": "http.response.start", "status": 200, "headers": headers})
+            await send({"type": "http.response.body", "body": body})
+        finally:
+            request.reset(token)
+
+    large_request = (
+        f"POST /large-body HTTP/1.1\r\nHost: example.org\r\nContent-Length: {len(large_body)}\r\n\r\n".encode()
+        + large_body
+    )
+    outer_token = outer.set("outer-value")
+    try:
+        async with _raw_server(app=app, http_protocol_cls=http_protocol_cls, port=unused_tcp_port) as extract_json_body:
+            expected = {"request": None, "outer": "outer-value"}
+            async with asyncio.timeout(5):
+                assert await extract_json_body(large_request) == expected
+                assert await extract_json_body(SIMPLE_GET_REQUEST) == expected
+    finally:
+        outer.reset(outer_token)
 
 
 async def test_reset_contextvars_asyncio(
