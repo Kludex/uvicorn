@@ -219,6 +219,7 @@ class Multiprocess:
             if process.is_alive(timeout=self.config.timeout_worker_healthcheck):
                 continue
 
+            exitcode = process.exitcode
             process.kill()  # process is hung, kill it
             process.join()
 
@@ -233,7 +234,12 @@ class Multiprocess:
             if self.should_exit.is_set():
                 return  # pragma: full coverage
 
-            logger.info(f"Child process [{process.pid}] died")
+            if exitcode is None:
+                logger.error(f"Child process [{process.pid}] was unresponsive and got killed")
+            elif exitcode < 0:
+                logger.error(f"Child process [{process.pid}] exited on signal {-exitcode}")
+            else:
+                logger.warning(f"Child process [{process.pid}] exited with code {exitcode}")
             process = Process(self.config, self.sockets)
             process.start()
             self.processes[idx] = process
