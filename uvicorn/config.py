@@ -511,7 +511,10 @@ class Config:
         self.loaded_app = self.load_app()
 
         if inspect.isasyncgenfunction(self.loaded_app):
-            self.loaded_app = _AsyncContextFactoryApp(contextlib.asynccontextmanager(self.loaded_app))
+            self.loaded_app = _AsyncContextFactoryApp(
+                contextlib.asynccontextmanager(self.loaded_app),
+                interface=self.interface,
+            )
             if not self.factory:
                 logger.warning(
                     "ASGI app factory detected. Using it, but please consider setting the --factory flag explicitly."
@@ -529,9 +532,14 @@ class Config:
                     self.loaded_app = _AsyncContextFactoryApp(
                         contextlib.asynccontextmanager(orig_factory),
                         initial_cm=contextlib.asynccontextmanager(lambda: invoked_app)(),
+                        interface=self.interface,
                     )
                 elif hasattr(invoked_app, "__aenter__") and hasattr(invoked_app, "__aexit__"):
-                    self.loaded_app = _AsyncContextFactoryApp(orig_factory, initial_cm=invoked_app)
+                    self.loaded_app = _AsyncContextFactoryApp(
+                        orig_factory,
+                        initial_cm=invoked_app,
+                        interface=self.interface,
+                    )
                 else:
                     self.loaded_app = invoked_app
                 if not self.factory:
@@ -540,7 +548,11 @@ class Config:
                         "but please consider setting the --factory flag explicitly."
                     )
 
-        if self.interface == "auto":
+        if isinstance(self.loaded_app, _AsyncContextFactoryApp):
+            if self.interface == "wsgi":
+                self.ws_protocol_class = None
+            self.interface = "asgi3"
+        elif self.interface == "auto":
             if inspect.isclass(self.loaded_app):
                 use_asgi_3 = hasattr(self.loaded_app, "__await__")
             elif inspect.isfunction(self.loaded_app):
@@ -550,11 +562,12 @@ class Config:
                 use_asgi_3 = iscoroutinefunction(call)
             self.interface = "asgi3" if use_asgi_3 else "asgi2"
 
-        if self.interface == "wsgi":
-            self.loaded_app = WSGIMiddleware(self.loaded_app)
-            self.ws_protocol_class = None
-        elif self.interface == "asgi2":
-            self.loaded_app = ASGI2Middleware(self.loaded_app)
+        if not isinstance(self.loaded_app, _AsyncContextFactoryApp):
+            if self.interface == "wsgi":
+                self.loaded_app = WSGIMiddleware(self.loaded_app)
+                self.ws_protocol_class = None
+            elif self.interface == "asgi2":
+                self.loaded_app = ASGI2Middleware(self.loaded_app)
 
         if logger.getEffectiveLevel() <= TRACE_LOG_LEVEL:
             self.loaded_app = MessageLoggerMiddleware(self.loaded_app)
@@ -639,17 +652,41 @@ class Config:
 class _AsyncContextFactoryApp:
     """Wraps an async context manager or async generator ASGI app factory in an ASGI3 lifespan-managed callable."""
 
-    def __init__(self, factory: Callable[[], Any], initial_cm: Any | None = None) -> None:
+    def __init__(
+        self,
+        factory: Callable[[], Any],
+        initial_cm: Any | None = None,
+        interface: str = "auto",
+    ) -> None:
         self._factory = factory
         self._initial_cm = initial_cm
+        self._interface = interface
         self._active_cm: Any | None = None
         self._inner_app: Any | None = None
+
+    def _adapt_inner_app(self, app: Any) -> Any:
+        interface = self._interface
+        if interface == "auto":
+            if inspect.isclass(app):
+                use_asgi_3 = hasattr(app, "__await__")
+            elif inspect.isfunction(app):
+                use_asgi_3 = iscoroutinefunction(app)
+            else:
+                call = getattr(app, "__call__", None)
+                use_asgi_3 = iscoroutinefunction(call)
+            interface = "asgi3" if use_asgi_3 else "asgi2"
+        if interface == "wsgi":
+            return WSGIMiddleware(app)
+        if interface == "asgi2":
+            return ASGI2Middleware(app)
+        return app
 
     async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
         if scope["type"] == "lifespan":
             started = False
             cm_entered = False
             cm_exited = False
+            inner_sent_failed = False
             message = await receive()
             if message["type"] != "lifespan.startup":
                 return
@@ -657,8 +694,9 @@ class _AsyncContextFactoryApp:
             self._initial_cm = None
             self._active_cm = cm
             try:
-                self._inner_app = await cm.__aenter__()
+                raw_app = await cm.__aenter__()
                 cm_entered = True
+                self._inner_app = self._adapt_inner_app(raw_app)
                 inner_sent_startup = False
                 first_receive = True
 
@@ -670,13 +708,16 @@ class _AsyncContextFactoryApp:
                     return await receive()
 
                 async def inner_send(msg: Any) -> None:
-                    nonlocal inner_sent_startup, started, cm_exited
+                    nonlocal inner_sent_startup, inner_sent_failed, started, cm_exited
                     msg_type = msg.get("type")
                     if msg_type == "lifespan.startup.complete":
                         inner_sent_startup = True
                         started = True
                     elif msg_type == "lifespan.startup.failed":
                         inner_sent_startup = True
+                        inner_sent_failed = True
+                    elif msg_type == "lifespan.shutdown.failed":
+                        inner_sent_failed = True
                     elif msg_type == "lifespan.shutdown.complete":
                         cm_exited = True
                         await cm.__aexit__(None, None, None)
@@ -684,6 +725,8 @@ class _AsyncContextFactoryApp:
 
                 try:
                     await self._inner_app(scope, inner_receive, inner_send)
+                except asyncio.CancelledError:
+                    raise
                 except BaseException:
                     if inner_sent_startup:
                         raise
@@ -701,10 +744,11 @@ class _AsyncContextFactoryApp:
                     cm_exited = True
                     with contextlib.suppress(BaseException):
                         await cm.__aexit__(type(exc), exc, exc.__traceback__)
-                if started:
-                    await send({"type": "lifespan.shutdown.failed", "message": str(exc)})
-                else:
-                    await send({"type": "lifespan.startup.failed", "message": str(exc)})
+                if not inner_sent_failed:
+                    if started:
+                        await send({"type": "lifespan.shutdown.failed", "message": str(exc)})
+                    else:
+                        await send({"type": "lifespan.startup.failed", "message": str(exc)})
                 raise
             finally:
                 if cm_entered and not cm_exited:
