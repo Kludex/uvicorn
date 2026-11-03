@@ -694,3 +694,92 @@ def test_setup_event_loop_is_removed(caplog: pytest.LogCaptureFixture) -> None:
         AttributeError, match="The `setup_event_loop` method was replaced by `get_loop_factory` in uvicorn 0.36.0."
     ):
         config.setup_event_loop()
+
+
+@pytest.mark.anyio
+async def test_async_context_manager_app_factory_lifespan() -> None:
+    import contextlib
+
+    events: list[str] = []
+
+    async def inner_app(scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] == "lifespan":
+            msg = await receive()
+            if msg["type"] == "lifespan.startup":
+                events.append("app:startup")
+                await send({"type": "lifespan.startup.complete"})
+            msg = await receive()
+            if msg["type"] == "lifespan.shutdown":
+                events.append("app:shutdown")
+                await send({"type": "lifespan.shutdown.complete"})
+        else:
+            events.append(f"request:{scope['type']}")
+
+    @contextlib.asynccontextmanager
+    async def create_app() -> Any:
+        events.append("factory:startup")
+        try:
+            yield inner_app
+        finally:
+            events.append("factory:shutdown")
+
+    config = Config(app=create_app, factory=True)
+    config.load()
+    assert config.interface == "asgi3"
+
+    sent_messages: list[dict[str, Any]] = []
+    queue: list[dict[str, str]] = [
+        {"type": "lifespan.startup"},
+        {"type": "lifespan.shutdown"},
+    ]
+
+    async def receive() -> dict[str, str]:
+        if len(queue) == 1:
+            await config.loaded_app({"type": "http"}, receive, send)
+        return queue.pop(0)
+
+    async def send(msg: dict[str, Any]) -> None:
+        sent_messages.append(msg)
+
+    await config.loaded_app({"type": "lifespan"}, receive, send)
+    assert events == [
+        "factory:startup",
+        "app:startup",
+        "request:http",
+        "app:shutdown",
+        "factory:shutdown",
+    ]
+    assert sent_messages == [
+        {"type": "lifespan.startup.complete"},
+        {"type": "lifespan.shutdown.complete"},
+    ]
+
+    gen_events: list[str] = []
+
+    async def create_gen_app() -> Any:
+        gen_events.append("gen:startup")
+        try:
+            yield asgi_app
+        finally:
+            gen_events.append("gen:shutdown")
+
+    gen_config = Config(app=create_gen_app, factory=True)
+    gen_config.load()
+    gen_queue: list[dict[str, str]] = [
+        {"type": "lifespan.startup"},
+        {"type": "lifespan.shutdown"},
+    ]
+    gen_sent: list[dict[str, Any]] = []
+
+    async def gen_receive() -> dict[str, str]:
+        return gen_queue.pop(0)
+
+    async def gen_send(msg: dict[str, Any]) -> None:
+        gen_sent.append(msg)
+
+    await gen_config.loaded_app({"type": "lifespan"}, gen_receive, gen_send)
+    assert gen_events == ["gen:startup", "gen:shutdown"]
+    assert gen_sent == [
+        {"type": "lifespan.startup.complete"},
+        {"type": "lifespan.shutdown.complete"},
+    ]
