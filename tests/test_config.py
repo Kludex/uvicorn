@@ -702,11 +702,24 @@ async def test_async_context_manager_app_factory_lifespan() -> None:
 
     events: list[str] = []
 
+    async def inner_app(scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] == "lifespan":
+            msg = await receive()
+            if msg["type"] == "lifespan.startup":
+                events.append("app:startup")
+                await send({"type": "lifespan.startup.complete"})
+            msg = await receive()
+            if msg["type"] == "lifespan.shutdown":
+                events.append("app:shutdown")
+                await send({"type": "lifespan.shutdown.complete"})
+        else:
+            events.append(f"request:{scope['type']}")
+
     @contextlib.asynccontextmanager
     async def create_app() -> Any:
         events.append("factory:startup")
         try:
-            yield asgi_app
+            yield inner_app
         finally:
             events.append("factory:shutdown")
 
@@ -721,13 +734,21 @@ async def test_async_context_manager_app_factory_lifespan() -> None:
     ]
 
     async def receive() -> dict[str, str]:
+        if len(queue) == 1:
+            await config.loaded_app({"type": "http"}, receive, send)
         return queue.pop(0)
 
     async def send(msg: dict[str, Any]) -> None:
         sent_messages.append(msg)
 
     await config.loaded_app({"type": "lifespan"}, receive, send)
-    assert events == ["factory:startup", "factory:shutdown"]
+    assert events == [
+        "factory:startup",
+        "app:startup",
+        "request:http",
+        "app:shutdown",
+        "factory:shutdown",
+    ]
     assert sent_messages == [
         {"type": "lifespan.startup.complete"},
         {"type": "lifespan.shutdown.complete"},
