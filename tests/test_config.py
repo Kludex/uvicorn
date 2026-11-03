@@ -753,3 +753,33 @@ async def test_async_context_manager_app_factory_lifespan() -> None:
         {"type": "lifespan.startup.complete"},
         {"type": "lifespan.shutdown.complete"},
     ]
+
+    gen_events: list[str] = []
+
+    async def create_gen_app() -> Any:
+        gen_events.append("gen:startup")
+        try:
+            yield asgi_app
+        finally:
+            gen_events.append("gen:shutdown")
+
+    gen_config = Config(app=create_gen_app, factory=True)
+    gen_config.load()
+    gen_queue: list[dict[str, str]] = [
+        {"type": "lifespan.startup"},
+        {"type": "lifespan.shutdown"},
+    ]
+    gen_sent: list[dict[str, Any]] = []
+
+    async def gen_receive() -> dict[str, str]:
+        return gen_queue.pop(0)
+
+    async def gen_send(msg: dict[str, Any]) -> None:
+        gen_sent.append(msg)
+
+    await gen_config.loaded_app({"type": "lifespan"}, gen_receive, gen_send)
+    assert gen_events == ["gen:startup", "gen:shutdown"]
+    assert gen_sent == [
+        {"type": "lifespan.startup.complete"},
+        {"type": "lifespan.shutdown.complete"},
+    ]
