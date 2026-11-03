@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import signal
 import sys
 import warnings
+from copy import copy
 from typing import Any
+from urllib.parse import urlsplit
 
 from gunicorn.arbiter import Arbiter
+from gunicorn.glogging import SafeAtoms
 from gunicorn.workers.base import Worker
 
 from uvicorn._compat import asyncio_run
@@ -19,6 +23,62 @@ warnings.warn(
     "For more details, see https://github.com/Kludex/uvicorn-worker.",
     DeprecationWarning,
 )
+
+
+class GunicornAccessFormatter(logging.Formatter):
+    """Format Uvicorn access records using Gunicorn's access log format."""
+
+    def __init__(self, access_log_format: str) -> None:
+        super().__init__("%(message)s")
+        self.access_log_format = access_log_format
+
+    def format(self, record: logging.LogRecord) -> str:
+        if _is_uvicorn_access_record(record):
+            record = copy(record)
+            record.msg = self.access_log_format
+            record.args = _format_record_args(record.args)  # type: ignore[arg-type]
+        return super().format(record)
+
+
+def _is_uvicorn_access_record(record: logging.LogRecord) -> bool:
+    return bool(
+        record.name == "uvicorn.access"
+        and record.msg == '%s - "%s %s HTTP/%s" %d'
+        and isinstance(record.args, tuple)
+        and len(record.args) == 5
+    )
+
+
+def _format_record_args(args: tuple[Any, ...]) -> dict[str, Any]:
+    client_addr, method, full_path, http_version, status_code = args
+    client_host = str(client_addr).rsplit(":", 1)[0]
+    parsed_path = urlsplit(str(full_path))
+    path = parsed_path.path or "-"
+    query = parsed_path.query
+    request_line = f"{method} {full_path} HTTP/{http_version}"
+
+    atoms = {
+        "h": client_host,
+        "l": "-",
+        "u": "-",
+        "t": "-",
+        "r": request_line,
+        "s": status_code,
+        "m": method,
+        "U": path,
+        "q": query,
+        "H": f"HTTP/{http_version}",
+        "b": "-",
+        "B": None,
+        "f": "-",
+        "a": "-",
+        "T": 0,
+        "D": 0,
+        "M": 0,
+        "L": "0.000000",
+        "p": f"<{os.getpid()}>",
+    }
+    return SafeAtoms(atoms)
 
 
 class UvicornWorker(Worker):
@@ -40,6 +100,8 @@ class UvicornWorker(Worker):
         logger = logging.getLogger("uvicorn.access")
         logger.handlers = self.log.access_log.handlers
         logger.setLevel(self.log.access_log.level)
+        for handler in logger.handlers:
+            handler.setFormatter(GunicornAccessFormatter(self.cfg.access_log_format))
         logger.propagate = False
 
         config_kwargs: dict = {
