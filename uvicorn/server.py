@@ -65,8 +65,9 @@ class ServerState:
 
 
 class Server:
-    def __init__(self, config: Config) -> None:
+    def __init__(self, config: Config, *, worker_id: int = 1) -> None:
         self.config = config
+        self.worker_id = worker_id
         self.server_state = ServerState()
 
         self.started = False
@@ -91,12 +92,14 @@ class Server:
 
     async def _serve(self, sockets: list[socket.socket] | None = None) -> None:
         process_id = os.getpid()
+        os.environ["UVICORN_WORKER_ID"] = str(self.worker_id)
 
         config = self.config
         if not config.loaded:
             config.load()
 
         self.lifespan = config.lifespan_class(config)
+        self.lifespan.state["uvicorn_worker_id"] = self.worker_id
 
         message = "Started server process [%d]"
         color_message = "Started server process [" + style("%d", fg="cyan") + "]"

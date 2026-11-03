@@ -82,6 +82,15 @@ You can also manage child processes by sending specific signals to the main proc
 - `SIGTTIN`: Increase the number of worker processes by one.
 - `SIGTTOU`: Decrease the number of worker processes by one.
 
+Each worker gets a stable ID from `1` to `--workers`, exposed as the `UVICORN_WORKER_ID` environment variable
+(set before your app is imported) and as `uvicorn_worker_id` in the
+[lifespan state](https://asgi.readthedocs.io/en/latest/specs/lifespan.html#lifespan-state).
+A worker keeps its ID when it is restarted, so you can use it in logs and metrics where PIDs would change.
+Single-process mode uses `1`.
+
+!!! note "IDs can overlap during `SIGHUP`"
+    The replacement worker starts before the old one is retired, so both briefly share the same ID.
+
 ### Gunicorn
 
 !!! warning

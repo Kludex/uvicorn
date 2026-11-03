@@ -41,18 +41,18 @@ async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
 
 
 def test_process_ping_pong() -> None:
-    process = Process(Config(app=app), sockets=[])
+    process = Process(Config(app=app), sockets=[], worker_id=1)
     threading.Thread(target=process.always_pong, daemon=True).start()
     assert process.ping()
 
 
 def test_process_ping_pong_timeout() -> None:
-    process = Process(Config(app=app), sockets=[])
+    process = Process(Config(app=app), sockets=[], worker_id=1)
     assert not process.ping(0.1)
 
 
 def test_process_ping_broken_pipe() -> None:
-    process = Process(Config(app=app), sockets=[])
+    process = Process(Config(app=app), sockets=[], worker_id=1)
     process.parent_conn.close()
     process.child_conn.close()
     assert not process.ping(0.1)
@@ -60,7 +60,7 @@ def test_process_ping_broken_pipe() -> None:
 
 def test_process_ready() -> None:
     """`is_ready()` reflects whether the worker's server has finished startup."""
-    process = Process(Config(app=app), sockets=[])
+    process = Process(Config(app=app), sockets=[], worker_id=1)
     threading.Thread(target=process.always_pong, daemon=True).start()
 
     assert process.ping()
@@ -101,6 +101,7 @@ def test_multiprocess_health_check() -> None:
         supervisor.keep_subprocess_alive()
 
         assert process not in supervisor.processes
+        assert [process.worker_id for process in supervisor.processes] == [1, 2]
         assert all(process.is_alive() for process in supervisor.processes)
     finally:
         supervisor.terminate_all()
@@ -167,6 +168,7 @@ def test_multiprocess_sighup(monkeypatch: pytest.MonkeyPatch) -> None:
         supervisor.signal_queue.append(signal.SIGHUP)
         supervisor.handle_signals()
 
+        assert [process.worker_id for process in supervisor.processes] == [1, 2]
         assert pids != [process.pid for process in supervisor.processes]
     finally:
         supervisor.terminate_all()
@@ -191,7 +193,7 @@ def test_multiprocess_restart_aborts_when_replacement_not_ready(monkeypatch: pyt
 
 
 def test_wait_until_ready_bails_on_shutdown_or_dead_worker() -> None:
-    process = Process(Config(app=app), sockets=[])
+    process = Process(Config(app=app), sockets=[], worker_id=1)
 
     should_exit = threading.Event()
     should_exit.set()
@@ -201,7 +203,7 @@ def test_wait_until_ready_bails_on_shutdown_or_dead_worker() -> None:
 
 def test_multiprocess_restart_stops_when_shutting_down() -> None:
     supervisor = Multiprocess(Config(app=app, workers=1), sockets=[])
-    supervisor.processes = [Process(supervisor.config, [])]
+    supervisor.processes = [Process(supervisor.config, [], worker_id=1)]
     supervisor.should_exit.set()
 
     supervisor.restart_all()
@@ -219,7 +221,7 @@ def test_multiprocess_sigttin() -> None:
     threading.Thread(target=supervisor.run, daemon=True).start()
     supervisor.signal_queue.append(signal.SIGTTIN)
     time.sleep(1)
-    assert len(supervisor.processes) == 3
+    assert [process.worker_id for process in supervisor.processes] == [1, 2, 3]
     supervisor.signal_queue.append(signal.SIGINT)
     supervisor.join_all()
 
@@ -234,7 +236,7 @@ def test_multiprocess_sigttou() -> None:
     threading.Thread(target=supervisor.run, daemon=True).start()
     supervisor.signal_queue.append(signal.SIGTTOU)
     time.sleep(1)
-    assert len(supervisor.processes) == 1
+    assert [process.worker_id for process in supervisor.processes] == [1]
     supervisor.signal_queue.append(signal.SIGTTOU)
     time.sleep(1)
     assert len(supervisor.processes) == 1
