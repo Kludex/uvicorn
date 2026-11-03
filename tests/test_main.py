@@ -9,7 +9,7 @@ import httpx2
 import pytest
 
 import uvicorn.server
-from tests.utils import run_server
+from tests.utils import has_ipv6, run_server
 from uvicorn import Server
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.config import STARTUP_FAILURE, Config
@@ -25,21 +25,6 @@ async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
     await send({"type": "http.response.body", "body": b"", "more_body": False})
 
 
-def _has_ipv6(host: str):
-    sock = None
-    has_ipv6 = False
-    if socket.has_ipv6:
-        try:
-            sock = socket.socket(socket.AF_INET6)
-            sock.bind((host, 0))
-            has_ipv6 = True
-        except Exception:  # pragma: no cover
-            pass
-    if sock:
-        sock.close()
-    return has_ipv6
-
-
 @pytest.mark.parametrize(
     "host, url",
     [
@@ -49,7 +34,7 @@ def _has_ipv6(host: str):
             "::1",
             "http://[::1]",
             id="ipv6",
-            marks=pytest.mark.skipif(not _has_ipv6("::1"), reason="IPV6 not enabled"),
+            marks=pytest.mark.skipif(not has_ipv6("::1"), reason="IPV6 not enabled"),
         ),
     ],
 )
@@ -58,6 +43,18 @@ async def test_run(host, url: str, unused_tcp_port: int):
     async with run_server(config):
         async with httpx2.AsyncClient() as client:
             response = await client.get(f"{url}:{unused_tcp_port}")
+    assert response.status_code == 204
+
+
+@pytest.mark.skipif(not has_ipv6("::"), reason="IPV6 not enabled")
+async def test_run_ipv6_dual_stack_single_worker(unused_tcp_port: int):
+    # Regression test for https://github.com/encode/uvicorn/issues/2945
+    # A single-worker server bound to an IPv6 wildcard host must also accept
+    # IPv4 connections (dual-stack), matching multi-worker/reload behavior.
+    config = Config(app=app, host="::", loop="asyncio", limit_max_requests=1, port=unused_tcp_port)
+    async with run_server(config):
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"http://127.0.0.1:{unused_tcp_port}")
     assert response.status_code == 204
 
 
