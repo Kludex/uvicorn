@@ -530,8 +530,7 @@ class Config:
                 self.loaded_app = invoked_app
             if not self.factory:
                 logger.warning(
-                    "ASGI app factory detected. Using it, "
-                    "but please consider setting the --factory flag explicitly."
+                    "ASGI app factory detected. Using it, but please consider setting the --factory flag explicitly."
                 )
 
         if isinstance(self.loaded_app, _AsyncContextFactoryApp):
