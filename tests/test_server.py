@@ -6,6 +6,7 @@ import contextvars
 import json
 import logging
 import signal
+import socket
 import sys
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
@@ -120,6 +121,31 @@ async def test_shutdown_on_early_exit_during_startup(unused_tcp_port: int):
 
     assert startup_complete
     assert shutdown_complete, "lifespan.shutdown was not called despite startup completing"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
+async def test_uds_startup_cancellation_closes_listener(
+    short_socket_name: str, monkeypatch: pytest.MonkeyPatch
+) -> None:  # pragma: py-win32
+    start_serving = asyncio.Server.start_serving
+
+    async def cancel_start_serving(listener: asyncio.Server) -> None:
+        task = asyncio.current_task()
+        assert task is not None
+        task.cancel()
+        await start_serving(listener)
+
+    monkeypatch.setattr(asyncio.Server, "start_serving", cancel_start_serving)
+    server = Server(Config(app=app, uds=short_socket_name, lifespan="off"))
+    task = asyncio.create_task(server.serve())
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert task.cancelled()
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+        with pytest.raises(OSError):
+            client.connect(short_socket_name)
 
 
 def test_run_exits_with_startup_failure_on_unloadable_app() -> None:
