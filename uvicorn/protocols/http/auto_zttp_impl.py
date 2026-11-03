@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from typing import Any, ClassVar
 
 from uvicorn.config import Config
@@ -76,8 +77,8 @@ class AutoZttpProtocol(asyncio.Protocol):
         self._switch(http2=self.buffer.startswith(HTTP2_PREFACE), initial_data=self.buffer)
 
     def _switch(self, http2: bool, initial_data: bytes = b"") -> None:
-        protocol_class: type[asyncio.Protocol] = ZttpH2Protocol if http2 else ZttpProtocol
-        protocol = protocol_class(  # type: ignore[call-arg]
+        protocol_class: Callable[..., asyncio.Protocol] = ZttpH2Protocol if http2 else ZttpProtocol
+        protocol = protocol_class(
             config=self.config,
             server_state=self.server_state,
             app_state=self.app_state,
