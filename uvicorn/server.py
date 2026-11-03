@@ -13,6 +13,7 @@ import sys
 import threading
 import time
 from collections.abc import Generator, Sequence
+from dataclasses import dataclass
 from email.utils import formatdate
 from types import FrameType
 from typing import TYPE_CHECKING, TypeAlias
@@ -64,6 +65,40 @@ class ServerState:
         self.default_headers: list[tuple[bytes, bytes]] = []
 
 
+@dataclass(frozen=True)
+class WriteStall:
+    unsent: int
+    since: float
+
+
+class WriteStallMonitor:
+    """Aborts connections whose unsent data hasn't changed for `timeout` seconds.
+
+    A client that stops reading would otherwise hold its connection, and the data waiting to be sent, forever.
+    """
+
+    def __init__(self, timeout: float) -> None:
+        self.timeout = timeout
+        self._stalls: dict[Protocols, WriteStall] = {}
+
+    async def check(self, connections: Sequence[Protocols], now: float) -> None:
+        stalls: dict[Protocols, WriteStall] = {}
+        for index, connection in enumerate(connections):
+            if index and index % 1024 == 0:
+                await asyncio.sleep(0)  # Let requests run between chunks, however many connections there are.
+            unsent = connection.transport.get_write_buffer_size()
+            if not unsent:
+                continue
+            previous = self._stalls.get(connection)
+            if previous is None or unsent != previous.unsent:
+                stalls[connection] = WriteStall(unsent, now)
+            elif now - previous.since >= self.timeout:
+                connection.transport.abort()
+            else:
+                stalls[connection] = previous
+        self._stalls = stalls
+
+
 class Server:
     def __init__(self, config: Config) -> None:
         self.config = config
@@ -73,6 +108,7 @@ class Server:
         self.should_exit = False
         self.force_exit = False
         self.last_notified = 0.0
+        self._write_stall_watcher: asyncio.Task[None] | None = None
 
         self._captured_signals: list[int] = []
 
@@ -202,7 +238,19 @@ class Server:
             # logged by `config.bind_socket()`.
             pass  # pragma: full coverage
 
+        # Windows' overlapped I/O, used by asyncio's Proactor and by libuv, only reports a send's
+        # progress once all of it completes, so a slow reader would look stalled.
+        progress_visible = sys.platform != "win32" or isinstance(loop, asyncio.SelectorEventLoop)
+        if config.timeout_write is not None and progress_visible:  # pragma: py-win32
+            monitor = WriteStallMonitor(config.timeout_write)
+            self._write_stall_watcher = loop.create_task(self._watch_write_stalls(monitor))
+
         self.started = True
+
+    async def _watch_write_stalls(self, monitor: WriteStallMonitor) -> None:  # pragma: py-win32
+        while True:
+            await asyncio.sleep(1)
+            await monitor.check(list(self.server_state.connections), time.monotonic())
 
     def _log_started_message(self, listeners: Sequence[socket.SocketType]) -> None:
         config = self.config
@@ -306,6 +354,9 @@ class Server:
         # Send the lifespan shutdown event, and wait for application shutdown.
         if not self.force_exit:
             await self.lifespan.shutdown()
+
+        if self._write_stall_watcher is not None:  # pragma: py-win32
+            self._write_stall_watcher.cancel()
 
     async def _wait_tasks_to_complete(self) -> None:
         # Wait for existing connections to finish sending responses.

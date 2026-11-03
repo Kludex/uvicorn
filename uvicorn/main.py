@@ -305,6 +305,13 @@ def _parse_headers(ctx: click.Context, param: click.Parameter, value: tuple[str,
     show_default=True,
 )
 @click.option(
+    "--timeout-write",
+    type=int,
+    default=60,
+    help="Close a connection if none of its pending data can be sent to the client within this timeout (in seconds).",
+    show_default=True,
+)
+@click.option(
     "--timeout-graceful-shutdown",
     type=int,
     default=None,
@@ -440,6 +447,7 @@ def main(
     limit_max_requests: int,
     limit_max_requests_jitter: int,
     timeout_keep_alive: int,
+    timeout_write: int,
     timeout_graceful_shutdown: int | None,
     timeout_worker_healthcheck: int,
     ssl_keyfile: str,
@@ -493,6 +501,7 @@ def main(
         limit_max_requests=limit_max_requests,
         limit_max_requests_jitter=limit_max_requests_jitter,
         timeout_keep_alive=timeout_keep_alive,
+        timeout_write=timeout_write,
         timeout_graceful_shutdown=timeout_graceful_shutdown,
         timeout_worker_healthcheck=timeout_worker_healthcheck,
         ssl_keyfile=ssl_keyfile,
@@ -565,6 +574,7 @@ def run(
     factory: bool = False,
     h11_max_incomplete_event_size: int | None = None,
     reset_contextvars: bool = False,
+    timeout_write: int | None = 60,
 ) -> None:
     if app_dir is not None:
         sys.path.insert(0, app_dir)
@@ -606,6 +616,7 @@ def run(
         limit_max_requests=limit_max_requests,
         limit_max_requests_jitter=limit_max_requests_jitter,
         timeout_keep_alive=timeout_keep_alive,
+        timeout_write=timeout_write,
         timeout_graceful_shutdown=timeout_graceful_shutdown,
         timeout_worker_healthcheck=timeout_worker_healthcheck,
         ssl_keyfile=ssl_keyfile,

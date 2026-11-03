@@ -6,8 +6,9 @@ import contextvars
 import json
 import logging
 import signal
+import socket
 import sys
-from collections.abc import Callable, Generator
+from collections.abc import AsyncIterator, Callable, Generator
 from contextlib import AbstractContextManager
 
 import httpx2
@@ -20,7 +21,7 @@ from uvicorn.config import STARTUP_FAILURE, Config
 from uvicorn.protocols.http.flow_control import HIGH_WATER_LIMIT
 from uvicorn.protocols.http.h11_impl import H11Protocol
 from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
-from uvicorn.server import Server
+from uvicorn.server import Server, WriteStallMonitor
 
 pytestmark = pytest.mark.anyio
 
@@ -276,3 +277,175 @@ async def test_reset_contextvars_asyncio(
     ) as extract_json_body:
         assert await extract_json_body(large_request) == {}
         assert await extract_json_body(SIMPLE_GET_REQUEST) == {}
+
+
+LARGE_BODY = b"x" * (8 * 1024 * 1024)
+
+
+def body_app(body: bytes) -> ASGIApplication:
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        assert scope["type"] == "http"
+        headers = [(b"content-length", str(len(body)).encode())]
+        await send({"type": "http.response.start", "status": 200, "headers": headers})
+        await send({"type": "http.response.body", "body": body})
+
+    return app
+
+
+STREAMED_BYTES = 64 * 1024 * 1024
+WEBSOCKET_UPGRADE_REQUEST = b"\r\n".join(
+    [
+        b"GET / HTTP/1.1",
+        b"Host: example.org",
+        b"Upgrade: websocket",
+        b"Connection: Upgrade",
+        b"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==",
+        b"Sec-WebSocket-Version: 13",
+        b"",
+        b"",
+    ]
+)
+
+
+async def streaming_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:  # pragma: py-win32
+    assert scope["type"] == "http"
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    chunk = b"x" * HIGH_WATER_LIMIT
+    for _ in range(STREAMED_BYTES // len(chunk)):
+        await send({"type": "http.response.body", "body": chunk, "more_body": True})
+    await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+
+@contextlib.asynccontextmanager
+async def slow_client(port: int, request: bytes = SIMPLE_GET_REQUEST) -> AsyncIterator[socket.socket]:
+    loop = asyncio.get_running_loop()
+    with socket.socket() as client:
+        client.setblocking(False)
+        await loop.sock_connect(client, ("127.0.0.1", port))
+        await loop.sock_sendall(client, request)
+        yield client
+
+
+async def read_until_closed(client: socket.socket) -> int:  # pragma: py-win32
+    loop = asyncio.get_running_loop()
+    received = 0
+    with contextlib.suppress(ConnectionResetError):
+        async with asyncio.timeout(5):
+            while chunk := await loop.sock_recv(client, 65536):
+                received += len(chunk)
+    return received
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="The write timeout only runs on SelectorEventLoop on Windows")
+async def test_timeout_write_closes_connection_when_client_stops_reading(
+    http_protocol_cls: type[H11Protocol | HttpToolsProtocol], unused_tcp_port: int
+):  # pragma: py-win32
+    config = Config(app=streaming_app, port=unused_tcp_port, http=http_protocol_cls, lifespan="off", timeout_write=1)
+    async with run_server(config):
+        async with slow_client(unused_tcp_port) as client:
+            await asyncio.sleep(3.5)
+            assert await read_until_closed(client) < STREAMED_BYTES
+
+
+async def websocket_streaming_app(
+    scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
+) -> None:  # pragma: py-win32
+    assert scope["type"] == "websocket"
+    await receive()
+    await send({"type": "websocket.accept"})
+    chunk = b"x" * HIGH_WATER_LIMIT
+    with contextlib.suppress(OSError):
+        for _ in range(STREAMED_BYTES // len(chunk)):
+            await send({"type": "websocket.send", "bytes": chunk})
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="The write timeout only runs on SelectorEventLoop on Windows")
+async def test_timeout_write_closes_websocket_when_client_stops_reading(
+    ws_protocol_cls: type[asyncio.Protocol], unused_tcp_port: int
+):  # pragma: py-win32
+    config = Config(
+        app=websocket_streaming_app, port=unused_tcp_port, ws=ws_protocol_cls, lifespan="off", timeout_write=1
+    )
+    async with run_server(config):
+        async with slow_client(unused_tcp_port, request=WEBSOCKET_UPGRADE_REQUEST) as client:
+            await asyncio.sleep(3.5)
+            assert await read_until_closed(client) < STREAMED_BYTES
+
+
+async def test_timeout_write_keeps_connection_while_client_reads_slowly(
+    http_protocol_cls: type[H11Protocol | HttpToolsProtocol], unused_tcp_port: int
+):
+    config = Config(
+        app=body_app(LARGE_BODY), port=unused_tcp_port, http=http_protocol_cls, lifespan="off", timeout_write=1
+    )
+    async with run_server(config):
+        async with slow_client(unused_tcp_port) as client:
+            loop = asyncio.get_running_loop()
+            response = bytearray()
+            slow_until = loop.time() + 2.5
+            while loop.time() < slow_until:
+                response += await loop.sock_recv(client, 65536)
+                await asyncio.sleep(0.03)
+            head, _, body = bytes(response).partition(b"\r\n\r\n")
+            received = len(body)
+            async with asyncio.timeout(10):
+                while received < len(LARGE_BODY):
+                    chunk = await loop.sock_recv(client, 1024 * 1024)
+                    assert chunk, "connection closed while the client was still reading"
+                    received += len(chunk)
+    assert head.startswith(b"HTTP/1.1 200 OK")
+    assert received == len(LARGE_BODY)
+
+
+class StalledTransport:
+    def __init__(self, unsent: int) -> None:
+        self.unsent = unsent
+        self.aborted = False
+
+    def get_write_buffer_size(self) -> int:
+        return self.unsent
+
+    def abort(self) -> None:
+        self.aborted = True
+
+
+class StalledConnection:
+    def __init__(self, unsent: int) -> None:
+        self.transport = StalledTransport(unsent)
+
+
+async def test_write_stall_monitor_aborts_connection_without_progress():
+    monitor = WriteStallMonitor(timeout=1)
+    stalled, idle = StalledConnection(unsent=1024), StalledConnection(unsent=0)
+
+    await monitor.check([stalled, idle], now=0)
+    await monitor.check([stalled, idle], now=0.9)
+    assert not stalled.transport.aborted
+
+    await monitor.check([stalled, idle], now=1)
+    assert stalled.transport.aborted
+    assert not idle.transport.aborted
+
+
+async def test_write_stall_monitor_restarts_while_data_drains():
+    monitor = WriteStallMonitor(timeout=1)
+    connection = StalledConnection(unsent=1024)
+
+    await monitor.check([connection], now=0)
+    connection.transport.unsent = 512
+    await monitor.check([connection], now=0.6)
+    await monitor.check([connection], now=1.5)
+    assert not connection.transport.aborted
+
+    await monitor.check([connection], now=1.6)
+    assert connection.transport.aborted
+
+
+async def test_write_stall_monitor_checks_every_connection_across_chunks():
+    monitor = WriteStallMonitor(timeout=1)
+    connections = [StalledConnection(unsent=1024) for _ in range(3000)]
+
+    await monitor.check(connections, now=0)
+    await monitor.check(connections, now=1)
+
+    assert all(connection.transport.aborted for connection in connections)
