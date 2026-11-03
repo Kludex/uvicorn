@@ -45,6 +45,11 @@ class Process:
             return None
         except (OSError, EOFError, pickle.UnpicklingError):
             return None
+        except TypeError:
+            # The pipe can be closed by another thread between poll() and recv().
+            # Connection._recv() then reads the already-cleared handle, and calls
+            # os.read(None, size), which raises TypeError rather than OSError.
+            return None
 
     def ping(self, timeout: float = 5) -> bool:
         """Receives a timeout and returns True if the worker answers a healthcheck in time."""
