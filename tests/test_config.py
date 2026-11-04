@@ -438,6 +438,23 @@ def test_log_config_use_colors_with_compatible_custom_factory(
     assert custom_log_config == before
 
 
+def test_log_config_use_colors_with_opaque_factory(mocked_logging_config_module: MagicMock) -> None:
+    class OpaqueFactory:
+        __signature__ = "not an inspect.Signature"
+
+        def __call__(self) -> logging.Formatter:
+            return logging.Formatter()
+
+    factory = OpaqueFactory()
+    custom_log_config = {"version": 1, "formatters": {"default": {"()": factory}}}
+    mocked_logging_config_module.dictConfig.side_effect = lambda value: DictConfigurator(value).configure_formatter(
+        value["formatters"]["default"].copy()
+    )
+    Config(app=asgi_app, log_config=custom_log_config, use_colors=True)
+    provided = mocked_logging_config_module.dictConfig.call_args.args[0]
+    assert "use_colors" not in provided["formatters"]["default"]
+
+
 def test_log_config_use_colors_without_formatters(mocked_logging_config_module: MagicMock) -> None:
     """
     A `dictConfig` mapping need not declare any formatters at all.
