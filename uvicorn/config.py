@@ -18,7 +18,7 @@ from uvicorn._ansi import style
 from uvicorn._compat import iscoroutinefunction
 from uvicorn._types import ASGIApplication
 from uvicorn.importer import ImportFromStringError, import_from_string
-from uvicorn.logging import TRACE_LOG_LEVEL
+from uvicorn.logging import TRACE_LOG_LEVEL, AccessFormatter, DefaultFormatter
 from uvicorn.middleware.asgi2 import ASGI2Middleware
 from uvicorn.middleware.message_logger import MessageLoggerMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -405,6 +405,17 @@ class Config:
                         name: {**formatters[name], "use_colors": self.use_colors}
                         for name in ("default", "access")
                         if name in formatters
+                        and (
+                            "()" not in formatters[name]
+                            or "use_colors" in formatters[name]
+                            or formatters[name]["()"]
+                            in (
+                                "uvicorn.logging.DefaultFormatter",
+                                "uvicorn.logging.AccessFormatter",
+                                DefaultFormatter,
+                                AccessFormatter,
+                            )
+                        )
                     }
                     if updated:
                         self.log_config = {**self.log_config, "formatters": {**formatters, **updated}}
