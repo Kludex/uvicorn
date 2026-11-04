@@ -412,6 +412,32 @@ def test_log_config_use_colors_with_opted_in_custom_factory(
     assert custom_log_config == before
 
 
+@pytest.mark.parametrize("use_colors", [True, False])
+@pytest.mark.parametrize("accept_kwargs", [True, False])
+def test_log_config_use_colors_with_compatible_custom_factory(
+    mocked_logging_config_module: MagicMock, use_colors: bool, accept_kwargs: bool
+) -> None:
+    received: list[bool] = []
+
+    def keyword_factory(*, use_colors: bool) -> logging.Formatter:
+        received.append(use_colors)
+        return logging.Formatter()
+
+    def kwargs_factory(**kwargs: Any) -> logging.Formatter:
+        received.append(kwargs["use_colors"])
+        return logging.Formatter()
+
+    factory = kwargs_factory if accept_kwargs else keyword_factory
+    custom_log_config = {"version": 1, "formatters": {"default": {"()": factory}}}
+    before = deepcopy(custom_log_config)
+    mocked_logging_config_module.dictConfig.side_effect = lambda value: DictConfigurator(value).configure_formatter(
+        value["formatters"]["default"].copy()
+    )
+    Config(app=asgi_app, log_config=custom_log_config, use_colors=use_colors)
+    assert received == [use_colors]
+    assert custom_log_config == before
+
+
 def test_log_config_use_colors_without_formatters(mocked_logging_config_module: MagicMock) -> None:
     """
     A `dictConfig` mapping need not declare any formatters at all.

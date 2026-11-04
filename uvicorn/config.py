@@ -11,6 +11,7 @@ import ssl
 import sys
 from collections.abc import Awaitable, Callable
 from configparser import RawConfigParser
+from logging.config import DictConfigurator
 from pathlib import Path
 from typing import IO, Any, Literal
 
@@ -18,11 +19,32 @@ from uvicorn._ansi import style
 from uvicorn._compat import iscoroutinefunction
 from uvicorn._types import ASGIApplication
 from uvicorn.importer import ImportFromStringError, import_from_string
-from uvicorn.logging import TRACE_LOG_LEVEL, AccessFormatter, DefaultFormatter
+from uvicorn.logging import TRACE_LOG_LEVEL
 from uvicorn.middleware.asgi2 import ASGI2Middleware
 from uvicorn.middleware.message_logger import MessageLoggerMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from uvicorn.middleware.wsgi import WSGIMiddleware
+
+
+def _formatter_accepts_use_colors(formatter: dict[str, Any]) -> bool:
+    if "()" not in formatter or "use_colors" in formatter:
+        return True
+    factory = formatter["()"]
+    try:
+        if not callable(factory):
+            factory = DictConfigurator({}).resolve(factory)
+        parameters = inspect.signature(factory).parameters.values()
+    except (TypeError, ValueError):
+        # Leave opaque or invalid factories to dictConfig without extra keywords.
+        return False
+    return any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        or (
+            parameter.name == "use_colors"
+            and parameter.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+        )
+        for parameter in parameters
+    )
 
 
 class UvicornDeprecationWarning(UserWarning):
@@ -404,18 +426,7 @@ class Config:
                     updated = {
                         name: {**formatters[name], "use_colors": self.use_colors}
                         for name in ("default", "access")
-                        if name in formatters
-                        and (
-                            "()" not in formatters[name]
-                            or "use_colors" in formatters[name]
-                            or formatters[name]["()"]
-                            in (
-                                "uvicorn.logging.DefaultFormatter",
-                                "uvicorn.logging.AccessFormatter",
-                                DefaultFormatter,
-                                AccessFormatter,
-                            )
-                        )
+                        if name in formatters and _formatter_accepts_use_colors(formatters[name])
                     }
                     if updated:
                         self.log_config = {**self.log_config, "formatters": {**formatters, **updated}}
