@@ -83,7 +83,8 @@ Using Uvicorn with watchfiles will enable the following options (which are other
 
 ## Logging
 
-* `--log-config <path>` - Logging configuration file. **Options:** *`dictConfig()` formats: .json, .yaml*. Any other format will be processed with `fileConfig()`. Set the `formatters.default.use_colors` and `formatters.access.use_colors` values to override the auto-detected behavior.
+* `--log-config <path>` - Logging configuration file. **Options:** *`dictConfig()` formats: .json, .yaml*. Any other format will be processed with `fileConfig()`. Set the `formatters.default.use_colors` or `formatters.access.use_colors` values explicitly in the configuration to override the auto-detected behavior for that formatter; a missing key keeps auto-detection. `--use-colors` does not override file-based configurations.
+    * With a programmatic dictionary `log_config`, `Config(use_colors=...)` overrides only the `default` and `access` formatter entries without mutating the caller's dictionary. Custom `()` entries receive the override when their configuration already contains `use_colors` or their factory accepts that keyword argument (including via `**kwargs`). Differently named formatters are unchanged.
     * If you wish to use a YAML file for your logging config, you will need to include PyYAML as a dependency for your project or install uvicorn with the `[standard]` optional extras.
 * `--log-level <str>` - Set the log level. **Options:** *'critical', 'error', 'warning', 'info', 'debug', 'trace'.* **Default:** *'info'*.
 * `--no-access-log` - Disable access log only, without changing log level.
