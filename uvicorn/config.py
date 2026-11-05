@@ -26,15 +26,16 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from uvicorn.middleware.wsgi import WSGIMiddleware
 
 
-def _formatter_accepts_use_colors(formatter: dict[str, Any]) -> bool:
+def _formatter_accepts_use_colors(formatter: dict[str, Any], configurator: DictConfigurator) -> bool:
     if "()" not in formatter or "use_colors" in formatter:
         return True
     factory = formatter["()"]
     try:
+        factory = configurator.convert(factory)
         if not callable(factory):
-            factory = DictConfigurator({}).resolve(factory)
+            factory = configurator.resolve(factory)
         parameters = inspect.signature(factory).parameters.values()
-    except (TypeError, ValueError):
+    except (KeyError, TypeError, ValueError):
         # Leave opaque or invalid factories to dictConfig without extra keywords.
         return False
     return any(
@@ -423,10 +424,11 @@ class Config:
                     # name its formatters differently, so only the ones that
                     # are actually present can be updated.
                     formatters = self.log_config.get("formatters", {})
+                    configurator = DictConfigurator(self.log_config)
                     updated = {
                         name: {**formatters[name], "use_colors": self.use_colors}
                         for name in ("default", "access")
-                        if name in formatters and _formatter_accepts_use_colors(formatters[name])
+                        if name in formatters and _formatter_accepts_use_colors(formatters[name], configurator)
                     }
                     if updated:
                         self.log_config = {**self.log_config, "formatters": {**formatters, **updated}}
