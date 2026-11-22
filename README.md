@@ -29,6 +29,12 @@ start building a common set of tooling usable across all async frameworks.
 
 Uvicorn currently supports HTTP/1.1, HTTP/2 and WebSockets.
 
+## Sponsors
+
+Help us keep Uvicorn maintained and sustainable by [becoming a sponsor](https://marcelotryle.com/sponsors/).
+
+[![Sponsors](https://marcelotryle.com/sponsors/logos.svg)](https://marcelotryle.com/sponsors/)
+
 ## Quickstart
 
 Install using `pip`:
