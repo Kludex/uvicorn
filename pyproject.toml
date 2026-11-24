@@ -80,6 +80,8 @@ docs = [
 default-groups = ["dev", "docs"]
 required-version = ">=0.9.17"
 exclude-newer = "7 days"
+# Rebuild the editable install when the commit or tags change, so `uvicorn/_version.py` stays current.
+cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true, tags = true } }]
 # uv does not lock build dependencies, so the build backend's closure is pinned here.
 build-constraint-dependencies = [
     "hatchling==1.33.0",
