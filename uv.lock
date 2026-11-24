@@ -17,6 +17,20 @@ certifi = "2026-10-20T23:59:59Z"
 httptools = "2026-05-27T00:00:00Z"
 zttp = "2026-09-19T23:59:59Z"
 
+[manifest]
+build-constraints = [
+    { name = "dunamai", specifier = "==1.26.5" },
+    { name = "hatchling", specifier = "==1.33.0" },
+    { name = "jinja2", specifier = "==3.1.6" },
+    { name = "markupsafe", specifier = "==3.0.4" },
+    { name = "packaging", specifier = "==26.3" },
+    { name = "pathspec", specifier = "==1.1.1" },
+    { name = "pluggy", specifier = "==1.7.0" },
+    { name = "tomlkit", specifier = "==0.15.2" },
+    { name = "trove-classifiers", specifier = "==2026.9.21.13" },
+    { name = "uv-dynamic-versioning", specifier = "==0.14.1" },
+]
+
 [[package]]
 name = "a2wsgi"
 version = "1.10.10"

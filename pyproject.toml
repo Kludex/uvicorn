@@ -80,6 +80,19 @@ docs = [
 default-groups = ["dev", "docs"]
 required-version = ">=0.9.17"
 exclude-newer = "7 days"
+# uv does not lock build dependencies, so the build backend's closure is pinned here.
+build-constraint-dependencies = [
+    "hatchling==1.33.0",
+    "uv-dynamic-versioning==0.14.1",
+    "dunamai==1.26.5",
+    "jinja2==3.1.6",
+    "markupsafe==3.0.4",
+    "packaging==26.3",
+    "pathspec==1.1.1",
+    "pluggy==1.7.0",
+    "tomlkit==0.15.2",
+    "trove-classifiers==2026.9.21.13",
+]
 
 [tool.uv.exclude-newer-package]
 certifi = "2026-10-20T23:59:59Z"
