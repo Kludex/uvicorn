@@ -62,7 +62,7 @@ nav:
   - Deployment:
       - Deployment: deployment/index.md
       - Docker: deployment/docker.md
-  - Release Notes: release-notes.md
+  - Release Notes: https://github.com/Kludex/uvicorn/releases
   - Contributing: contributing.md
 
 extra:

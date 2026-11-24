@@ -90,7 +90,7 @@ zttp = "2026-09-19T23:59:59Z"
 uvicorn = "uvicorn.main:main"
 
 [project.urls]
-Changelog = "https://uvicorn.dev/release-notes"
+Changelog = "https://github.com/Kludex/uvicorn/releases"
 Funding = "https://github.com/sponsors/Kludex"
 Homepage = "https://uvicorn.dev/"
 Source = "https://github.com/Kludex/uvicorn"

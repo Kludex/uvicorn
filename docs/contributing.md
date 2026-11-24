@@ -153,24 +153,21 @@ message under the coverage report:
 
 *This section is targeted at Uvicorn maintainers.*
 
-Before releasing a new version, create a pull request that includes:
-
-- **An update to the changelog**:
-    - We follow the format from [keepachangelog](https://keepachangelog.com/en/1.0.0/).
-    - [Compare](https://github.com/Kludex/uvicorn/compare/) `main` with the tag of the latest release, and list all entries that are of interest to our users:
-        - Things that **must** go in the changelog: added, changed, deprecated or removed features, and bug fixes.
-        - Things that **should not** go in the changelog: changes to documentation, tests or tooling.
-        - Try sorting entries in descending order of impact / importance.
-        - Keep it concise and to-the-point. 🎯
-- **A version bump**: see `__init__.py`.
-
-For an example, see [#1107](https://github.com/Kludex/uvicorn/pull/1107).
+Before releasing a new version, create a pull request that bumps the version in `uvicorn/__init__.py`.
 
 Once the release PR is merged, create a
 [new release](https://github.com/Kludex/uvicorn/releases/new) including:
 
 - Tag version like `0.13.3`.
 - Release title `Version 0.13.3`
-- Description copied from the changelog.
+- **A description with the release notes**:
+    - [Compare](https://github.com/Kludex/uvicorn/compare/) `main` with the tag of the latest release, and list all entries that are of interest to our users:
+        - Things that **must** go in the release notes: added, changed, deprecated or removed features, and bug fixes.
+        - Things that **should not** go in the release notes: changes to documentation, tests or tooling.
+        - Try sorting entries in descending order of impact / importance.
+        - Keep it concise and to-the-point. 🎯
 
 Once created this release will be automatically uploaded to PyPI.
+
+Release notes live only in [GitHub Releases](https://github.com/Kludex/uvicorn/releases).
+`CHANGELOG.md` is kept for history up to 0.54.0 and is no longer updated.
