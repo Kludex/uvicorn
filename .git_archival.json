@@ -1,5 +1,0 @@
-{
-  "hash-full": "$Format:%H$",
-  "timestamp": "$Format:%cI$",
-  "describe": "$Format:%(describe:tags=true,match=[0-9]*)$"
-}
