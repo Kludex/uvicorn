@@ -19,7 +19,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
       TAG: ${{ github.event.release.tag_name }}
       SPONSORS_URL: https://marcelotryle.com/sponsors/list.json
-      HELP: "> [Let's make this project sustainable together](https://marcelotryle.com/blog/sponsorship-fund-2027/)"
+      HELP: "> This project needs your help! [Let's make this project sustainable together](https://marcelotryle.com/blog/sponsorship-fund-2027/)"
 
     steps:
       - name: Add the sponsorship header and the sponsor credits to the release notes
