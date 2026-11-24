@@ -153,19 +153,19 @@ message under the coverage report:
 
 *This section is targeted at Uvicorn maintainers.*
 
-Before releasing a new version, create a pull request that bumps the version in `uvicorn/__init__.py`.
-
-Once the release PR is merged, create a
-[new release](https://github.com/Kludex/uvicorn/releases/new) including:
+The version comes from the Git tag, so a release needs no pull request. Create a
+[new release](https://github.com/Kludex/uvicorn/releases/new) from `main` including:
 
 - Tag version like `0.13.3`.
 - Release title `Version 0.13.3`
-- **A description with the release notes**:
-    - [Compare](https://github.com/Kludex/uvicorn/compare/) `main` with the tag of the latest release, and list all entries that are of interest to our users:
+- **A description with the release notes**, in the shape of [0.54.0](https://github.com/Kludex/uvicorn/releases/tag/0.54.0):
+    - [Compare](https://github.com/Kludex/uvicorn/compare/) `main` with the tag of the latest release, and cover every change that is of interest to our users:
         - Things that **must** go in the release notes: added, changed, deprecated or removed features, and bug fixes.
         - Things that **should not** go in the release notes: changes to documentation, tests or tooling.
-        - Try sorting entries in descending order of impact / importance.
-        - Keep it concise and to-the-point. 🎯
+    - Open with a short paragraph on what the release is about and when users will notice it, followed by the install command pinned to the new version.
+    - Group the changes under headings named after their outcome, with the most important theme first.
+    - Start each entry with the user-visible outcome in bold, link its pull request, and explain what now behaves differently.
+    - End with a `Full changelog` link that compares the previous tag with the new one.
 
 Once created this release will be automatically uploaded to PyPI.
 

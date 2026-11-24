@@ -4,6 +4,7 @@
 .mypy_cache/
 __pycache__/
 uvicorn.egg-info/
+uvicorn/_version.py
 venv/
 htmlcov/
 site/

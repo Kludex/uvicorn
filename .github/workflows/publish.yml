@@ -17,6 +17,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The version comes from the Git tags, which a shallow checkout does not fetch.
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
@@ -29,6 +31,10 @@ jobs:
 
       - name: Build package & docs
         run: scripts/build
+
+      - name: Require the built version to match the tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: test -f "dist/uvicorn-${GITHUB_REF_NAME}.tar.gz"
 
       - name: Upload package distributions
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
