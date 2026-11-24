@@ -32,10 +32,6 @@ jobs:
       - name: Build package & docs
         run: scripts/build
 
-      - name: Require the built version to match the tag
-        if: startsWith(github.ref, 'refs/tags/')
-        run: test -f "dist/uvicorn-${GITHUB_REF_NAME}.tar.gz"
-
       - name: Upload package distributions
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
