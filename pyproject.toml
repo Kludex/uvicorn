@@ -111,9 +111,6 @@ Source = "https://github.com/Kludex/uvicorn"
 [tool.hatch.version]
 source = "uv-dynamic-versioning"
 
-[tool.hatch.build.hooks.version]
-path = "uvicorn/_version.py"
-
 [tool.uv-dynamic-versioning]
 vcs = "git"
 style = "pep440"
