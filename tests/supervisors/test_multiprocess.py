@@ -216,12 +216,17 @@ def test_multiprocess_sigttin() -> None:
     """
     config = Config(app=app, workers=2)
     supervisor = Multiprocess(config, sockets=[])
-    threading.Thread(target=supervisor.run, daemon=True).start()
-    supervisor.signal_queue.append(signal.SIGTTIN)
-    time.sleep(1)
-    assert len(supervisor.processes) == 3
-    supervisor.signal_queue.append(signal.SIGINT)
-    supervisor.join_all()
+    try:
+        supervisor.init_processes()
+        supervisor.signal_queue.append(signal.SIGTTIN)
+        supervisor.handle_signals()
+
+        assert len(supervisor.processes) == 3
+        # A worker that hasn't exec'd yet swallows SIGTERM, so wait for every worker to answer a ping.
+        assert all(process.ping() for process in supervisor.processes)
+    finally:
+        supervisor.terminate_all()
+        supervisor.join_all()
 
 
 @pytest.mark.skipif(not hasattr(signal, "SIGTTOU"), reason="platform unsupports SIGTTOU")
@@ -231,12 +236,17 @@ def test_multiprocess_sigttou() -> None:
     """
     config = Config(app=app, workers=2)
     supervisor = Multiprocess(config, sockets=[])
-    threading.Thread(target=supervisor.run, daemon=True).start()
-    supervisor.signal_queue.append(signal.SIGTTOU)
-    time.sleep(1)
-    assert len(supervisor.processes) == 1
-    supervisor.signal_queue.append(signal.SIGTTOU)
-    time.sleep(1)
-    assert len(supervisor.processes) == 1
-    supervisor.signal_queue.append(signal.SIGINT)
-    supervisor.join_all()
+    try:
+        supervisor.init_processes()
+        # A worker that hasn't exec'd yet swallows SIGTERM, so wait for every worker to answer a ping.
+        assert all(process.ping() for process in supervisor.processes)
+        supervisor.signal_queue.append(signal.SIGTTOU)
+        supervisor.handle_signals()
+        assert len(supervisor.processes) == 1
+
+        supervisor.signal_queue.append(signal.SIGTTOU)
+        supervisor.handle_signals()
+        assert len(supervisor.processes) == 1
+    finally:
+        supervisor.terminate_all()
+        supervisor.join_all()
