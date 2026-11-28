@@ -693,6 +693,34 @@ async def test_rst_stream_disconnects_the_app():
     assert not protocol.transport.is_closing()
 
 
+async def test_rst_stream_unblocks_a_send_waiting_on_a_paused_transport():
+    app = Response("Hello, world", media_type="text/plain")
+
+    protocol = get_connected_protocol(app)
+    client = H2Client()
+
+    reset = client.request()
+    sibling = client.request()
+    protocol.data_received(client.data_to_send())
+    protocol.pause_writing()
+    reset_task = asyncio.get_running_loop().create_task(protocol.loop.run_one())
+    sibling_task = asyncio.get_running_loop().create_task(protocol.loop.run_one())
+    await anyio.wait_all_tasks_blocked()
+    assert not reset_task.done()
+
+    buffer = protocol.transport.buffer
+    protocol.data_received(frame(0x03, 0, reset.stream_id, (0x8).to_bytes(4, "big")))
+    await anyio.wait_all_tasks_blocked()
+    reset_task_done = reset_task.done()
+    buffer_while_paused = protocol.transport.buffer
+
+    protocol.resume_writing()
+    await asyncio.gather(reset_task, sibling_task)
+    assert reset_task_done
+    assert buffer_while_paused == buffer
+    assert client.parse_response(protocol.transport.buffer, stream_id=sibling.stream_id).status == 200
+
+
 async def test_connection_lost_disconnects_the_app():
     received_disconnect = False
 
