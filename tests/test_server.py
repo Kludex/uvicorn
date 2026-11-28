@@ -12,6 +12,7 @@ from contextlib import AbstractContextManager
 
 import httpx2
 import pytest
+from pytest_mock import MockerFixture
 
 from tests.protocols.test_http import SIMPLE_GET_REQUEST
 from tests.utils import run_server
@@ -122,6 +123,132 @@ async def test_shutdown_on_early_exit_during_startup(unused_tcp_port: int):
     assert shutdown_complete, "lifespan.shutdown was not called despite startup completing"
 
 
+async def test_should_exit_wakes_main_loop(mocker: MockerFixture) -> None:
+    server = Server(Config(app=app, lifespan="off"))
+    first_tick = asyncio.Event()
+
+    async def on_tick(counter: int) -> bool:
+        if counter == 0:
+            first_tick.set()
+        return server.should_exit
+
+    mocker.patch.object(server, "on_tick", side_effect=on_tick)
+    mocker.patch("uvicorn.server.asyncio.sleep", side_effect=AssertionError("main loop must not poll for shutdown"))
+    main_loop = asyncio.create_task(server.main_loop())
+    await first_tick.wait()
+    shutdown_event = server._shutdown_event
+    assert shutdown_event is not None
+
+    server.should_exit = True
+
+    await asyncio.wait_for(shutdown_event.wait(), timeout=1)
+    await asyncio.wait_for(main_loop, timeout=1)
+
+
+async def test_main_loop_honors_should_exit_set_before_start() -> None:
+    server = Server(Config(app=app, lifespan="off"))
+    server.should_exit = True
+
+    await server.main_loop()
+
+
+async def test_should_exit_ignores_closed_shutdown_loop(mocker: MockerFixture) -> None:
+    server = Server(Config(app=app, lifespan="off"))
+    server._shutdown_event = asyncio.Event()
+    shutdown_loop = mocker.Mock(spec=asyncio.AbstractEventLoop)
+    shutdown_loop.call_soon_threadsafe.side_effect = RuntimeError
+    server._shutdown_loop = shutdown_loop
+
+    server.should_exit = True
+
+    assert server.should_exit
+
+
+async def test_shutdown_without_connections_only_yields(mocker: MockerFixture) -> None:
+    config = Config(app=app, lifespan="off")
+    config.load()
+    server = Server(config)
+    server.lifespan = config.lifespan_class(config)
+    server.servers = []
+    sleep = mocker.patch("uvicorn.server.asyncio.sleep")
+
+    await server.shutdown()
+
+    sleep.assert_awaited_once_with(0)
+
+
+async def test_shutdown_yields_before_snapshotting_connections(mocker: MockerFixture) -> None:
+    config = Config(app=app, lifespan="off")
+    config.load()
+    server = Server(config)
+    server.lifespan = config.lifespan_class(config)
+    server.servers = []
+    connection = mocker.Mock()
+    connection.shutdown.side_effect = lambda: server.server_state.connections.remove(connection)
+    asyncio.get_running_loop().call_soon(server.server_state.connections.add, connection)
+    original_sleep = asyncio.sleep
+    sleep = mocker.patch("uvicorn.server.asyncio.sleep", wraps=original_sleep)
+
+    await server.shutdown()
+
+    connection.shutdown.assert_called_once_with()
+    assert [call.args[0] for call in sleep.await_args_list] == [0, 0.1]
+
+
+async def test_shutdown_waits_for_an_accepted_connection_to_register(
+    unused_tcp_port: int, mocker: MockerFixture
+) -> None:
+    connection_made = asyncio.Event()
+    registration_allowed = asyncio.Event()
+    grace_started = asyncio.Event()
+    shutdown_called = asyncio.Event()
+
+    class DelayedConnectionProtocol(H11Protocol):
+        def connection_made(self, transport: asyncio.Transport) -> None:  # type: ignore[override]
+            connection_made.set()
+
+            async def register() -> None:
+                await registration_allowed.wait()
+                super(DelayedConnectionProtocol, self).connection_made(transport)
+
+            asyncio.create_task(register())
+
+        def shutdown(self) -> None:
+            shutdown_called.set()
+            super().shutdown()
+
+    config = Config(
+        app=app,
+        lifespan="off",
+        port=unused_tcp_port,
+        http=DelayedConnectionProtocol,
+    )
+    config.load()
+    server = Server(config)
+    server.lifespan = config.lifespan_class(config)
+    await server.startup()
+    _reader, writer = await asyncio.open_connection("127.0.0.1", unused_tcp_port)
+    await connection_made.wait()
+    original_sleep = asyncio.sleep
+
+    async def track_sleep(delay: float) -> None:
+        if delay == 0.1:
+            grace_started.set()
+        await original_sleep(delay)
+
+    mocker.patch("uvicorn.server.asyncio.sleep", side_effect=track_sleep)
+    shutdown_task = asyncio.create_task(server.shutdown())
+
+    await asyncio.wait_for(grace_started.wait(), timeout=1)
+    registration_allowed.set()
+    await shutdown_task
+
+    assert shutdown_called.is_set()
+    writer.close()
+    with contextlib.suppress(ConnectionError):
+        await writer.wait_closed()
+
+
 def test_run_exits_with_startup_failure_on_unloadable_app() -> None:
     """A server exits with the dedicated startup-failure code when the app can't load.
 
@@ -142,12 +269,16 @@ async def test_request_than_limit_max_requests_warn_log(
 ):
     caplog.set_level(logging.INFO, logger="uvicorn.error")
     config = Config(app=app, limit_max_requests=1, port=unused_tcp_port, http=http_protocol_cls)
+    message = "Maximum request limit of 1 exceeded. Terminating process."
     async with run_server(config):
         async with httpx2.AsyncClient() as client:
             tasks = [client.get(f"http://127.0.0.1:{unused_tcp_port}") for _ in range(2)]
             responses = await asyncio.gather(*tasks)
             assert len(responses) == 2
-    assert "Maximum request limit of 1 exceeded. Terminating process." in caplog.text
+        async with asyncio.timeout(1):
+            while message not in caplog.messages:
+                await asyncio.sleep(0.01)
+    assert message in caplog.messages
 
 
 async def test_limit_max_requests_jitter(
@@ -161,10 +292,14 @@ async def test_limit_max_requests_jitter(
         limit = server.limit_max_requests
         assert limit is not None
         assert 1 <= limit <= 3
+        message = f"Maximum request limit of {limit} exceeded. Terminating process."
         async with httpx2.AsyncClient() as client:
             tasks = [client.get(f"http://127.0.0.1:{unused_tcp_port}") for _ in range(limit + 1)]
             await asyncio.gather(*tasks)
-    assert f"Maximum request limit of {limit} exceeded. Terminating process." in caplog.text
+        async with asyncio.timeout(1):
+            while message not in caplog.messages:
+                await asyncio.sleep(0.01)
+    assert message in caplog.messages
 
 
 @contextlib.asynccontextmanager
