@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict
 
@@ -1386,8 +1387,8 @@ async def test_multiple_server_header(
 
 async def test_lifespan_state(ws_protocol_cls: WSProtocol, http_protocol_cls: HTTPProtocol, unused_tcp_port: int):
     expected_states: list[dict[str, Any]] = [
-        {"a": 123, "b": [1]},
-        {"a": 123, "b": [1, 2]},
+        {"uvicorn_worker_id": 1, "a": 123, "b": [1]},
+        {"uvicorn_worker_id": 1, "a": 123, "b": [1, 2]},
     ]
 
     actual_states: list[dict[str, Any]] = []
@@ -1395,6 +1396,7 @@ async def test_lifespan_state(ws_protocol_cls: WSProtocol, http_protocol_cls: HT
     async def lifespan_app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         message = await receive()
         assert message["type"] == "lifespan.startup" and "state" in scope
+        assert os.environ["UVICORN_WORKER_ID"] == "1"
         scope["state"]["a"] = 123
         scope["state"]["b"] = [1]
         await send({"type": "lifespan.startup.complete"})
