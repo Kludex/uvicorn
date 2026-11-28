@@ -218,8 +218,7 @@ def test_multiprocess_sigttin() -> None:
     supervisor = Multiprocess(config, sockets=[])
     threading.Thread(target=supervisor.run, daemon=True).start()
     supervisor.signal_queue.append(signal.SIGTTIN)
-    time.sleep(1)
-    assert len(supervisor.processes) == 3
+    wait_for_workers(supervisor, 3)
     supervisor.signal_queue.append(signal.SIGINT)
     supervisor.join_all()
 
@@ -233,10 +232,15 @@ def test_multiprocess_sigttou() -> None:
     supervisor = Multiprocess(config, sockets=[])
     threading.Thread(target=supervisor.run, daemon=True).start()
     supervisor.signal_queue.append(signal.SIGTTOU)
-    time.sleep(1)
-    assert len(supervisor.processes) == 1
+    wait_for_workers(supervisor, 1)
     supervisor.signal_queue.append(signal.SIGTTOU)
-    time.sleep(1)
-    assert len(supervisor.processes) == 1
+    wait_for_workers(supervisor, 1)
     supervisor.signal_queue.append(signal.SIGINT)
     supervisor.join_all()
+
+
+def wait_for_workers(supervisor: Multiprocess, count: int) -> None:
+    deadline = time.monotonic() + 10
+    while supervisor.signal_queue or len(supervisor.processes) != count:
+        assert time.monotonic() < deadline, f"Timed out waiting for {count} workers"
+        time.sleep(0.1)
