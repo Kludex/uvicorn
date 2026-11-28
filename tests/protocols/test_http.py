@@ -41,6 +41,8 @@ WEBSOCKET_PROTOCOLS = WS_PROTOCOLS.keys()
 
 SIMPLE_GET_REQUEST = b"\r\n".join([b"GET / HTTP/1.1", b"Host: example.org", b"", b""])
 
+SIMPLE_GET_REQUEST_WITH_TRAILERS = b"\r\n".join([b"GET / HTTP/1.1", b"Host: example.org", b"TE: trailers", b"", b""])
+
 SIMPLE_HEAD_REQUEST = b"\r\n".join([b"HEAD / HTTP/1.1", b"Host: example.org", b"", b""])
 
 SIMPLE_POST_REQUEST = b"\r\n".join(
@@ -1331,3 +1333,178 @@ async def test_header_upgrade_is_websocket_depend_not_installed(
     assert msg in caplog.text
     assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
     assert b"Hello, world" in protocol.transport.buffer
+
+
+async def test_trailers_extension_in_scope(http_protocol_cls: type[HTTPProtocol]):
+    received_scope: dict[str, Any] = {}
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        received_scope.update(scope)
+        await Response("Hello, world", media_type="text/plain")(scope, receive, send)
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST)
+    await protocol.loop.run_one()
+    assert "extensions" in received_scope
+    assert "http.response.trailers" in received_scope["extensions"]
+
+
+def trailers_app(headers: list[tuple[bytes, bytes]]) -> ASGIApplication:
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send({"type": "http.response.start", "status": 200, "headers": headers, "trailers": True})
+        await send({"type": "http.response.body", "body": b"Hi"})
+        await send({"type": "http.response.trailers", "headers": [(b"x-trailer-1", b"value-1")], "more_trailers": True})
+        await send(
+            {"type": "http.response.trailers", "headers": [(b"x-trailer-2", b"value-2")], "more_trailers": False}
+        )
+
+    return app
+
+
+@pytest.mark.parametrize(
+    "request_line, te, headers, expected_body",
+    [
+        (b"GET", True, [], b"2\r\nHi\r\n0\r\nx-trailer-1: value-1\r\nx-trailer-2: value-2\r\n\r\n"),
+        (b"GET", False, [], b"2\r\nHi\r\n0\r\n\r\n"),
+        (b"GET", True, [(b"content-length", b"2")], b"Hi"),
+        (b"HEAD", True, [], b""),
+    ],
+    ids=["chunked", "no-te", "content-length", "head"],
+)
+async def test_trailers(
+    http_protocol_cls: type[HTTPProtocol],
+    request_line: bytes,
+    te: bool,
+    headers: list[tuple[bytes, bytes]],
+    expected_body: bytes,
+):
+    request = [request_line + b" / HTTP/1.1", b"Host: example.org"] + ([b"TE: trailers"] if te else [])
+    protocol = get_connected_protocol(trailers_app(headers), http_protocol_cls)
+    protocol.data_received(b"\r\n".join(request + [b"", b""]))
+    await protocol.loop.run_one()
+    assert protocol.transport.buffer.startswith(b"HTTP/1.1 200 OK")
+    assert protocol.transport.buffer.split(b"\r\n\r\n", 1)[1] == expected_body
+    assert not protocol.transport.closed
+
+
+@pytest.mark.parametrize("status", [204, 304])
+async def test_trailers_on_bodyless_status_are_dropped(http_protocol_cls: type[HTTPProtocol], status: int):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        headers = [(b"transfer-encoding", b"chunked")]
+        await send({"type": "http.response.start", "status": status, "headers": headers, "trailers": True})
+        await send({"type": "http.response.body", "body": b""})
+        await send({"type": "http.response.trailers", "headers": [(b"x-trailer", b"value")], "more_trailers": False})
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST_WITH_TRAILERS)
+    await protocol.loop.run_one()
+    assert b"x-trailer" not in protocol.transport.buffer
+    assert not protocol.transport.closed
+
+
+async def test_invalid_trailer_value(http_protocol_cls: type[HTTPProtocol]):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send({"type": "http.response.start", "status": 200, "trailers": True})
+        await send({"type": "http.response.body", "body": b"Hi"})
+        with pytest.raises(Exception, match="(?i)header value|invalid field"):
+            await send(
+                {"type": "http.response.trailers", "headers": [(b"x-trailer", b"bad\r\nvalue")], "more_trailers": False}
+            )
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST_WITH_TRAILERS)
+    await protocol.loop.run_one()
+    assert protocol.transport.closed
+
+
+async def test_return_without_trailers_closes_connection(http_protocol_cls: type[HTTPProtocol]):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send({"type": "http.response.start", "status": 200, "trailers": True})
+        await send({"type": "http.response.body", "body": b"Hi"})
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST_WITH_TRAILERS)
+    await protocol.loop.run_one()
+    assert protocol.transport.closed
+
+
+async def test_body_after_trailers_raises(http_protocol_cls: type[HTTPProtocol]):
+    with_body_after_trailers: dict[str, bool] = {"raised": False}
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"text/plain")],
+                "trailers": True,
+            }
+        )
+        await send({"type": "http.response.body", "body": b"Hi"})
+        await send(
+            {
+                "type": "http.response.trailers",
+                "headers": [(b"x-trailer-1", b"value-1")],
+                "more_trailers": False,
+            }
+        )
+        try:
+            await send({"type": "http.response.body", "body": b"oops"})
+        except RuntimeError:
+            with_body_after_trailers["raised"] = True
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST_WITH_TRAILERS)
+    await protocol.loop.run_one()
+    assert with_body_after_trailers["raised"]
+
+
+async def test_body_during_trailers_phase_raises(http_protocol_cls: type[HTTPProtocol]):
+    raised: dict[str, bool] = {"raised": False}
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"text/plain")],
+                "trailers": True,
+            }
+        )
+        await send({"type": "http.response.body", "body": b"Hi"})
+        try:
+            await send({"type": "http.response.body", "body": b"more"})
+        except RuntimeError:
+            raised["raised"] = True
+
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(SIMPLE_GET_REQUEST_WITH_TRAILERS)
+    await protocol.loop.run_one()
+    assert raised["raised"]
+
+
+async def test_trailers_with_close_connection(http_protocol_cls: type[HTTPProtocol]):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"text/plain")],
+                "trailers": True,
+            }
+        )
+        await send({"type": "http.response.body", "body": b"Hi"})
+        await send(
+            {
+                "type": "http.response.trailers",
+                "headers": [(b"x-trailer-1", b"value-1")],
+                "more_trailers": False,
+            }
+        )
+
+    request = b"\r\n".join([b"GET / HTTP/1.1", b"Host: example.org", b"Connection: close", b"TE: trailers", b"", b""])
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    protocol.data_received(request)
+    await protocol.loop.run_one()
+    assert b"x-trailer-1: value-1" in protocol.transport.buffer
+    assert protocol.transport.closed
