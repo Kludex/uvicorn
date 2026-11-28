@@ -9,6 +9,8 @@ import socket
 import sys
 from collections.abc import Callable, Iterator
 from contextlib import closing
+from copy import deepcopy
+from logging.config import DictConfigurator
 from pathlib import Path
 from typing import IO, Any, Literal
 from unittest.mock import MagicMock
@@ -20,7 +22,7 @@ from pytest_mock import MockerFixture
 from tests.custom_loop_utils import CustomLoop
 from tests.utils import as_cwd, get_asyncio_default_loop_per_os
 from uvicorn._types import ASGIApplication, ASGIReceiveCallable, ASGISendCallable, Environ, Scope, StartResponse
-from uvicorn.config import Config, LoopFactoryType, UvicornDeprecationWarning
+from uvicorn.config import LOGGING_CONFIG, Config, LoopFactoryType, UvicornDeprecationWarning
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from uvicorn.middleware.wsgi import WSGIMiddleware
 from uvicorn.protocols.http.h11_impl import H11Protocol
@@ -340,10 +342,217 @@ def test_log_config_default(
     config = Config(app=asgi_app, use_colors=use_colors, log_config=logging_config)
     config.load()
 
-    mocked_logging_config_module.dictConfig.assert_called_once_with(logging_config)
+    # Not `assert_called_once_with(logging_config)`: applying use_colors now
+    # hands dictConfig a rebuilt mapping so the caller's is left untouched.
+    mocked_logging_config_module.dictConfig.assert_called_once()
 
     (provided_dict_config,), _ = mocked_logging_config_module.dictConfig.call_args
     assert provided_dict_config["formatters"]["default"]["use_colors"] == expected
+
+
+def test_log_config_use_colors_with_foreign_formatter_names(mocked_logging_config_module: MagicMock) -> None:
+    """
+    `use_colors` must not require the formatter names from uvicorn's own
+    `LOGGING_CONFIG` to be present.
+
+    A `dictConfig` mapping that names its formatters differently is valid, so
+    indexing `["formatters"]["default"]` and `["formatters"]["access"]`
+    unconditionally raised `KeyError` while the `Config` was being constructed.
+    """
+    custom_log_config: dict[str, Any] = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {"simple": {"format": "%(levelname)s %(message)s"}},
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "formatter": "simple",
+                "stream": "ext://sys.stderr",
+            }
+        },
+        "root": {"handlers": ["console"], "level": "INFO"},
+    }
+
+    config = Config(app=asgi_app, log_config=custom_log_config, use_colors=False)
+    config.load()
+
+    mocked_logging_config_module.dictConfig.assert_called_once()
+
+
+@pytest.mark.parametrize("name", ["default", "access"])
+@pytest.mark.parametrize("use_colors", [True, False])
+@pytest.mark.parametrize("factory", [logging.Formatter, "logging.Formatter", "ext://logging.Formatter"])
+def test_log_config_use_colors_with_custom_factory(
+    mocked_logging_config_module: MagicMock, name: str, use_colors: bool, factory: Any
+) -> None:
+    # Configure the formatter for real without changing process-wide handlers.
+    custom_log_config = {"version": 1, "formatters": {name: {"()": factory}}}
+    before = deepcopy(custom_log_config)
+
+    def configure_formatter(value: dict[str, Any]) -> None:
+        configurator = DictConfigurator(value)
+        configurator.configure_formatter(configurator.config["formatters"][name])
+
+    mocked_logging_config_module.dictConfig.side_effect = configure_formatter
+
+    Config(app=asgi_app, log_config=custom_log_config, use_colors=use_colors)
+
+    assert custom_log_config == before
+    mocked_logging_config_module.dictConfig.assert_called_once_with(before)
+
+
+@pytest.mark.parametrize("name", ["default", "access"])
+@pytest.mark.parametrize("use_colors", [True, False])
+def test_log_config_use_colors_preserves_builtin_formatters(
+    mocked_logging_config_module: MagicMock, name: str, use_colors: bool
+) -> None:
+    Config(app=asgi_app, use_colors=use_colors)
+    provided = mocked_logging_config_module.dictConfig.call_args.args[0]
+    assert provided["formatters"][name]["use_colors"] is use_colors
+
+
+@pytest.mark.parametrize("use_colors", [True, False])
+def test_log_config_use_colors_with_opted_in_custom_factory(
+    mocked_logging_config_module: MagicMock, use_colors: bool
+) -> None:
+    def factory(use_colors: bool) -> logging.Formatter:
+        return logging.Formatter()
+
+    custom_log_config = {"version": 1, "formatters": {"default": {"()": factory, "use_colors": None}}}
+    before = deepcopy(custom_log_config)
+    Config(app=asgi_app, log_config=custom_log_config, use_colors=use_colors)
+    provided = mocked_logging_config_module.dictConfig.call_args.args[0]
+    assert provided["formatters"]["default"]["use_colors"] is use_colors
+    DictConfigurator(provided).configure_formatter(provided["formatters"]["default"].copy())
+    assert custom_log_config == before
+
+
+@pytest.mark.parametrize("use_colors", [True, False])
+@pytest.mark.parametrize("accept_kwargs", [True, False])
+def test_log_config_use_colors_with_compatible_custom_factory(
+    mocked_logging_config_module: MagicMock, use_colors: bool, accept_kwargs: bool
+) -> None:
+    received: list[bool] = []
+
+    def keyword_factory(*, use_colors: bool) -> logging.Formatter:
+        received.append(use_colors)
+        return logging.Formatter()
+
+    def kwargs_factory(**kwargs: Any) -> logging.Formatter:
+        received.append(kwargs["use_colors"])
+        return logging.Formatter()
+
+    factory = kwargs_factory if accept_kwargs else keyword_factory
+    custom_log_config = {"version": 1, "formatters": {"default": {"()": factory}}}
+    before = deepcopy(custom_log_config)
+    mocked_logging_config_module.dictConfig.side_effect = lambda value: DictConfigurator(value).configure_formatter(
+        value["formatters"]["default"].copy()
+    )
+    Config(app=asgi_app, log_config=custom_log_config, use_colors=use_colors)
+    assert received == [use_colors]
+    assert custom_log_config == before
+
+
+@pytest.mark.parametrize(
+    "factory_reference", ["ext://tests.test_config.color_formatter_factory", "cfg://color_formatter_factory"]
+)
+def test_log_config_use_colors_with_factory_reference(
+    mocked_logging_config_module: MagicMock, mocker: MockerFixture, factory_reference: str
+) -> None:
+    received: list[bool] = []
+
+    def factory(*, use_colors: bool) -> logging.Formatter:
+        received.append(use_colors)
+        return logging.Formatter()
+
+    mocker.patch("tests.test_config.color_formatter_factory", factory, create=True)
+    custom_log_config = {
+        "version": 1,
+        "color_formatter_factory": factory,
+        "formatters": {name: {"()": factory_reference} for name in ("default", "access")},
+    }
+    before = deepcopy(custom_log_config)
+
+    def configure_formatters(value: dict[str, Any]) -> None:
+        configurator = DictConfigurator(value)
+        for name in ("default", "access"):
+            configurator.configure_formatter(configurator.config["formatters"][name])
+
+    mocked_logging_config_module.dictConfig.side_effect = configure_formatters
+
+    Config(app=asgi_app, log_config=custom_log_config, use_colors=False)
+
+    assert received == [False, False]
+    assert custom_log_config == before
+    mocked_logging_config_module.dictConfig.assert_called_once()
+
+
+def test_log_config_use_colors_with_opaque_factory(mocked_logging_config_module: MagicMock) -> None:
+    class OpaqueFactory:
+        __signature__ = "not an inspect.Signature"
+
+        def __call__(self) -> logging.Formatter:
+            return logging.Formatter()
+
+    factory = OpaqueFactory()
+    custom_log_config = {"version": 1, "formatters": {"default": {"()": factory}}}
+    mocked_logging_config_module.dictConfig.side_effect = lambda value: DictConfigurator(value).configure_formatter(
+        value["formatters"]["default"].copy()
+    )
+    Config(app=asgi_app, log_config=custom_log_config, use_colors=True)
+    provided = mocked_logging_config_module.dictConfig.call_args.args[0]
+    assert "use_colors" not in provided["formatters"]["default"]
+
+
+def test_log_config_use_colors_without_formatters(mocked_logging_config_module: MagicMock) -> None:
+    """
+    A `dictConfig` mapping need not declare any formatters at all.
+    """
+    custom_log_config: dict[str, Any] = {
+        "version": 1,
+        "root": {"level": "INFO"},
+    }
+    before = deepcopy(custom_log_config)
+
+    Config(app=asgi_app, log_config=custom_log_config, use_colors=True).load()
+
+    assert custom_log_config == before
+    mocked_logging_config_module.dictConfig.assert_called_once_with(before)
+
+
+def test_log_config_use_colors_does_not_mutate_caller_mapping(mocked_logging_config_module: MagicMock) -> None:
+    """
+    Applying `use_colors` must leave the mapping the caller passed in alone.
+    """
+    custom_log_config: dict[str, Any] = {
+        "version": 1,
+        "formatters": {"default": {}, "access": {}},
+        "handlers": {},
+        "root": {},
+    }
+    before = deepcopy(custom_log_config)
+
+    Config(app=asgi_app, log_config=custom_log_config, use_colors=False).load()
+
+    assert custom_log_config == before
+
+
+def test_log_config_use_colors_does_not_mutate_default_logging_config(
+    mocked_logging_config_module: MagicMock,
+) -> None:
+    """
+    `LOGGING_CONFIG` is the default value of the `log_config` parameter, so
+    writing `use_colors` into it leaked into every later `Config` in the
+    process. A `Config` built without `use_colors` must still auto-detect.
+    """
+    before = deepcopy(LOGGING_CONFIG)
+    try:
+        Config(app=asgi_app, use_colors=False).load()
+
+        assert LOGGING_CONFIG == before
+    finally:
+        LOGGING_CONFIG.clear()
+        LOGGING_CONFIG.update(before)
 
 
 def test_log_config_json(
