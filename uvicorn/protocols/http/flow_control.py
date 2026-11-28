@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
 
@@ -10,6 +11,7 @@ HIGH_WATER_LIMIT = 65536
 class FlowControl:
     def __init__(self, transport: asyncio.Transport) -> None:
         self._transport = transport
+        self._context = contextvars.copy_context()
         self.read_paused = False
         self.write_paused = False
         self._is_writable_event = asyncio.Event()
@@ -26,7 +28,9 @@ class FlowControl:
     def resume_reading(self) -> None:
         if self.read_paused:
             self.read_paused = False
-            self._transport.resume_reading()
+            # Reads are resumed from request tasks, and asyncio transports can resume them in the
+            # caller's context (python/cpython#140947). Use a copy of the connection's context instead.
+            self._context.copy().run(self._transport.resume_reading)
 
     def pause_writing(self) -> None:
         if not self.write_paused:  # pragma: full coverage
