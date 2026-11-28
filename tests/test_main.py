@@ -81,7 +81,7 @@ def test_run_invalid_app_config_combination(caplog: pytest.LogCaptureFixture) ->
     with pytest.raises(SystemExit) as exit_exception:
         run(app, reload=True)
     assert exit_exception.value.code == STARTUP_FAILURE
-    assert caplog.records[-1].name == "uvicorn.error"
+    assert caplog.records[-1].name == "uvicorn.server"
     assert caplog.records[-1].levelno == WARNING
     assert caplog.records[-1].message == (
         "You must pass the application as an import string to enable 'reload' or 'workers'."
