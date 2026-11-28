@@ -1001,6 +1001,40 @@ async def test_http2_upgrade_request(http_protocol_cls: type[HTTPProtocol], ws_p
     assert b"Hello, world" in protocol.transport.buffer
 
 
+@pytest.mark.parametrize(
+    "framing, body",
+    [
+        (b"Content-Length: 18", b'{"hello": "world"}'),
+        (b"Transfer-Encoding: chunked", b'12\r\n{"hello": "world"}\r\n0\r\n\r\n'),
+    ],
+)
+@pytest.mark.parametrize("connection", [b"Upgrade, HTTP2-Settings", b"Upgrade, close"])
+@pytest.mark.parametrize("split", [False, True])
+async def test_http2_upgrade_request_with_body(
+    http_protocol_cls: type[HTTPProtocol], framing: bytes, body: bytes, connection: bytes, split: bool
+):
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        received = b""
+        more_body = True
+        while more_body:
+            message = await receive()
+            assert message["type"] == "http.request"
+            received += message.get("body", b"")
+            more_body = message.get("more_body", False)
+        response = Response(b"Body: " + received, media_type="text/plain")
+        await response(scope, receive, send)
+
+    head = b"\r\n".join(
+        [b"POST / HTTP/1.1", b"Host: example.org", b"Connection: " + connection, b"Upgrade: h2c", framing]
+    )
+    protocol = get_connected_protocol(app, http_protocol_cls)
+    for data in [head + b"\r\n\r\n", body] if split else [head + b"\r\n\r\n" + body]:
+        protocol.data_received(data)
+    await protocol.loop.run_one()
+    assert b"HTTP/1.1 200 OK" in protocol.transport.buffer
+    assert b'Body: {"hello": "world"}' in protocol.transport.buffer
+
+
 async def asgi3app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
     pass
 

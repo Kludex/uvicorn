@@ -176,11 +176,20 @@ class HttpToolsProtocol(asyncio.Protocol):
             self.logger.warning(msg)
             self.send_400_response(msg)
             return
-        except httptools.HttpParserUpgrade:
+        except httptools.HttpParserUpgrade as exc:
             if self._should_upgrade():
                 self.handle_websocket_upgrade()
             else:
                 self._unsupported_upgrade_warning()
+                if self._get_upgrade() is not None:
+                    # httptools skips the body of an upgrade request, so parse it again without the `Upgrade` header.
+                    version = self.scope["http_version"].encode()
+                    head = b"%s %s HTTP/%s\r\n" % (self.scope["method"].encode(), self.url, version)
+                    head += b"".join(b"%s: %s\r\n" % header for header in self.headers if header[0] != b"upgrade")
+                    # A fresh parser, as the current one discards data after a request that closes the connection.
+                    self.parser = httptools.HttpRequestParser(self)
+                    self.parser.set_dangerous_leniencies(lenient_data_after_close=True)
+                    self.data_received(head + b"\r\n" + data[exc.args[0] :])
 
     def handle_websocket_upgrade(self) -> None:
         if self.logger.level <= TRACE_LOG_LEVEL:
@@ -252,7 +261,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.scope["method"] = method.decode("ascii")
         if http_version != "1.1":
             self.scope["http_version"] = http_version
-        if self.parser.should_upgrade() and self._should_upgrade():
+        if self.parser.should_upgrade() and self._get_upgrade() is not None:
             return
         parsed_url = httptools.parse_url(self.url)
         raw_path = parsed_url.path
@@ -317,7 +326,7 @@ class HttpToolsProtocol(asyncio.Protocol):
         self.cycle.message_event.set()
 
     def on_message_complete(self) -> None:
-        if (self.parser.should_upgrade() and self._should_upgrade()) or self.cycle.response_complete:
+        if (self.parser.should_upgrade() and self._get_upgrade() is not None) or self.cycle.response_complete:
             return
         self.cycle.more_body = False
         self.cycle.message_event.set()
