@@ -147,7 +147,7 @@ class ZttpProtocol(asyncio.Protocol):
                 # Pipelined HTTP requests and WebSocket upgrades may be processed after the keep-alive timer is armed.
                 self._unset_keepalive_if_required()
                 if not event.target.isascii():
-                    self.handle_remote_protocol_error()
+                    self.handle_remote_protocol_error(send_body=event.method != b"HEAD")
                     return
 
                 assert isinstance(event.headers, zttp.HeaderBlock)
@@ -225,10 +225,10 @@ class ZttpProtocol(asyncio.Protocol):
 
             event = self.conn.next_event()
 
-    def handle_remote_protocol_error(self) -> None:
+    def handle_remote_protocol_error(self, send_body: bool = True) -> None:
         msg = "Invalid HTTP request received."
         self.logger.warning(msg)
-        self.send_400_response(msg)
+        self.send_400_response(msg, send_body=send_body)
 
     def handle_websocket_upgrade(self, event: zttp.Request) -> None:
         if self.logger.level <= TRACE_LOG_LEVEL:  # pragma: no cover
@@ -249,7 +249,7 @@ class ZttpProtocol(asyncio.Protocol):
         self.transport.set_protocol(protocol)
         protocol.data_received(bytes(output))
 
-    def send_400_response(self, msg: str) -> None:
+    def send_400_response(self, msg: str, send_body: bool = True) -> None:
         body = msg.encode("ascii")
         headers: list[tuple[bytes, bytes]] = [
             (b"content-type", b"text/plain; charset=utf-8"),
@@ -257,7 +257,8 @@ class ZttpProtocol(asyncio.Protocol):
             (b"connection", b"close"),
         ]
         self.conn.send_response(400, headers)
-        self.conn.send_data(body)
+        if send_body:
+            self.conn.send_data(body)
         self.conn.end_message()
         self.transport.write(self.conn.data_to_send())
         self.transport.close()
