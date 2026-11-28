@@ -17,6 +17,7 @@ from uvicorn.main import main as cli
 from uvicorn.server import Server
 from uvicorn.supervisors import ChangeReload, Multiprocess
 
+UDS_REQUIRED = pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
 HEADERS = "Content-Security-Policy:default-src 'self'; script-src https://example.com"
 main = importlib.import_module("uvicorn.main")
 
@@ -119,28 +120,32 @@ def test_cli_call_multiprocess_run() -> None:
     mock_run.assert_called_once()
 
 
-@pytest.fixture(params=(True, False))
-def uds_file(tmp_path: Path, request: pytest.FixtureRequest) -> Path:  # pragma: py-win32
-    file = tmp_path / "uvicorn.sock"
-    should_create_file = request.param
-    if should_create_file:
-        file.touch(exist_ok=True)
-    return file
+@UDS_REQUIRED
+@pytest.mark.parametrize("options", [[], ["--workers=2"]])
+def test_cli_uds_bind_failure_preserves_file(short_socket_name: str, options: list[str]) -> None:  # pragma: py-win32
+    path = Path(short_socket_name)
+    path.write_text("sentinel")
+
+    result = CliRunner().invoke(cli, ["tests.test_main:app", "--uds", short_socket_name, "--lifespan=off", *options])
+
+    assert result.exit_code != 0
+    assert path.read_text() == "sentinel"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="require unix-like system")
-def test_cli_uds(uds_file: Path) -> None:  # pragma: py-win32
-    runner = CliRunner()
+@UDS_REQUIRED
+@pytest.mark.parametrize("options", [["--loop=asyncio", "--limit-max-requests=0"], ["--workers=2"]])
+def test_cli_uds_removed_on_exit(
+    short_socket_name: str, monkeypatch: pytest.MonkeyPatch, options: list[str]
+) -> None:  # pragma: py-win32
+    def supervise(supervisor: Multiprocess) -> None:
+        for sock in supervisor.sockets:
+            sock.close()
 
-    with mock.patch.object(Config, "bind_socket") as mock_bind_socket:
-        with mock.patch.object(Multiprocess, "run") as mock_run:
-            result = runner.invoke(cli, ["tests.test_cli:App", "--workers=2", "--uds", str(uds_file)])
+    monkeypatch.setattr(Multiprocess, "run", supervise)
+    result = CliRunner().invoke(cli, ["tests.test_main:app", "--uds", short_socket_name, *options])
 
     assert result.exit_code == 0
-    assert result.output == ""
-    mock_bind_socket.assert_called_once()
-    mock_run.assert_called_once()
-    assert not uds_file.exists()
+    assert not Path(short_socket_name).exists()
 
 
 def test_cli_incomplete_app_parameter() -> None:

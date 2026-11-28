@@ -574,6 +574,7 @@ class Config:
                 uds_perms = 0o666
                 os.chmod(self.uds, uds_perms)
             except OSError as exc:  # pragma: full coverage
+                sock.close()
                 logger.error(exc)
                 sys.exit(STARTUP_FAILURE)
 
