@@ -246,6 +246,9 @@ class ZttpH2Protocol(asyncio.Protocol):
             resume_reading=self.resume_reading_if_idle,
         )
         self.cycles[event.stream_id] = cycle
+        if event.end_stream:
+            cycle.more_body = False
+            cycle.message_event.set()
 
         if self.config.reset_contextvars:
             task = self.loop.create_task(cycle.run_asgi(app), context=contextvars.Context())

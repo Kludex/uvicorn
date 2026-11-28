@@ -345,6 +345,27 @@ async def test_post_request():
     assert response.body == b'Body: {"hello": "world"}'
 
 
+async def test_request_ended_by_headers_frame():
+    messages: list[Any] = []
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        messages.append(await receive())
+        await Response(b"ok")(scope, receive, send)
+
+    protocol = get_connected_protocol(app)
+    client = H2Client()
+
+    client.request(b"POST", b"/", end=False)
+    # zttp's client ends a request with an empty DATA frame, so set END_STREAM on its HEADERS frame instead.
+    headers_frame = client.data_to_send().replace(b"\x01\x04\x00\x00\x00\x01", b"\x01\x05\x00\x00\x00\x01")
+    protocol.data_received(headers_frame)
+    with anyio.fail_after(1):
+        await protocol.loop.run_one()
+
+    assert messages == [{"type": "http.request", "body": b"", "more_body": False}]
+    assert client.parse_response(protocol.transport.buffer).status == 200
+
+
 async def test_request_scope():
     received_scope: Any = None
 
