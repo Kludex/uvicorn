@@ -264,6 +264,10 @@ class ZttpH2Protocol(asyncio.Protocol):
         if not cycle.response_complete:
             cycle.disconnected = True
             cycle.message_event.set()
+            # Wake the sends parked in `drain`; streams still open park again.
+            if self.flow.write_paused:
+                self.flow.resume_writing()
+                self.flow.pause_writing()
         self.on_stream_closed()
 
     def resume_reading_if_idle(self) -> None:
@@ -321,13 +325,13 @@ class ZttpH2Protocol(asyncio.Protocol):
         """
         Called by the transport when the write buffer exceeds the high water mark.
         """
-        self.flow.pause_writing()  # pragma: no cover
+        self.flow.pause_writing()
 
     def resume_writing(self) -> None:
         """
         Called by the transport when the write buffer drops below the low water mark.
         """
-        self.flow.resume_writing()  # pragma: no cover
+        self.flow.resume_writing()
 
     def timeout_keep_alive_handler(self) -> None:
         """
@@ -436,8 +440,8 @@ class RequestResponseCycle:
 
     # ASGI interface
     async def send(self, message: ASGISendEvent) -> None:
-        if self.flow.write_paused and not self.disconnected:
-            await self.flow.drain()  # pragma: no cover
+        while self.flow.write_paused and not self.disconnected:
+            await self.flow.drain()
 
         if self.disconnected:
             return
