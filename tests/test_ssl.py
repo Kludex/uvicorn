@@ -8,7 +8,7 @@ import httpx2
 import pytest
 
 from tests.utils import run_server
-from uvicorn.config import Config
+from uvicorn.config import STARTUP_FAILURE, Config
 
 DefaultFactory: TypeAlias = Callable[[], ssl.SSLContext]
 
@@ -179,14 +179,36 @@ def test_ssl_context_factory_mutates_default(
     assert config.ssl.minimum_version == ssl.TLSVersion.TLSv1_3
 
 
-def test_default_ssl_context_factory_requires_ssl_certfile() -> None:
-    """Calling `default_ssl_context_factory()` without `ssl_certfile` raises a clear error."""
+def test_default_ssl_context_factory_requires_ssl_certfile(caplog: pytest.LogCaptureFixture) -> None:
+    """An unhandled missing certificate must stop worker respawning."""
 
     def ssl_context_factory(config: Config, default_ssl_context_factory: DefaultFactory) -> ssl.SSLContext:
         return default_ssl_context_factory()
 
     config = Config(app=app, ssl_context_factory=ssl_context_factory)
-    with pytest.raises(RuntimeError, match="requires `ssl_certfile`"):
+    with pytest.raises(SystemExit) as exc_info:
+        config.load()
+    assert exc_info.value.code == STARTUP_FAILURE
+    assert "requires `ssl_certfile`" in caplog.text
+
+
+def test_ssl_context_factory_can_recover_from_missing_certfile() -> None:
+    def ssl_context_factory(config: Config, default_ssl_context_factory: DefaultFactory) -> ssl.SSLContext:
+        with pytest.raises(RuntimeError, match="requires `ssl_certfile`"):
+            default_ssl_context_factory()
+        return ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+
+    config = Config(app=app, ssl_context_factory=ssl_context_factory)
+    config.load()
+    assert isinstance(config.ssl, ssl.SSLContext)
+
+
+def test_ssl_context_factory_runtime_error_is_not_a_startup_failure() -> None:
+    def ssl_context_factory(config: Config, default_ssl_context_factory: DefaultFactory) -> ssl.SSLContext:
+        raise RuntimeError("custom factory failed")
+
+    config = Config(app=app, ssl_context_factory=ssl_context_factory)
+    with pytest.raises(RuntimeError, match="custom factory failed"):
         config.load()
 
 

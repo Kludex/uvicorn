@@ -116,6 +116,10 @@ LOGGING_CONFIG: dict[str, Any] = {
 logger = logging.getLogger("uvicorn.error")
 
 
+class _MissingSSLCertfileError(RuntimeError):
+    """The default SSL context factory was called without a certificate."""
+
+
 def create_ssl_context(
     certfile: str | os.PathLike[str],
     keyfile: str | os.PathLike[str] | None,
@@ -457,7 +461,7 @@ class Config:
 
             def default_factory() -> ssl.SSLContext:
                 if not self.ssl_certfile:
-                    raise RuntimeError(
+                    raise _MissingSSLCertfileError(
                         "`default_ssl_context_factory()` requires `ssl_certfile` to be set on `Config`. "
                         "Either pass `ssl_certfile` (and optionally `ssl_keyfile`) or build the `SSLContext` "
                         "directly inside `ssl_context_factory` without calling the default factory."
@@ -473,22 +477,30 @@ class Config:
                     alpn_protocols=alpn_protocols,
                 )
 
-            context = self.ssl_context_factory(self, default_factory)
+            try:
+                context = self.ssl_context_factory(self, default_factory)
+            except (OSError, ValueError, _MissingSSLCertfileError) as exc:
+                logger.error("Error loading SSL context. %s", exc)
+                sys.exit(STARTUP_FAILURE)
             if not isinstance(context, ssl.SSLContext):
                 raise TypeError(f"`ssl_context_factory` must return an `ssl.SSLContext`, got {type(context).__name__}")
             self.ssl: ssl.SSLContext | None = context
         elif self.is_ssl:
             assert self.ssl_certfile
-            self.ssl = create_ssl_context(
-                keyfile=self.ssl_keyfile,
-                certfile=self.ssl_certfile,
-                password=self.ssl_keyfile_password,
-                ssl_version=self.ssl_version,
-                cert_reqs=self.ssl_cert_reqs,
-                ca_certs=self.ssl_ca_certs,
-                ciphers=self.ssl_ciphers,
-                alpn_protocols=alpn_protocols,
-            )
+            try:
+                self.ssl = create_ssl_context(
+                    keyfile=self.ssl_keyfile,
+                    certfile=self.ssl_certfile,
+                    password=self.ssl_keyfile_password,
+                    ssl_version=self.ssl_version,
+                    cert_reqs=self.ssl_cert_reqs,
+                    ca_certs=self.ssl_ca_certs,
+                    ciphers=self.ssl_ciphers,
+                    alpn_protocols=alpn_protocols,
+                )
+            except (OSError, ValueError) as exc:
+                logger.error("Error loading SSL context. %s", exc)
+                sys.exit(STARTUP_FAILURE)
         else:
             self.ssl = None
 
