@@ -445,7 +445,7 @@ class Config:
                     "with `http='zttp'`. See https://uvicorn.dev/concepts/http2/ for more information."
                 )
             http_protocol_class = import_from_string("uvicorn.protocols.http.auto_zttp_impl:AutoZttpProtocol")
-            self.http_protocol_class: type[asyncio.Protocol] = http_protocol_class
+            self.http_protocol_class: Callable[..., asyncio.Protocol] = http_protocol_class
         elif isinstance(self.http, str):
             self.http_protocol_class = import_from_string(HTTP_PROTOCOLS.get(self.http, self.http))
         else:
@@ -501,7 +501,7 @@ class Config:
 
         if isinstance(self.ws, str):
             ws_protocol_class = import_from_string(WS_PROTOCOLS.get(self.ws, self.ws))
-            self.ws_protocol_class: type[asyncio.Protocol] | None = ws_protocol_class
+            self.ws_protocol_class: Callable[..., asyncio.Protocol] | None = ws_protocol_class
         else:
             self.ws_protocol_class = self.ws
 
