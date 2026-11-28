@@ -119,9 +119,13 @@ class Process:
         self.parent_conn.close()
         self.child_conn.close()
 
-    def join(self) -> None:
+    def join(self, timeout: float | None = None) -> None:
         logger.info(f"Waiting for child process [{self.process.pid}]")
-        self.process.join()
+        self.process.join(timeout)
+        # Timeout, kill the process
+        while self.process.exitcode is None:
+            self.process.kill()
+            self.process.join(1)
 
     @property
     def server(self) -> Server:
@@ -168,7 +172,7 @@ class Multiprocess:
 
     def join_all(self) -> None:
         for process in self.processes:
-            process.join()
+            process.join(self.config.timeout_graceful_shutdown)
 
     def restart_all(self) -> None:
         """Replaces each worker, bringing its replacement into service before retiring the old worker."""
