@@ -46,7 +46,16 @@ class StatReload(BaseReload):
         self.mtimes = {}
         return super().restart()
 
+    # Default exclude patterns mirroring WatchFilesReload's FileFilter so
+    # that the two reloader implementations behave consistently. Without
+    # this, StatReload would pick up .py files inside .venv/, .mypy_cache/,
+    # .git/ and other hidden / cache directories, causing spurious reloads.
+    _DEFAULT_EXCLUDE_DIRS = (".venv", ".git", ".mypy_cache", ".pytest_cache", ".ruff_cache")
+
     def iter_py_files(self) -> Iterator[Path]:
         for reload_dir in self.config.reload_dirs:
             for path in list(reload_dir.rglob("*.py")):
+                # Skip files inside well-known hidden / cache directories.
+                if any(part in self._DEFAULT_EXCLUDE_DIRS for part in path.parts):
+                    continue
                 yield path.resolve()
