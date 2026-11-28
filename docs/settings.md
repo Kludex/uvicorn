@@ -45,7 +45,7 @@ uvicorn itself.
 
 * `--host <str>` - Bind socket to this host. Use `--host 0.0.0.0` to make the application available on your local network. IPv6 addresses are supported, for example: `--host '::'`. **Default:** *'127.0.0.1'*.
 * `--port <int>` - Bind to a socket with this port. If set to 0, an available port will be picked. **Default:** *8000*.
-* `--uds <path>` - Bind to a UNIX domain socket, for example `--uds /tmp/uvicorn.sock`. Useful if you want to run Uvicorn behind a reverse proxy.
+* `--uds <path>` - Bind to a UNIX domain socket, for example `--uds /tmp/uvicorn.sock`. Useful if you want to run Uvicorn behind a reverse proxy. If the path refers directly to an existing UNIX socket, the socket path is replaced while preserving its permissions, including with `--reload` or `--workers`. This also applies when another process is still using that socket; Uvicorn does not check whether it is active.
 * `--fd <int>` - Bind to socket from this file descriptor. Useful if you want to run Uvicorn within a process manager.
 
 ## Development
