@@ -18,6 +18,15 @@
   color: var(--md-default-fg-color--light);
 }
 
+.md-nav__partners {
+  line-height: 0;
+}
+
+.md-nav__partners img {
+  max-width: 100%;
+  height: auto;
+}
+
 .md-nav__sponsor {
   display: flex;
   align-items: center;

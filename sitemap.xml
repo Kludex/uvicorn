@@ -4,34 +4,28 @@
         <loc>https://uvicorn.dev/</loc>
       </url>
       <url>
-        <loc>https://uvicorn.dev/installation/</loc>
-      </url>
-      <url>
-        <loc>https://uvicorn.dev/settings/</loc>
-      </url>
-      <url>
-        <loc>https://uvicorn.dev/server-behavior/</loc>
-      </url>
-      <url>
         <loc>https://uvicorn.dev/concepts/asgi/</loc>
       </url>
       <url>
-        <loc>https://uvicorn.dev/concepts/lifespan/</loc>
-      </url>
-      <url>
-        <loc>https://uvicorn.dev/concepts/http2/</loc>
-      </url>
-      <url>
-        <loc>https://uvicorn.dev/concepts/logging/</loc>
+        <loc>https://uvicorn.dev/concepts/event-loop/</loc>
       </url>
       <url>
         <loc>https://uvicorn.dev/concepts/http-protocols/</loc>
       </url>
       <url>
+        <loc>https://uvicorn.dev/concepts/http2/</loc>
+      </url>
+      <url>
+        <loc>https://uvicorn.dev/concepts/lifespan/</loc>
+      </url>
+      <url>
+        <loc>https://uvicorn.dev/concepts/logging/</loc>
+      </url>
+      <url>
         <loc>https://uvicorn.dev/concepts/websockets/</loc>
       </url>
       <url>
-        <loc>https://uvicorn.dev/concepts/event-loop/</loc>
+        <loc>https://uvicorn.dev/contributing/</loc>
       </url>
       <url>
         <loc>https://uvicorn.dev/deployment/</loc>
@@ -40,9 +34,12 @@
         <loc>https://uvicorn.dev/deployment/docker/</loc>
       </url>
       <url>
-        <loc>https://uvicorn.dev/release-notes/</loc>
+        <loc>https://uvicorn.dev/installation/</loc>
       </url>
       <url>
-        <loc>https://uvicorn.dev/contributing/</loc>
+        <loc>https://uvicorn.dev/server-behavior/</loc>
+      </url>
+      <url>
+        <loc>https://uvicorn.dev/settings/</loc>
       </url>
 </urlset>
