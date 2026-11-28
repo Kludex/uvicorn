@@ -252,6 +252,7 @@ class Config:
         self.host = host
         self.port = port
         self.uds = uds
+        self._uds_socket_stat: os.stat_result | None = None
         self.fd = fd
         self.loop = loop
         self.http = http
@@ -571,9 +572,11 @@ class Config:
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             try:
                 sock.bind(path)
+                self._uds_socket_stat = os.lstat(path)
                 uds_perms = 0o666
                 os.chmod(self.uds, uds_perms)
             except OSError as exc:  # pragma: full coverage
+                sock.close()
                 logger.error(exc)
                 sys.exit(STARTUP_FAILURE)
 
